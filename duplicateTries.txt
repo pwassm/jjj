@@ -49,3 +49,10 @@
 2026-09-13T14:33:48.238Z	bare-links paste	2282	https://youtu.be/4_QRCPz395g	10 Signs You're Deficient in Glycine (Is This Nutrient Deficiency Causing Your Inflammation?)
 2026-09-13T18:28:46.379Z	bare-links paste	2295	https://youtu.be/bJ-GAyUXZws	It's Boring, But This Morning Routine Burns Visceral Fat All Day (Japanese Method)
 2026-09-22T20:55:48.824Z	channel CSV: @Dr.G_and_the_Sea	2348	https://youtu.be/-LH3tEf49Mg	E36 Why don't sharks drink seawater?
+2026-09-25T03:03:02.621Z	channel CSV: @CaptainEelgrass	2322	https://youtu.be/tJmfdBZXbTs	Graceful Decorator Crab Primping | Salish Sea Marine Wildlife
+2026-09-25T03:03:02.621Z	channel CSV: @CaptainEelgrass	2321	https://youtu.be/Z-z_rUV9njU	Sailfin Sculpin 4 | Salish Sea Marine Wildlife
+2026-09-25T03:03:02.621Z	channel CSV: @CaptainEelgrass	2345	https://youtu.be/DT7eebn9Li4	Wolf Eel 44 | Salish Sea Marine Wildlife
+2026-09-25T03:03:02.621Z	channel CSV: @CaptainEelgrass	2319	https://youtu.be/XvRElCJ2ET0	Moon Snail Juggernaut - Run Away! | Salish Sea Marine Wildlife
+2026-09-25T03:03:02.621Z	channel CSV: @CaptainEelgrass	2316	https://youtu.be/6V2vwAhIgts	Moon Snail Hunts And Kills Cockle 2 | Salish Sea Marine Wildlife
+2026-09-25T03:03:02.621Z	channel CSV: @CaptainEelgrass	2317	https://youtu.be/LsHKFG5QaNw	Clam Defeats Moon Snail | Salish Sea Marine Wildlife
+2026-09-25T03:03:02.621Z	channel CSV: @CaptainEelgrass	2318	https://youtu.be/1E5j-8Dbw6U	Moon Snail Burrowing For Food | Salish Sea Marine Wildlife

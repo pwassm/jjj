@@ -1333,6 +1333,9 @@ async function _showShareableMenu() {
     + '.smGreeting video{cursor:zoom-in;-webkit-user-select:none;user-select:none;}'
     // (dev1037) …and on the pictures (no native drag to fight the hold).
     + '.smGreeting img{cursor:zoom-in;-webkit-user-select:none;user-select:none;-webkit-user-drag:none;}'
+    // (dev1041) The full-window view a zoom gesture lifts a picture or clip into.
+    + '.sm-zfull{position:absolute;inset:0;z-index:2147483000;background:#000;overflow:hidden;'
+      + 'touch-action:none;-webkit-user-select:none;user-select:none;}'
     // (dev1040) CAPTIONS SIT ON THE PICTURE, over its lower edge, the way G's
     // annotations do (grid.js .sal-annot): white on a dark fade, never out in the
     // gap between two pictures. (dev1037-1038 tried spacing them off instead.)
@@ -2874,7 +2877,7 @@ async function _showShareableMenu() {
   let _smSwX = null, _smSwY = null;
   const _smXY = e => window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
   ov.addEventListener('pointerdown', e => {
-    if (e.target && e.target.closest && e.target.closest('.smGreeting video,.smGreeting img')) { _smSwX = _smSwY = null; return; }
+    if (e.target && e.target.closest && e.target.closest('.smGreeting video,.smGreeting img,.sm-zfull')) { _smSwX = _smSwY = null; return; }
     const p = _smXY(e); _smSwX = p.x; _smSwY = p.y;
   }, true);
   ov.addEventListener('pointerup', e => {
@@ -3773,6 +3776,15 @@ function _smWireClipPlay(ov) {
 // saved: a zoom lasts until it is undone or the menu is rebuilt.
 // Delegated on the overlay, which is rebuilt on every open, so each build wires
 // its own copy and no listener outlives its page.
+// (dev1041) THE FULL-WINDOW VIEW. The zoom gesture no longer zooms inside the
+// picture's own frame: its first act (a hold, or a pinch opening past 1.04×)
+// lifts the picture out of the prose into a black layer over the whole window,
+// fitted whole, and a hold kept down (or the pinch kept opening) zooms on in
+// there. A double-click / double tap — or Esc — flies it back into its own
+// place. The page never scrolls meanwhile: a same-size placeholder holds the
+// spot, so it lands exactly where it left. The element itself is MOVED (a clip
+// keeps playing: a media element taken out and put back in one task is not
+// paused) and its authored style is put back word for word.
 function _smWireInlineZoom(ov) {
   // (dev1037) Pictures too; play/pause only ever touches a <video>.
   const SEL = '.smGreeting video,.smGreeting img', MAX = 8;
@@ -3781,9 +3793,22 @@ function _smWireInlineZoom(ov) {
   const get = v => st.get(v) || { s: 1, tx: 0, ty: 0 };
   // Physical → visual frame (a portrait phone rotates the whole UI 90°).
   const xy = p => (window.rotateXY ? window.rotateXY(p) : { x: p.clientX, y: p.clientY });
+  const visRect = el => {
+    const r = el.getBoundingClientRect();
+    const a = xy({ clientX: r.left, clientY: r.top }), b = xy({ clientX: r.right, clientY: r.bottom });
+    return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
+  };
+  // (dev1041) The full-window view, while one is up:
+  //   { v, ph (placeholder), layer, saved (style attr), W, H (layer size),
+  //     fx, fy, fw, fh (the fitted picture's box in the layer), busy (landing) }
+  let full = null;
+  const isFull = v => !!(full && full.v === v);
   // Visual position of the clip's UNtransformed top-left. Its rect is the
   // transformed box, whose corner sits at origin + (tx,ty) while scale ≥ 1.
   const origin = v => {
+    // In the full view it is known outright — and its rect is unreliable
+    // while the landing animation runs.
+    if (isFull(v)) { const L = visRect(full.layer); return { x: L.x + full.fx, y: L.y + full.fy }; }
     const z = get(v), r = v.getBoundingClientRect();
     const a = xy({ clientX: r.left, clientY: r.top }), b = xy({ clientX: r.right, clientY: r.bottom });
     return { x: Math.min(a.x, b.x) - z.tx, y: Math.min(a.y, b.y) - z.ty };
@@ -3792,7 +3817,23 @@ function _smWireInlineZoom(ov) {
     const cs = getComputedStyle(v), n = k => parseFloat(cs[k]) || 0;
     return { l: n('paddingLeft'), r: n('paddingRight'), t: n('paddingTop'), b: n('paddingBottom') };
   };
+  // (dev1035) V's zoom-stops-playback latch (vp.js _vApply).
+  const latch = (v, s) => {
+    if (s > 1.05) { if (!v._smZoomStop) { v._smZoomStop = true; if (ov._smClips && isVid(v)) ov._smClips.hold(v); } }
+    else v._smZoomStop = false;
+  };
   const apply = (v, z) => {
+    if (isFull(v)) {                              // (dev1041) the full-window view
+      const f = full, s = Math.min(MAX, Math.max(1, z.s || 1)), sw = f.fw * s, sh = f.fh * s;
+      // Narrower than the window on an axis → centred on it; wider → no gap at either edge.
+      const tx = sw <= f.W ? (f.W - sw) / 2 - f.fx : Math.min(-f.fx, Math.max(f.W - sw - f.fx, z.tx));
+      const ty = sh <= f.H ? (f.H - sh) / 2 - f.fy : Math.min(-f.fy, Math.max(f.H - sh - f.fy, z.ty));
+      st.set(v, { s: s, tx: tx, ty: ty });
+      latch(v, s);                                // 1× here is the fitted view
+      v.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';
+      v.style.cursor = s > 1 ? 'grab' : 'zoom-in';
+      return;
+    }
     const W = v.offsetWidth, H = v.offsetHeight, p = pad(v);
     if (!(z.s > 1.001)) z = { s: 1, tx: 0, ty: 0 };
     else {                                        // the picture always covers its box
@@ -3800,9 +3841,7 @@ function _smWireInlineZoom(ov) {
       z.ty = Math.min(p.t * (1 - z.s), Math.max((H - p.b) * (1 - z.s), z.ty));
     }
     st.set(v, z);
-    // (dev1035) V's zoom-stops-playback latch (vp.js _vApply).
-    if (z.s > 1.05) { if (!v._smZoomStop) { v._smZoomStop = true; if (ov._smClips && isVid(v)) ov._smClips.hold(v); } }
-    else v._smZoomStop = false;
+    latch(v, z.s);
     if (z.s === 1) {
       v.style.transform = v.style.transformOrigin = v.style.clipPath = v.style.touchAction = '';
       v.style.cursor = 'zoom-in';
@@ -3825,7 +3864,120 @@ function _smWireInlineZoom(ov) {
     apply(v, { s: z.s * k, tx: lx - (lx - z.tx) * k, ty: ly - (ly - z.ty) * k });
   };
   const reset = v => apply(v, { s: 1, tx: 0, ty: 0 });
-  const clipOf = t => (t && t.closest ? t.closest(SEL) : null);
+
+  // ── (dev1041) INTO THE FULL-WINDOW VIEW AND BACK (see header)
+  // The move in and out animates the individual `translate` / `scale`
+  // properties, which compose with the zoom's own `transform` — so a pinch or
+  // hold that carries on through the landing never fights the animation.
+  const ANIM = 220;
+  const canAnim = !!(window.CSS && CSS.supports && CSS.supports('translate', '1px') && CSS.supports('scale', '1'))
+    && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  // The whole picture, as large as the window allows, centred.
+  const fitRect = (v, W, H) => {
+    const nw = v.naturalWidth || v.videoWidth || v.offsetWidth || 1;
+    const nh = v.naturalHeight || v.videoHeight || v.offsetHeight || 1;
+    const k = Math.min(W / nw, H / nh), fw = nw * k, fh = nh * k;
+    return { fx: (W - fw) / 2, fy: (H - fh) / 2, fw: fw, fh: fh };
+  };
+  const place = f => {
+    const s = f.v.style;
+    s.left = f.fx + 'px'; s.top = f.fy + 'px'; s.width = f.fw + 'px'; s.height = f.fh + 'px';
+  };
+  // A resize (or a phone turned) refits it, unzoomed.
+  const refit = () => {
+    const f = full;
+    if (!f) return;
+    if (!ov.isConnected) { window.removeEventListener('resize', refit); full = null; return; }
+    f.W = f.layer.clientWidth || 1; f.H = f.layer.clientHeight || 1;
+    Object.assign(f, fitRect(f.v, f.W, f.H));
+    place(f);
+    apply(f.v, { s: 1, tx: 0, ty: 0 });
+  };
+  const enterFull = v => {
+    if (full || !v.isConnected) return;
+    const r0 = visRect(v), cs = getComputedStyle(v);
+    // Holds the picture's spot in the prose, so nothing below it moves.
+    const ph = document.createElement('span');
+    ph.className = 'sm-zph';
+    ph.style.cssText = 'box-sizing:border-box;'
+      + 'display:' + (cs.display === 'inline' ? 'inline-block' : cs.display) + ';'
+      + 'width:' + v.offsetWidth + 'px;height:' + v.offsetHeight + 'px;'
+      + 'margin:' + cs.marginTop + ' ' + cs.marginRight + ' ' + cs.marginBottom + ' ' + cs.marginLeft + ';'
+      + 'float:' + cs.cssFloat + ';vertical-align:' + cs.verticalAlign + ';';
+    v.parentNode.insertBefore(ph, v);
+    const layer = document.createElement('div');
+    layer.className = 'sm-zfull';
+    ov.appendChild(layer);
+    const W = layer.clientWidth || 1, H = layer.clientHeight || 1;
+    const f = Object.assign({ v: v, ph: ph, layer: layer, saved: v.getAttribute('style'), W: W, H: H, busy: false },
+                            fitRect(v, W, H));
+    v.style.cssText = 'position:absolute;margin:0;padding:0;border:0;float:none;max-width:none;max-height:none;'
+      + 'border-radius:0;object-fit:contain;transform-origin:0 0;touch-action:none;cursor:zoom-in;';
+    place(f);
+    layer.appendChild(v);                         // same task as the removal: a clip plays on
+    full = f;
+    st.set(v, { s: 1, tx: 0, ty: 0 });
+    v._smZoomStop = false;
+    window.addEventListener('resize', refit);
+    // A clip that hadn't reported its size yet was fitted by its box; refit
+    // once it does.
+    if (isVid(v) && !v.videoWidth) v.addEventListener('loadedmetadata', () => { if (full === f) refit(); }, { once: true });
+    if (!canAnim) return;
+    // Grow out of the spot it occupied.
+    const L = visRect(layer);
+    f.busy = true;
+    const a = v.animate([
+      { translate: (r0.x - L.x - f.fx) + 'px ' + (r0.y - L.y - f.fy) + 'px', scale: (r0.w / f.fw) + ' ' + (r0.h / f.fh) },
+      { translate: '0px 0px', scale: '1 1' }
+    ], { duration: ANIM, easing: 'ease-out' });
+    layer.animate([{ backgroundColor: 'rgba(0,0,0,0)' }, { backgroundColor: 'rgb(0,0,0)' }], { duration: ANIM, easing: 'ease-out' });
+    const landed = () => { f.busy = false; };
+    a.finished.then(landed, landed);
+  };
+  const exitFull = () => {
+    const f = full;
+    if (!f) return;
+    full = null;
+    window.removeEventListener('resize', refit);
+    const v = f.v, z = get(v);
+    st.set(v, { s: 1, tx: 0, ty: 0 });
+    v._smZoomStop = false;
+    f.layer.style.pointerEvents = 'none';
+    const home = () => {
+      if (f.ph.parentNode) f.ph.parentNode.replaceChild(v, f.ph);
+      if (f.saved == null) v.removeAttribute('style'); else v.setAttribute('style', f.saved);
+      if (v.getAnimations) v.getAnimations().forEach(a => a.cancel());
+      f.layer.remove();
+    };
+    // Its page no longer showing (a tab switched underneath): straight home.
+    if (!canAnim || !f.ph.isConnected || !f.ph.getClientRects().length) { home(); return; }
+    // Shrink from where it is now, zoomed or not, into its spot.
+    const L = visRect(f.layer), P = visRect(f.ph);
+    v.style.transform = 'none';
+    const a = v.animate([
+      { translate: z.tx + 'px ' + z.ty + 'px', scale: z.s + ' ' + z.s },
+      { translate: (P.x - L.x - f.fx) + 'px ' + (P.y - L.y - f.fy) + 'px', scale: (P.w / f.fw) + ' ' + (P.h / f.fh) }
+    ], { duration: ANIM, easing: 'ease-in-out', fill: 'forwards' });
+    f.layer.animate([{ backgroundColor: 'rgb(0,0,0)' }, { backgroundColor: 'rgba(0,0,0,0)' }],
+                    { duration: ANIM, easing: 'ease-in-out', fill: 'forwards' });
+    a.finished.then(home, home);
+  };
+  // Esc closes it too (desktop). Bound once; each build re-points the hook.
+  window._smZoomEsc = () => { if (!full || !ov.isConnected) return false; exitFull(); return true; };
+  if (!window._smZoomEscBound) {
+    window._smZoomEscBound = true;
+    window.addEventListener('keydown', e => {
+      if (e.key !== 'Escape' || !window._smZoomEsc || !window._smZoomEsc()) return;
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    }, true);
+  }
+
+  // Anywhere on the full view — the picture or the black round it — is it.
+  const clipOf = t => {
+    if (!t || !t.closest) return null;
+    if (full && full.layer.contains(t)) return full.v;
+    return t.closest(SEL);
+  };
   let swallowClick = false;
   // (dev1038) A CLIP WITH A TIMELINE SHOWS IT ONLY WHILE THE MOUSE IS OVER ITS
   // BOTTOM STRIP (desktop). Firefox's own control layer covers the whole clip
@@ -3905,6 +4057,7 @@ function _smWireInlineZoom(ov) {
       if (e.clientY > r.bottom - 44) return;
     }
     e.preventDefault();
+    swallowClick = false;                         // a stale one (no click came) never eats this
     last = v;                                     // (dev1035) Space's fallback clip
     try { v.setPointerCapture(e.pointerId); } catch (_) {}
     mStop();
@@ -3912,8 +4065,7 @@ function _smWireInlineZoom(ov) {
     m = { v: v, x: p.x, y: p.y, q: p, moved: false, pan: null, step: 0.015,
           dir: e.ctrlKey ? -1 : 1, delay: null, timer: null, acted: false };
     const mm = m;
-    mm.delay = setTimeout(() => {
-      mm.delay = null;
+    const ramp = () => {
       mm.timer = setInterval(() => {
         const s = get(v).s;
         if ((mm.dir > 0 && s >= MAX) || (mm.dir < 0 && s <= 1)) { mStop(); return; }
@@ -3921,7 +4073,20 @@ function _smWireInlineZoom(ov) {
         mm.step = Math.min(0.12, mm.step + 0.003);
         mm.acted = true;
       }, 50);
-    }, 180);
+    };
+    // (dev1041) In the prose, the hold's first act is to open the full-window
+    // view — a touch later than a zoom step, so a slow click doesn't — and a
+    // hold kept down zooms on in there once the picture has landed.
+    const inFull = isFull(v);
+    mm.delay = setTimeout(() => {
+      mm.delay = null;
+      if (inFull) { ramp(); return; }
+      if (mm.dir < 0) return;                     // Ctrl+hold: nothing to zoom out of
+      enterFull(v);
+      mm.acted = true;
+      try { v.setPointerCapture(e.pointerId); } catch (_) {}   // the move can drop it
+      mm.delay = setTimeout(() => { mm.delay = null; ramp(); }, ANIM + 250);
+    }, inFull ? 180 : 280);
   }, true);
   ov.addEventListener('pointermove', e => {
     if (!m || e.pointerType !== 'mouse') return;
@@ -3969,6 +4134,7 @@ function _smWireInlineZoom(ov) {
   ov.addEventListener('dblclick', e => {
     const v = clipOf(e.target);
     if (v && v._smCtl) e.preventDefault();        // (dev1038) never the browser's fullscreen
+    if (isFull(v)) { e.preventDefault(); e.stopPropagation(); exitFull(); return; }   // (dev1041)
     if (!v || get(v).s <= 1) return;              // unzoomed: the browser's own dblclick
     e.preventDefault(); e.stopPropagation();
     reset(v);
@@ -4005,8 +4171,19 @@ function _smWireInlineZoom(ov) {
     const v = t.v;
     if (t.mode === 'pinch' && e.touches.length >= 2) {
       if (e.cancelable) e.preventDefault();
+      // (dev1041) Just lifted into the full view: wait for it to land, then
+      // carry on from the fingers where they are, at its fitted 1×.
+      if (isFull(v) && (full.busy || t.rebase)) {
+        if (full.busy) t.rebase = true; else begin(v, e.touches);
+        return;
+      }
       const c = mid(e.touches[0], e.touches[1]);
       const s = Math.min(MAX, Math.max(1, t.s0 * gap(e.touches[0], e.touches[1]) / t.d0));
+      // (dev1041) In the prose, opening the pinch lifts it into the full view.
+      if (!isFull(v)) {
+        if (s > 1.04) { enterFull(v); t.rebase = true; }
+        return;
+      }
       apply(v, { s: s, tx: c.x - t.o.x - t.cx * s, ty: c.y - t.o.y - t.cy * s });
       return;
     }
@@ -4033,7 +4210,8 @@ function _smWireInlineZoom(ov) {
       lastTap = null;
       if (e.cancelable) e.preventDefault();       // no synthetic click after the reset
       if (own) toggle(v);
-      if (get(v).s > 1) reset(v);
+      if (isFull(v)) exitFull();                  // (dev1041) back into its place
+      else if (get(v).s > 1) reset(v);
       return;
     }
     lastTap = { v: v, at: now };
