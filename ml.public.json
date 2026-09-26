@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1790353234694,
+    "_salPushTime": 1790466418752,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -90,7 +90,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "DateAdded",
+      "col": "cell",
       "dir": "desc"
     },
     "_salGsize": 5,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1790353234694
+    "_salSavedAt": 1790466418752
   },
   {
     "UID": "1",
@@ -49752,7 +49752,7 @@
     "link": "https://media.sealifeandmore.com/flatfish%20moon%20snail%20attack%201%20speed%20.25x%20shortest_20260831_101741_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49764,7 +49764,7 @@
     "vidLength": "0:12",
     "Mode": "L",
     "DictSize": "1543",
-    "cell": "",
+    "cell": "2a",
     "ftext": "<p>Floyd is widely known as a fish of action. </p><p>\"A fish has got to do what a fish has got to do\"</p>",
     "UOD": "20"
   },
@@ -49773,7 +49773,7 @@
     "link": "https://media.sealifeandmore.com/flatfish%20moon%20snail%20attack%202%20speed%20.25x_20260831_101741_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49785,7 +49785,7 @@
     "vidLength": "0:17",
     "Mode": "L",
     "DictSize": "1543",
-    "cell": "",
+    "cell": "2c",
     "VidRange": "4.2 5",
     "VidComment": ""
   },
@@ -49815,7 +49815,7 @@
     "link": "https://media.sealifeandmore.com/flatfish%20moon%20snail%20attack%202%20speed%20.25x_20260831_101741_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 14:21:38",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49827,7 +49827,7 @@
     "vidLength": "0:17",
     "Mode": "L",
     "DictSize": "1543",
-    "cell": "",
+    "cell": "3a",
     "VidRange": "7.8 5",
     "VidComment": "",
     "COI": "0.670,0.279@@3.1@@frame0"
@@ -49859,7 +49859,7 @@
     "link": "https://media.sealifeandmore.com/Moon%20snail%20comes%20to%20rock%208x_20260831_100744_crop2.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49871,7 +49871,7 @@
     "vidLength": "0:19",
     "Mode": "L",
     "DictSize": "1543",
-    "cell": "",
+    "cell": "1a",
     "comment": "",
     "ftext": "<p>4 Molly Moonsnail climbs a cliff,</p><p>\"I sense lovely bivalves up there!\"</p>"
   },
@@ -49902,27 +49902,27 @@
     "link": "https://media.sealifeandmore.com/Moonsnail%20buries%20itself%20BW%208x%20speed_20260831_102846_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:46:58",
     "tags": [
       "myvideo",
       "neverita-lewisii"
     ],
     "Mute": "0",
-    "ftextSize": "38",
+    "ftextSize": "36",
     "FtextJunk": "0",
     "MPix": "V",
     "vidLength": "0:33",
     "Mode": "L",
     "DictSize": "1543",
-    "cell": "",
-    "ftext": "<p>2/ljClammies, here I come, yum!</p>"
+    "cell": "3c",
+    "ftext": "<h4>Clammies, here I come, yum!</h4>"
   },
   {
     "UID": "2257",
     "link": "https://media.sealifeandmore.com/How%20Embarassing_UpsideDown.jpg",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49933,7 +49933,7 @@
     "MPix": "3.7",
     "Mode": "L",
     "DictSize": "1543",
-    "cell": "",
+    "cell": "1b",
     "comment": "",
     "ftext": "<p>5 Oops, I fell, how embarrassing.</p><p>How can I get back on my foot again?</p>"
   },
@@ -49981,7 +49981,7 @@
     "link": "https://youtu.be/jMF5HeuQuTs",
     "show": "1",
     "DateAdded": "2026-09-08 02:57:20",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "neverita-lewisii"
     ],
@@ -49992,7 +49992,7 @@
     "VidTitle": "Molluscs - Moon Snail Preys on Cockles",
     "VidAuthor": "@shapeoflife637",
     "Mode": "L",
-    "cell": "",
+    "cell": "4a",
     "ftext": "",
     "vidLength": "2:02",
     "VidRange": "58.2 58",
@@ -50025,7 +50025,7 @@
     "link": "https://youtu.be/KPfO521hQrY",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:34",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50036,7 +50036,7 @@
     "VidTitle": "The Lewis Moon Snail Life and Behaviour",
     "VidAuthor": "@aquatichdvideo",
     "Mode": "L",
-    "cell": "",
+    "cell": "5a",
     "ftext": "",
     "vidLength": "8:32",
     "VidRange": "35 68",
@@ -50047,7 +50047,7 @@
     "link": "https://youtu.be/KPfO521hQrY",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:34",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50058,7 +50058,7 @@
     "VidTitle": "The Lewis Moon Snail Life and Behaviour",
     "VidAuthor": "@aquatichdvideo",
     "Mode": "L",
-    "cell": "",
+    "cell": "5b",
     "ftext": "",
     "vidLength": "8:32",
     "VidRange": "102.4 50",
@@ -50069,7 +50069,7 @@
     "link": "https://youtu.be/KPfO521hQrY",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:34",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50080,7 +50080,7 @@
     "VidTitle": "The Lewis Moon Snail Life and Behaviour",
     "VidAuthor": "@aquatichdvideo",
     "Mode": "L",
-    "cell": "",
+    "cell": "5c",
     "ftext": "",
     "vidLength": "8:32",
     "VidRange": "157.7 75",
@@ -50091,7 +50091,7 @@
     "link": "https://youtu.be/KPfO521hQrY",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:34",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50102,7 +50102,7 @@
     "VidTitle": "The Lewis Moon Snail Life and Behaviour",
     "VidAuthor": "@aquatichdvideo",
     "Mode": "L",
-    "cell": "",
+    "cell": "5d",
     "ftext": "",
     "vidLength": "8:32",
     "VidRange": "236.4 90",
@@ -50113,7 +50113,7 @@
     "link": "https://youtu.be/KPfO521hQrY",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:34",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50124,7 +50124,7 @@
     "VidTitle": "The Lewis Moon Snail Life and Behaviour",
     "VidAuthor": "@aquatichdvideo",
     "Mode": "L",
-    "cell": "",
+    "cell": "5e",
     "ftext": "",
     "vidLength": "8:32",
     "VidRange": "436.9 68",
@@ -50157,7 +50157,7 @@
     "link": "https://youtu.be/DlSxrcobO40",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:23",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50168,7 +50168,7 @@
     "VidTitle": "Meet the Moon Snail",
     "VidAuthor": "@EdDominguez",
     "Mode": "L",
-    "cell": "",
+    "cell": "4b",
     "ftext": "",
     "vidLength": "8:23",
     "VidRange": "78.4 85",
@@ -50179,7 +50179,7 @@
     "link": "https://youtu.be/DlSxrcobO40",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:23",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50190,7 +50190,7 @@
     "VidTitle": "Meet the Moon Snail",
     "VidAuthor": "@EdDominguez",
     "Mode": "L",
-    "cell": "",
+    "cell": "4c",
     "ftext": "",
     "vidLength": "8:23",
     "VidRange": "178.3 20",
@@ -50201,7 +50201,7 @@
     "link": "https://youtu.be/DlSxrcobO40",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:23",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50212,7 +50212,7 @@
     "VidTitle": "Meet the Moon Snail",
     "VidAuthor": "@EdDominguez",
     "Mode": "L",
-    "cell": "",
+    "cell": "4d",
     "ftext": "",
     "vidLength": "8:23",
     "VidRange": "257.4 61",
@@ -50223,7 +50223,7 @@
     "link": "https://youtu.be/DlSxrcobO40",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:23",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50234,7 +50234,7 @@
     "VidTitle": "Meet the Moon Snail",
     "VidAuthor": "@EdDominguez",
     "Mode": "L",
-    "cell": "",
+    "cell": "4e",
     "ftext": "",
     "vidLength": "8:23",
     "VidRange": "323.7 36",
@@ -50365,7 +50365,7 @@
     "link": "https://media.sealifeandmore.com/Maybe%20Floyd%20will%20help.jpg",
     "show": "1",
     "DateAdded": "2026-09-12 20:19:00",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:27:05",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -50376,7 +50376,7 @@
     "MPix": "1.9",
     "Mode": "L",
     "DictSize": "1543",
-    "cell": "",
+    "cell": "1c",
     "ftext": "<p>5 It's friendly Floyd Flatfish!</p><p>I'll bet he'll help me.</p><p>He has such kind eyes.</p>"
   },
   {
@@ -50436,7 +50436,7 @@
     "link": "https://media.sealifeandmore.com/Susie%20Surfperch_20260831_101741_crop.jpg",
     "show": "1",
     "DateAdded": "2026-09-12 20:56:13",
-    "DateModified": "2026-09-16 00:51:19",
+    "DateModified": "2026-09-26 23:44:21",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -50447,8 +50447,8 @@
     "MPix": "2.1",
     "Mode": "L",
     "DictSize": "1543",
-    "cell": "",
-    "ftext": "<p>5 Polly P Pompano says:</p><p>You almost did it, Floyd Flatfish,</p><p>Almost put Molly back on her foot.</p><p>Go for it, try, try again!</p>"
+    "cell": "2b",
+    "ftext": "<p>7 Polly P Pompano says:</p><p>You almost did it, Floyd Flatfish,</p><p>Almost put Molly back on her foot.</p><p>Go for it, try, try again!</p>"
   },
   {
     "UID": "2275",
@@ -50470,19 +50470,19 @@
     "link": "https://media.sealifeandmore.com/A%20Moonsnail%20last%20comment_20260831_101741_crop.jpg",
     "show": "1",
     "DateAdded": "2026-09-12 21:17:29",
-    "DateModified": "2026-09-16 00:50:47",
+    "DateModified": "2026-09-26 23:45:15",
     "tags": [
       "myvideo",
       "neverita-lewisii"
     ],
     "Mute": "0",
-    "ftextSize": "227",
+    "ftextSize": "104",
     "FtextJunk": "0",
     "MPix": "2.1",
     "Mode": "L",
     "DictSize": "1543",
-    "ftext": "<h4>5/ljFloyd, I do love your kind eyes,</h4><h4>but I can't abide your crude lips,</h4><h4>and how you smack them: for what?!</h4><h4>I'll just take care of myself.</h4><h4>I'll go deep, shoulda tried that first...</h4><p></p>",
-    "cell": ""
+    "ftext": "<h4>5 Floyd, your try was lip-smackin' good,</h4><h4>but now I'll do it myself, I bet I can!</h4><p></p>",
+    "cell": "3b"
   },
   {
     "UID": "2277",
@@ -50989,12 +50989,12 @@
   },
   {
     "UID": "2306",
-    "cell": "",
+    "cell": "1e",
     "show": "1",
     "VidRange": "text",
     "ftext": "<h1>Moon snail adventures <span data-xall=\"open\" class=\"te-xall\">▼▼</span> <span data-xall=\"close\" class=\"te-xall\">▶▶</span></h1><h1>I took 3 videos:</h1><h2>Moon snail approaches rocks</h2><details><summary>They are predators of bivalves, especially clams</summary><p>They alternate physical drilling and acid attack</p><p>Physical drilling with radula</p><p>Acid secretion using ABO (accessory boring organ)<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"te-cite\" href=\"https://www.asnailsodyssey.com\">@@@</a></p><details><summary>Detail:</summary><p>[A] research group at the Pacific Biological Station, British Columbia on drilling of prey by moon snails <em>Neverita&nbsp;lewisii</em>&nbsp;focuses on the fine structure of the accessory boring organ (ABO). &nbsp;First, the location of the ABO in moon snails differs from its location in muricid gastropods such as whelks&nbsp;<em>Nucella&nbsp;</em>spp. &nbsp;In the latter it is positioned on the anterior/ventral part of the foot, while in moon snails it is located on the ventral distal tip of the proboscis. &nbsp;When erect (i.e., tumescent) it is mushroom-shaped and joined to the proboscis by a stalk or peduncle (Fig. 1). &nbsp;All surfaces are covered in tall, columnar epithelia cells fringed with a brush border of microvilli. &nbsp;Tumescence of the ABO is linked to extension of the proboscis, as both organs are connected via a sinus system that can be engorged with hemolymph under pressure. Numerous <em>goblet</em> cells permeate the epithelium of the ABO and are thought by the authors to secrete an acid mucopolysaccharide substance. &nbsp;Other mucus-producing cells form a ring around the central epithelium. &nbsp;The authors suggest that secretion from these cells may create a mucous seal when the ABO is applied to a prey's shell.&nbsp;</p><p>NOTE&nbsp;&nbsp;the authors provide a short but interesting&nbsp;history of investigation into the mode of drilling by gastropods, including muricid whelks and other naticids. The idea of a combined radular/chemical means of penetration dates from 1711 and an observation that a secretion from the “papilla” that “reddens litmus paper” dates from 1891. &nbsp;Even that the ABO and resultant hole diameters are identical has been known from the early part of the 1900s. &nbsp;</p></details></details><h2>Moonsnail eyed than nipped by flatfish.</h2><details><summary>Are there predators of moon snails?</summary><p>\"There are no studies specifically relating to predators and defenses of west-coast moon snails. &nbsp;<em>Everita&nbsp;lewisii&nbsp;</em>crawls about openly on the sand and, in intertidal locations, is sometimes exposed to air or at least is shallow enough to be visible and&nbsp;accessible to birds. The flesh is plump and seemingly would be tasty to fishes, so if fishes avoid moon snails as prey, the liklihood is that the flesh is toxic or otherwise unpalatable. The shell is strong and protected by a proteinaceous operculum (Figs. 1 -&nbsp;2), but moon snails are rarely observed to be withdrawn completely in their shells. &nbsp;Clearly, research on the subject is needed.\"<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"te-cite\" href=\"https://www.asnailsodyssey.com\">@@@</a></p></details><h2>Moonsnail burrows into sand.</h2><details><summary>Burrowing behavior</summary><p>Adult moon snails <em>Neverita lewisii&nbsp;</em>(Fig. 1)&nbsp;are strict predators and mostly eat bivalves. &nbsp;As many of their prey live at sediment depths of 20cm or more, the snails have to burrow quite deeply to find them. &nbsp;Burrowing by moon snails is enabled by a large foot that is capable of inflating up to four times the shell volume through uptake of seawater. &nbsp;The inflation is quick, allowing fast penetration into and displacement of sand. &nbsp;The moon snail catches hold of its prey and hauls it to the sediment&nbsp;surface to begin drilling.<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"te-cite\" href=\"https://www.asnailsodyssey.com\">@@@</a></p></details><h2>Asnailodyssey.com</h2><details><summary>Cartoon video</summary><p><video src=\"https://www.asnailsodyssey.com/views/images/198/story_video198.mp4\" preload=\"metadata\" controls=\"controls\" playsinline=\"playsinline\" style=\"float: left; width: 700px; margin: 6px 14px 6px 0px; border-radius: 4px;\"></video></p><p></p></details><h2>Could the moonsnail be harmed by a bite?</h2><details><summary>Is there \"functional hemophelia\" in some marine animals?</summary><details><summary>Discussion of clotting - Perplexity-generated</summary><p>Horseshoe crabs are not poor clotters; their blood possesses one of the fastest, most sensitive, and most aggressive coagulation mechanisms in the animal kingdom.</p><p></p><p>The premise that horseshoe crabs bleed uncontrollably or suffer from hemophilia is a common misunderstanding stemming from how humans interact with them. Because horseshoe crab blood clots in seconds upon contact with endotoxins, biomedical labs bleed live crabs to manufacture <strong>Limulus Amebocyte Lysate (LAL)</strong>. The animals that bleed out or become lethargic after harvest do so because technicians harvest up to 30% or more of their total blood volume, not because of defective clotting biology.</p><p></p><h3>Horseshoe Crab Clotting Mechanisms</h3><p>In nature, a horseshoe crab's open circulatory system (hemolymph) is protected by specialized blood cells called <strong>granular amebocytes</strong>.</p><p>[<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Horseshoe_crab\">en.wikipedia</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.sciencedirect.com/science/article/abs/pii/S1095643306001826\">sciencedirect</a>]</p><p></p><p>When an amebocyte detects trace concentrations of lipopolysaccharide (LPS) from Gram-negative bacteria—even parts per trillion—it degranulates immediately. A proteolytic cascade involving <strong>Factor C</strong>, <strong>Factor B</strong>, and a <strong>proclotting enzyme</strong> cleaves <strong>coagulogen</strong> into an insoluble, fibrous gel called <strong>coagulin</strong>. This seals wounds and encapsulates pathogens, trapping invading microbes in a localized gel mass.</p><p>[<a target=\"_blank\" rel=\"noopener\" href=\"https://bigthink.com/health/horseshoe-crab-blood-clott/\">bigthink</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC6200278/\">pmc.ncbi.nlm.nih</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.sciencedirect.com/science/article/abs/pii/S1095643306001826\">sciencedirect</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.britannica.com/animal/horseshoe-crab\">britannica</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://pubmed.ncbi.nlm.nih.gov/3393570/\">pubmed.ncbi.nlm.nih</a>]</p><p></p><h3>Species with Functional \"Hemophilia\"</h3><p>While horseshoe crabs have an overactive clotting response, several other animal lineages have evolved real deficiencies in classical clotting cascades—effectively exhibiting natural, functional \"hemophilia\".</p><p>[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.science.org/doi/10.1126/science.166.3911.1420\">science</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>]</p><p></p><h4>Cetaceans (Whales, Dolphins, and Porpoises)</h4><p>Cetaceans lack <strong>Factor XII (Hageman factor)</strong> and <strong>plasma prekallikrein (KLKB1)</strong> entirely. Both <em>F12</em> and <em>KLKB1</em> mutated into inactive pseudogenes in the stem cetacean lineage.</p><p>[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2020.592383/full\">frontiersin</a>]</p><p>If cetacean blood is drawn into a standard glass tube, it exhibits an extraordinarily prolonged clotting time (in vitro hemophilia) because the intrinsic \"contact activation\" pathway cannot trigger.</p><p>[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.science.org/doi/10.1126/science.166.3911.1420\">science</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.sciencedirect.com/science/article/abs/pii/0010406X6990067X\">sciencedirect</a>]</p><p></p><h4>Birds and Reptiles</h4><p>Reptiles and avian species also naturally lack or underutilize the contact phase (Factor XII). Avian blood relies almost entirely on the extrinsic, tissue-factor-driven pathway. Drawing chicken or duck blood into a plain glass tube without tissue thromboplastin will result in slow clotting, closely resembling human intrinsic-pathway bleeding disorders.</p><p>[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.jthjournal.org/article/S1538-7836(22)12751-0/fulltext\">jthjournal</a>]</p><p></p><h4>Sanguivorous Parasites (Transient Acquired Hemophilia)</h4><p>While not an internal defect in the animal's own body, obligate blood-feeders like vampire bats (<em>Desmodus rotundus</em>), leeches (<em>Hirudo medicinalis</em>), and ticks synthesize potent thrombin, Factor Xa, and platelet inhibitors (such as <strong>draculin</strong> and <strong>hirudin</strong>). These creatures induce instantaneous localized hemophilia in their hosts to prevent clotting while feeding.</p><p></p><h3>Evolutionary Pressures Behind Clotting Losses</h3><p>Why would natural selection favor the loss or suppression of clotting pathways in species like cetaceans?</p><ul><li><p><strong>Prevention of diving-induced thrombosis:</strong> When marine mammals dive to great depths, high pressures, nitrogen microbubbles, and severe peripheral vasoconstriction cause shear stress and endothelial microtrauma. In a terrestrial mammal, microbubbles and shear stress activate Factor XII, causing massive disseminated intravascular coagulation (fatal internal blood clots). By losing Factor XII, cetaceans prevent diving from triggering lethal clotting.</p></li><li><p>[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2020.592383/full\">frontiersin</a>]</p></li><li><p></p></li><li><p><strong>Redundancy and tissue factor compensation:</strong> Deep-tissue injuries still release abundant Tissue Factor. Wounds in whales and dolphins trigger the extrinsic coagulation pathway, ensuring that external injuries seal effectively even without a contact activation pathway.[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2020.592383/full\">frontiersin</a>]</p></li><li><p><strong>Loss of contact with terrestrial catalysts:</strong> Factor XII auto-activates when exposed to negatively charged surfaces like soil and rock particles. While advantageous for terrestrial mammals scraping against mineral-rich terrain, this mechanism provides little adaptive benefit in open water and instead poses unwanted thrombotic risks.</p></li><li><p>[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/contact-system/\">thebloodproject</a>]</p></li></ul></details></details><p></p><p></p>",
     "DateAdded": "2026-09-13 22:03:01",
-    "DateModified": "2026-09-16 01:12:24",
+    "DateModified": "2026-09-26 23:27:05",
     "ftextSize": "11596",
     "FtextJunk": "1",
     "DictSize": "0"
@@ -51671,7 +51671,8 @@
     "DictSize": "0",
     "VidTitle": "GOETHITE PRONOUNCIATION",
     "VidAuthor": "@saltshackgeology",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2347",
@@ -51687,7 +51688,8 @@
     "DictSize": "0",
     "VidTitle": "フォアのレベル",
     "VidAuthor": "@Takukichi",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2348",
@@ -51703,7 +51705,8 @@
     "DictSize": "0",
     "VidTitle": "E36 Why don't sharks drink seawater?",
     "VidAuthor": "@Dr.G_and_the_Sea",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2349",
@@ -51719,7 +51722,8 @@
     "VidTitle": "This Strange Exercise Unlocks Stiff Hips After 50",
     "VidAuthor": "@HT-Physio",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2350",
@@ -51739,7 +51743,8 @@
     "VidAuthor": "@ModernHealthspan",
     "Mode": "L",
     "ftext": "",
-    "VQ": "9"
+    "VQ": "9",
+    "cell": ""
   },
   {
     "UID": "2351",
@@ -51755,7 +51760,8 @@
     "VidTitle": "New Discovery Resets 75-Year-Old Skin to 30-Year-Old’s",
     "VidAuthor": "@ModernHealthspan",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2352",
@@ -51772,7 +51778,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2353",
@@ -51789,7 +51796,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2354",
@@ -51806,7 +51814,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2355",
@@ -51823,7 +51832,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2356",
@@ -51840,7 +51850,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2357",
@@ -51857,7 +51868,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2358",
@@ -51874,7 +51886,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2359",
@@ -51891,7 +51904,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2360",
@@ -51908,7 +51922,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2361",
@@ -51925,7 +51940,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2362",
@@ -51942,7 +51958,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2363",
@@ -51959,7 +51976,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2364",
@@ -51976,7 +51994,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2365",
@@ -51993,7 +52012,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2366",
@@ -52010,7 +52030,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2367",
@@ -52027,7 +52048,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2368",
@@ -52044,7 +52066,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2369",
@@ -52061,7 +52084,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2370",
@@ -52078,7 +52102,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2371",
@@ -52095,7 +52120,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2372",
@@ -52112,7 +52138,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2373",
@@ -52129,7 +52156,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2374",
@@ -52146,7 +52174,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2375",
@@ -52163,7 +52192,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2376",
@@ -52180,7 +52210,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2377",
@@ -52197,7 +52228,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2378",
@@ -52214,7 +52246,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2379",
@@ -52231,7 +52264,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2380",
@@ -52248,7 +52282,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2381",
@@ -52265,7 +52300,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2382",
@@ -52282,7 +52318,8 @@
     "Mode": "P",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2383",
@@ -52302,7 +52339,8 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "DictSize": "0",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2384",
@@ -52322,7 +52360,8 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "DictSize": "0",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2385",
@@ -52342,7 +52381,8 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "DictSize": "0",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2386",
@@ -52362,7 +52402,8 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "DictSize": "0",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2387",
@@ -52382,7 +52423,8 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "DictSize": "0",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2388",
@@ -52397,7 +52439,8 @@
     "MPix": "V",
     "vidLength": "0:24",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2389",
@@ -52412,7 +52455,8 @@
     "MPix": "V",
     "vidLength": "0:51",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2390",
@@ -52427,7 +52471,8 @@
     "MPix": "V",
     "vidLength": "0:45",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2391",
@@ -52442,7 +52487,8 @@
     "MPix": "V",
     "vidLength": "0:45",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2392",
@@ -52457,7 +52503,8 @@
     "MPix": "V",
     "vidLength": "0:09",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2393",
@@ -52472,7 +52519,8 @@
     "MPix": "V",
     "vidLength": "1:40",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2394",
@@ -52487,7 +52535,8 @@
     "MPix": "V",
     "vidLength": "0:27",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2395",
@@ -52502,7 +52551,8 @@
     "MPix": "V",
     "vidLength": "0:15",
     "Mode": "L",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2396",
@@ -52517,7 +52567,8 @@
     "DictSize": "0",
     "ftext": "",
     "VidAuthor": "@when.it.raines",
-    "VidTitle": "#Flourescent baby #lobsters #JellyfishRider (#lobsterLarvae) aka. #phyllosomaLarvae of spiny and #slipperLobsters"
+    "VidTitle": "#Flourescent baby #lobsters #JellyfishRider (#lobsterLarvae) aka. #phyllosomaLarvae of spiny and #slipperLobsters",
+    "cell": ""
   },
   {
     "UID": "2397",
@@ -52532,7 +52583,8 @@
     "DictSize": "0",
     "ftext": "",
     "VidAuthor": "@ebikaniaquarium",
-    "VidTitle": "!"
+    "VidTitle": "!",
+    "cell": ""
   },
   {
     "UID": "2398",
@@ -52547,7 +52599,8 @@
     "DictSize": "0",
     "ftext": "",
     "VidAuthor": "@frida.yolotzin",
-    "VidTitle": "LOBSTER PHYLLOSOMA LARVA CARRYING SIPHONOPHORES"
+    "VidTitle": "LOBSTER PHYLLOSOMA LARVA CARRYING SIPHONOPHORES",
+    "cell": ""
   },
   {
     "UID": "2399",
@@ -52562,7 +52615,8 @@
     "DictSize": "0",
     "ftext": "",
     "VidAuthor": "@mbari_news",
-    "VidTitle": "Serving some major squeeee"
+    "VidTitle": "Serving some major squeeee",
+    "cell": ""
   },
   {
     "UID": "2400",
@@ -52577,7 +52631,8 @@
     "DictSize": "0",
     "ftext": "",
     "VidAuthor": "@twanathan",
-    "VidTitle": "Last week @blackwatercozumel dives there was a lot of these larval stage transparent lobsters. They grab onto stinging"
+    "VidTitle": "Last week @blackwatercozumel dives there was a lot of these larval stage transparent lobsters. They grab onto stinging",
+    "cell": ""
   },
   {
     "UID": "2401",
@@ -52592,7 +52647,8 @@
     "DictSize": "0",
     "ftext": "",
     "VidAuthor": "@gugunderwater",
-    "VidTitle": "A larval-stage slipper lobster carries an arsenal of stinging siphonophores as it drifts through the nighttime"
+    "VidTitle": "A larval-stage slipper lobster carries an arsenal of stinging siphonophores as it drifts through the nighttime",
+    "cell": ""
   },
   {
     "UID": "2402",
@@ -52608,7 +52664,8 @@
     "ftext": "",
     "VidAuthor": "@stem_antics",
     "VidTitle": "This is Xenia, a soft coral known for its rhythmic opening and closing motion of individual polyps. Unlike hard",
-    "VQ": "7"
+    "VQ": "7",
+    "cell": ""
   },
   {
     "UID": "2403",
@@ -52623,7 +52680,8 @@
     "MPix": "V",
     "vidLength": "0:40",
     "Mode": "L",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2404",
@@ -52640,7 +52698,8 @@
     "VidAuthor": "@CaptainEelgrass",
     "Mode": "L",
     "ftext": "",
-    "vidLength": "0:31"
+    "vidLength": "0:31",
+    "cell": ""
   },
   {
     "UID": "2405",
@@ -52658,7 +52717,8 @@
     "VidTitle": "Does Taurine Actually Extend Human Life? What 25 Human Trials Reveal",
     "VidAuthor": "@ModernHealthspan",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2406",
@@ -52676,7 +52736,8 @@
     "VidTitle": "This “Longevity Vitamin” Helps Protect Your Mitochondria as You Age",
     "VidAuthor": "@FoundMyFitnessClips",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2407",
@@ -52691,7 +52752,8 @@
     "MPix": "V",
     "vidLength": "0:28",
     "Mode": "L",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2408",
@@ -52706,7 +52768,8 @@
     "MPix": "V",
     "vidLength": "0:30",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2409",
@@ -52721,7 +52784,8 @@
     "MPix": "V",
     "vidLength": "0:30",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2410",
@@ -52735,7 +52799,8 @@
     "FtextJunk": "0",
     "MPix": "2.0",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2411",
@@ -52749,7 +52814,8 @@
     "FtextJunk": "0",
     "MPix": "2.0",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2412",
@@ -52764,7 +52830,8 @@
     "MPix": "V",
     "vidLength": "0:21",
     "Mode": "L",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2413",
@@ -52778,7 +52845,8 @@
     "FtextJunk": "0",
     "MPix": "2.1",
     "Mode": "L",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2414",
@@ -52792,7 +52860,8 @@
     "FtextJunk": "0",
     "MPix": "12.0",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2415",
@@ -52807,7 +52876,8 @@
     "MPix": "V",
     "vidLength": "1:40",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2416",
@@ -52823,7 +52893,8 @@
     "ftextSize": "6274",
     "FtextJunk": "0",
     "DictSize": "0",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2417",
@@ -52840,6 +52911,7 @@
     "FtextJunk": "0",
     "DictSize": "0",
     "MPix": "V",
-    "vidLength": "0:10"
+    "vidLength": "0:10",
+    "cell": ""
   }
 ]
