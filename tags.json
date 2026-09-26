@@ -8435,5 +8435,13 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "oyster",
+    "label": "Oyster",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]
