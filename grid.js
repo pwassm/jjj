@@ -4861,6 +4861,16 @@ function gridWriteToT() {
   gridHideContextMenu();
   document.getElementById('gridOverlay').style.display = 'none';
   window._cameFromGrid = false;
+  // (dev1052) Land in T sorted on `cell`, so the rows just written sit together
+  // at the top in grid order (1a, 1b …) ready to work on, with the focus on the
+  // first of them (the first one the active filter lets through).
+  sortCol = 'cell'; sortDir = 'asc'; pending = null;
+  buildSort();
+  focus = null;
+  for (let vi = 0; vi < (sortedIdx ? sortedIdx.length : data.length); vi++) {
+    if (rowMatchesFilter(data[vr(vi)])) { focus = { r: vi, c: 0 }; break; }
+  }
   buildTable();
-  toast('✓ Written to T', 1400);
+  if (focus !== null && typeof _tScrollRowIntoView === 'function') _tScrollRowIntoView(focus.r);
+  toast('✓ Written to T — sorted on cell', 1400);
 }

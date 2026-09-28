@@ -1783,6 +1783,7 @@ async function load() {
   buildSort();
   _tEnsureOpenFocus();   // (dev0538) focus the first row on initial load (no _lastUID yet)
   render();
+  window._mlLoadDone = true;   // (dev1052) d_yt.js waits on this before its FTLsaved backfill
 }
 
 // (dev0515) One-time in-memory migration of the orientation column to 'Mode' with
@@ -1856,6 +1857,28 @@ function buildSort() {
   if (!sortCol) { sortedIdx = filtered.length < data.length ? filtered : null; return; }
   const dir  = sortDir === 'desc' ? -1 : 1;
   const isDate = sortCol === 'DateAdded' || sortCol === 'DateModified';
+  // (dev1052) `cell` sorts in grid reading order — 1a 1b … 1e 2a … 5e, 1L/1P in
+  // with their row number — with BLANKS LAST in both directions, so the rows a grid
+  // uses always sit together at the top. The generic compare below got both
+  // wrong: parseFloat("1a") === parseFloat("1c"), so a grid row came out in any
+  // order, and ascending put the thousands of blank rows first.
+  if (sortCol === 'cell') {
+    const key = v => {
+      const s = (v === null || v === undefined) ? '' : String(v).trim();
+      const m = /^(\d+)(.*)$/.exec(s);
+      return m ? { n: parseInt(m[1], 10), t: m[2] } : { n: Infinity, t: s };
+    };
+    filtered.sort((a, b) => {
+      const ka = key(data[a].cell), kb = key(data[b].cell);
+      const ba = ka.t === '' && ka.n === Infinity, bb = kb.t === '' && kb.n === Infinity;
+      if (ba !== bb) return ba ? 1 : -1;
+      if (ba) return 0;
+      if (ka.n !== kb.n) return (ka.n < kb.n ? -1 : 1) * dir;
+      return (ka.t < kb.t ? -1 : ka.t > kb.t ? 1 : 0) * dir;
+    });
+    sortedIdx = filtered;
+    return;
+  }
   filtered.sort((a,b) => {
     // (dev0857) `||''` turned a numeric 0 into a blank, so `ltype: 0` rows sorted
     // in among the empty ones instead of grouping. Only null/undefined is blank.
@@ -2120,7 +2143,7 @@ const RPV_HOST_ID = 'rpv-host';   // video mounts register under this id in seeL
 let _rpvOpen = false;
 let _rpvDi   = -1;                // data-row index currently previewed (drives the toggle)
 let _rpvWantOpen = false;         // (dev0332) sticky intent: re-show on return to T until an explicit Ctrl+I/Esc close
-let _rpvMuted = null;             // (dev0355) null = follow row.Mute; true/false = explicit override set by clicking the pane. Persists across row changes until the pane is dismissed.
+let _rpvMuted = null;             // (dev0355) null = default (dev1052: muted); true/false = explicit override set by clicking the pane. Persists across row changes until the pane is dismissed.
 let _rpvPos = null;               // (dev0538) {left,top} once the user drags the pane; re-applied on every re-mount (row change / screen return) so it stays put.
 
 // Segment palette — MUST match video.js COLOURS / vp.js VP_COLOURS so a row's
@@ -2413,8 +2436,9 @@ function _rpvFillHost(host, row) {
   } else if (isVid && row.link) {
     const segs  = (window.parseVideoAsset ? window.parseVideoAsset(row.VidRange) : null) || [{ start: 0, dur: 99999 }];
     // (dev0355) Honor a click-set mute override (_rpvMuted) for the life of the
-    // pane; otherwise fall back to the row's Mute column (like V). Default audio-on.
-    const muted = _rpvMuted !== null ? _rpvMuted : (String(row.Mute).trim() === '1');
+    // pane. (dev1052) Otherwise MUTED, whatever the row's Mute column says: the
+    // pane follows focus, so an audio default sounded off on every arrow key.
+    const muted = _rpvMuted !== null ? _rpvMuted : true;
     // Mount after a paint so the host has real dimensions (matches grid timing).
     setTimeout(() => {
       if (!_rpvOpen || !document.getElementById('rowPreview')) return;  // closed before mount
@@ -2496,8 +2520,7 @@ function _rpvApplyMuteToPlayer(muted) {
 }
 function _rpvCurrentMuted() {
   if (_rpvMuted !== null) return _rpvMuted;
-  const row = (_rpvDi >= 0 && _rpvDi < data.length) ? data[_rpvDi] : null;
-  return row ? String(row.Mute).trim() === '1' : false;
+  return true;   // (dev1052) the pane's default — see _rpvFillHost
 }
 function _rpvUpdateMuteBadge() {
   const b = document.getElementById('rpvMuteBadge');
@@ -4891,6 +4914,9 @@ async function saveFtextImages() {
     if (sortedIdx && sortedIdx.indexOf(di) === -1) continue;
     if (!rowMatchesFilter(row)) continue;
     if (String(row.FTLsaved || '') === '1') continue;
+    // (dev1052) '9' = a YouTube/Vimeo row whose video is downloaded (d_yt.js).
+    // Not a Save Imgs state, and Save Imgs would overwrite it with 1/0/-1.
+    if (String(row.FTLsaved || '') === '9') continue;
     targets.push({ di, row });
   }
   if (!targets.length) { alert('Save Imgs: no eligible rows.\n(Need visible rows with ftext and FTLsaved ≠ 1.)'); return; }
@@ -5273,9 +5299,11 @@ document.querySelectorAll('.hkitem').forEach(el => {
     } else if (act === 'rmsamplecards') {
       housekeepingRemoveSampleCards();
     } else if (act === 'resetftlsaved') {
-      const n = data.filter(r => r.FTLsaved !== undefined && r.FTLsaved !== '').length;
-      if (!confirm('Clear FTLsaved on all ' + n + ' rows that have it set?\n(Rows will be re-processed next time Save Imgs runs.)')) return;
-      data.forEach(r => { if (r.FTLsaved !== undefined) r.FTLsaved = ''; });
+      // (dev1052) '9' (video downloaded, d_yt.js) is not a Save Imgs state — kept.
+      const _clr = r => r.FTLsaved !== undefined && r.FTLsaved !== '' && String(r.FTLsaved) !== '9';
+      const n = data.filter(_clr).length;
+      if (!confirm('Clear FTLsaved on all ' + n + ' rows that have it set?\n(Rows will be re-processed next time Save Imgs runs. 9 = video downloaded is kept.)')) return;
+      data.forEach(r => { if (_clr(r)) r.FTLsaved = ''; });
       save(); render();
       toast('✓ FTLsaved cleared on ' + n + ' rows', 3000);
     }
