@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1790552226129,
+    "_salPushTime": 1790554806991,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1790552226129
+    "_salSavedAt": 1790554806991
   },
   {
     "UID": "1",
@@ -50470,18 +50470,18 @@
     "link": "https://media.sealifeandmore.com/A%20Moonsnail%20last%20comment_20260831_101741_crop.jpg",
     "show": "1",
     "DateAdded": "2026-09-12 21:17:29",
-    "DateModified": "2026-09-26 23:45:15",
+    "DateModified": "2026-09-28 00:20:06",
     "tags": [
       "myvideo",
       "neverita-lewisii"
     ],
     "Mute": "0",
-    "ftextSize": "104",
+    "ftextSize": "100",
     "FtextJunk": "0",
     "MPix": "2.1",
     "Mode": "L",
     "DictSize": "1543",
-    "ftext": "<h4>5 Floyd, your try was lip-smackin' good,</h4><h4>but now I'll do it myself, I bet I can!</h4><p></p>",
+    "ftext": "<p>5 Floyd, your try was lip-smackin' good,</p><p>but now I'll do it myself, I bet I can!</p><p></p>",
     "cell": "3b"
   },
   {
