@@ -2564,7 +2564,7 @@
     "gname": "Moonsnail30",
     "cells": 25,
     "Zoom": 1,
-    "DateModified": "2026-09-28 03:18:14",
+    "DateModified": "2026-09-28 03:27:08",
     "1a": "2255/s3",
     "1b": "2257",
     "1c": "2270",
@@ -2593,6 +2593,7 @@
     "DateAdded": "2026-09-28 03:02:18",
     "ss": "moon30",
     "Label": "1",
-    "ctxt": "Moonsnail30"
+    "ctxt": "Moonsnail30",
+    "active": "1"
   }
 ]
