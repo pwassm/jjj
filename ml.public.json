@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1790564692593,
+    "_salPushTime": 1790565647542,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1790564692593
+    "_salSavedAt": 1790565647542
   },
   {
     "UID": "1",
@@ -49873,7 +49873,7 @@
     "DictSize": "1543",
     "cell": "1a",
     "comment": "",
-    "ftext": "<p>4 Molly Moonsnail climbs a cliff,</p><p>\"I sense lovely bivalves up there!\"</p>"
+    "ftext": "4"
   },
   {
     "UID": "2255_d",
@@ -49915,7 +49915,7 @@
     "Mode": "L",
     "DictSize": "1543",
     "cell": "3c",
-    "ftext": "<h4>Clammies, here I come, yum!</h4>"
+    "ftext": ""
   },
   {
     "UID": "2257",
@@ -49935,7 +49935,7 @@
     "DictSize": "1543",
     "cell": "1b",
     "comment": "",
-    "ftext": "<p>5 Oops, I fell, how embarrassing.</p><p>How can I get back on my foot again?</p>"
+    "ftext": "5"
   },
   {
     "UID": "2257_d",
@@ -50377,7 +50377,7 @@
     "Mode": "L",
     "DictSize": "1543",
     "cell": "1c",
-    "ftext": "<p>5 It's friendly Floyd Flatfish!</p><p>I'll bet he'll help me.</p><p>He has such kind eyes.</p>"
+    "ftext": "5"
   },
   {
     "UID": "2270_d",
@@ -50448,7 +50448,7 @@
     "Mode": "L",
     "DictSize": "1543",
     "cell": "2b",
-    "ftext": "<p>8 Polly P Pompano says:</p><p>You almost did it, Floyd Flatfish,</p><p>Almost put Molly back on her foot.</p><p>Go for it, try, try again!</p>"
+    "ftext": "8"
   },
   {
     "UID": "2275",
@@ -50481,7 +50481,7 @@
     "MPix": "2.1",
     "Mode": "L",
     "DictSize": "1543",
-    "ftext": "<p>5 Floyd, your try was lip-smackin' good,</p><p>but now I'll do it myself, I bet I can!</p><p></p>",
+    "ftext": "5",
     "cell": "3b"
   },
   {
