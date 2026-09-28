@@ -142,8 +142,10 @@ async function gridSaveToFile(gname) {
       : (row && row.UID ? String(row.UID) : '');
     if (key) {
       const z = (typeof _gridCellZoom !== 'undefined') ? _gridCellZoom[key] : 0;
+      // (dev1050) …and any "/sN" playback speed, so a re-save keeps it.
+      const sp = (typeof _gridCellSpeed !== 'undefined') ? _gridCellSpeed[key] : 0;
       gridData[cellStr] = (typeof _gridMakeCellVal === 'function')
-        ? _gridMakeCellVal(key, z)
+        ? _gridMakeCellVal(key, z, sp)
         : ((z && Math.abs(z - 1) > 1e-9) ? (key + '/' + z) : key);
     } else {
       gridData[cellStr] = '';

@@ -995,9 +995,10 @@ const ML_PUBLIC = 'ml.public.json';
 let _mlLoadedFile = 'ml.json';
 
 // c.json cell values address a row by UID, sometimes with a suffix:
-// "19@0.685,0.335" (framing) or "1029/0.9" (zoom).
+// "19@0.685,0.335" (framing), "1029/0.9" (zoom) or (dev1050) "2255/s3" (speed).
 // (dev0971) plusOnly: just the collections whose Label is a bare "+" — the
 // annotated ones (grid.js _salAnnotOn), where a picture's ftext IS its caption.
+// (dev1050) …or a bare "1", which means the same (grid.js _salLabelCaptions).
 function _mlGridUids(cfgRows, plusOnly) {
   const CELL = /^\d+[a-zA-Z]$|^\d+[LP]$/;
   const out = new Set();
@@ -1006,7 +1007,8 @@ function _mlGridUids(cfgRows, plusOnly) {
     if (!g || g._salMeta) continue;
     if (plusOnly) {
       const lab = (g.Label != null && String(g.Label).trim() !== '') ? g.Label : g.label;
-      if (String(lab == null ? '' : lab).trim() !== '+') continue;
+      const l = String(lab == null ? '' : lab).trim();
+      if (l !== '+' && l !== '1') continue;
     }
     for (const k of Object.keys(g)) {
       if (!CELL.test(k)) continue;

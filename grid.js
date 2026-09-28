@@ -297,6 +297,10 @@ var _gridActiveConfig = null; // The currently active c.json config object (when
 // "UID/zoom" (a bare "UID" = full size). Session-lived; cleared + repopulated
 // from the active config on C-activation (see _gridApplyConfigZoom).
 var _gridCellZoom = {};
+// (dev1050) Per-cell playback SPEED from a c.json "UID/sN" value, keyed like
+// _gridCellZoom (1 = normal, not stored). Filled on C-activation alongside the
+// zooms; read by _salRowRate; written back by the config save.
+var _gridCellSpeed = {};
 
 // (dev0364) Transient per-cell PAN offset (UID → {x,y} px), applied on top of the
 // zoom/COI transform. Set by the Shift+drag gesture; session-only (NOT persisted —
@@ -2190,27 +2194,33 @@ function _gridRefitAll() {
   document.querySelectorAll('#gridContainer .grid-cell').forEach(_gridApplyZoomToCell);
 }
 
-// Parse a c.json cell value into { uid, link, zoom }. Two grammars:
+// Parse a c.json cell value into { uid, link, zoom, speed }. Two grammars:
 //   UID cell  — "204" or "204/1.8" (zoom after a slash). The original form.
 //   LINK cell — (dev0609) "https://…" or "https://…|1.8". A cell may hold a
 //     direct media URL instead of an ml.json UID, so a grid can be built from
 //     links that were never promoted into ml.json (see _gridLinkCellRow).
 // The two never collide: a UID is digits, a link starts with a scheme. Links
 // use "|" for the zoom suffix because a URL is already full of slashes.
+// (dev1050) A suffix that is "s" + a number is a playback SPEED, not a zoom:
+// "2255/s3" plays that video at 3x, "2255/1.4/s3" zooms it too, either order.
+// A bare number is still the zoom. speed 1 = normal; only a video FILE honours
+// it (_salRowRate), a picture ignores it.
 // Exactly one of .uid / .link is ever set. Tolerates blanks/null.
 function _gridParseCellVal(v) {
   const s = (v === undefined || v === null) ? '' : String(v).trim();
-  if (!s) return { uid: '', link: '', zoom: 1 };
-  if (_isLinkCellVal(s)) {
-    const li = s.indexOf('|');
-    if (li < 0) return { uid: '', link: s, zoom: 1 };
-    const lz = parseFloat(s.slice(li + 1));
-    return { uid: '', link: s.slice(0, li).trim(), zoom: (isFinite(lz) && lz > 0) ? lz : 1 };
+  const out = { uid: '', link: '', zoom: 1, speed: 1 };
+  if (!s) return out;
+  const isLink = _isLinkCellVal(s);
+  const parts = s.split(isLink ? '|' : '/');
+  if (isLink) out.link = parts[0].trim(); else out.uid = parts[0].trim();
+  for (let k = 1; k < parts.length; k++) {
+    const t = parts[k].trim();
+    const sp = /^s\s*(\d*\.?\d+)$/i.exec(t);
+    const n = parseFloat(sp ? sp[1] : t);
+    if (!(isFinite(n) && n > 0)) continue;
+    if (sp) out.speed = n; else out.zoom = n;
   }
-  const i = s.indexOf('/');
-  if (i < 0) return { uid: s, link: '', zoom: 1 };
-  const z = parseFloat(s.slice(i + 1));
-  return { uid: s.slice(0, i).trim(), link: '', zoom: (isFinite(z) && z > 0) ? z : 1 };
+  return out;
 }
 
 // (dev0609) True when a raw c.json cell value is a link rather than a UID.
@@ -2218,11 +2228,15 @@ function _isLinkCellVal(v) { return /^https?:\/\//i.test(String(v || '').trim())
 
 // (dev0609) Encode a cell value for c.json — the inverse of _gridParseCellVal.
 // Links take the "|zoom" suffix, UIDs the "/zoom" one; zoom 1 = bare value.
-function _gridMakeCellVal(idOrLink, zoom) {
+// (dev1050) A speed other than 1 rides after the zoom as "/sN" ("|sN").
+function _gridMakeCellVal(idOrLink, zoom, speed) {
   const s = String(idOrLink || '').trim();
   if (!s) return '';
-  if (!(zoom > 0) || Math.abs(zoom - 1) < 1e-9) return s;
-  return s + (_isLinkCellVal(s) ? '|' : '/') + zoom;
+  const sep = _isLinkCellVal(s) ? '|' : '/';
+  let out = s;
+  if (zoom > 0 && Math.abs(zoom - 1) > 1e-9) out += sep + zoom;
+  if (speed > 0 && Math.abs(speed - 1) > 1e-9) out += sep + 's' + speed;
+  return out;
 }
 
 // (dev0609) The key a row's per-cell zoom/pan is stored under. Normally the
@@ -2296,6 +2310,12 @@ function _gridLinkCellRow(link, cellStr) {
 // "UID/zoom" cell values. Clears any stale per-cell zooms first.
 function _gridApplyConfigZoom(cfg) {
   _gridCellZoom = {};
+  _gridCellSpeed = {};
+  // (dev1050) Every collection opens with its captions SHOWING. Ctrl+C hides
+  // them for this viewing only — it used to be remembered per browser, so one
+  // stray Ctrl+C (copy muscle memory) silently blanked every captioned
+  // collection from then on.
+  document.documentElement.classList.remove('sal-ctext-off');
   if (!cfg) return;
   const gz = parseFloat(cfg.Zoom);
   if (isFinite(gz) && gz > 0 && typeof window.setSetting === 'function') {
@@ -2307,6 +2327,7 @@ function _gridApplyConfigZoom(cfg) {
     // (dev0609) Link cells key their zoom by the link — see _gridCellKey.
     const ck = pv.uid || pv.link;
     if (ck && pv.zoom !== 1) _gridCellZoom[ck] = pv.zoom;
+    if (ck && pv.speed !== 1) _gridCellSpeed[ck] = pv.speed;   // (dev1050)
   });
 }
 
@@ -2842,6 +2863,7 @@ function _gridCellLabelText(cellStr, row) {
 
 // ── (dev0967) "+" ANNOTATIONS ───────────────────────────────────────────────
 // A c.json collection whose Label column holds a bare "+" is an ANNOTATED one.
+// (dev1050) A bare "1" means the same — _salLabelCaptions.
 // Every DIRECT-PLAY cell in it — a still, or a video FILE, never a YouTube /
 // Vimeo / IG embed, which owns the bottom of its own frame — carries that row's
 // ftext along the bottom: in the grid cell, in the full-screen cell, and in the
@@ -2887,10 +2909,18 @@ window._salAnnotOn = function () {
       return !!(g && g.style.display === 'flex');
     }
     if (!window._salInCollection()) return false;
-    var cfg = _gridActiveConfig;
-    var lab = (cfg.Label != null && String(cfg.Label).trim() !== '') ? cfg.Label : cfg.label;
-    return String(lab == null ? '' : lab).trim() === '+';
+    return window._salLabelCaptions(_gridActiveConfig);
   } catch (_) { return false; }
+};
+
+// (dev1050) Does this c.json row's Label ask for captions? "1" (easier to type)
+// or the original "+". core.js _mlGridUids asks the same question in its own
+// words, since it loads before this file — keep the two in step.
+window._salLabelCaptions = function (cfg) {
+  if (!cfg) return false;
+  var lab = (cfg.Label != null && String(cfg.Label).trim() !== '') ? cfg.Label : cfg.label;
+  lab = String(lab == null ? '' : lab).trim();
+  return lab === '1' || lab === '+';
 };
 
 // ── (dev0971) ftext LEAD DIRECTIVES ─────────────────────────────────────────
@@ -2991,8 +3021,15 @@ window._salRowLeadNum = function (row) {
 
 // Playback rate for a video FILE row, or null for "leave it at 1x". Files only:
 // YouTube / Vimeo / the embeds either can't take a rate or can't take this range.
+// (dev1050) A c.json "UID/sN" speed for this placement outranks the ftext lead.
 window._salRowRate = function (row) {
-  var n = window._salRowLeadNum(row);
+  if (!row) return null;
+  var n = null;
+  if (window._salInCollection()) {
+    var sp = _gridCellSpeed[_gridCellKey(row)];
+    if (sp > 0) n = sp;
+  }
+  if (n === null) n = window._salRowLeadNum(row);
   if (n === null || n <= 0) return null;
   var link = String(row.link || '');
   var isFile = row._directVideoFile
@@ -3097,21 +3134,17 @@ window._salAnnotMount = function (parent, row, measureEl) {
 // (dev0978) ctext = these "+" collection captions. Ctrl+C in G or Vss, or
 // "Toggle ctext" on the G right-click menu, hides / shows them all. A class on
 // <html> rather than a remount, so it is instant and the hidden captions keep
-// their fitted size. Remembered per browser, like L's clean view.
+// their fitted size.
+// (dev1050) NOT remembered any more: every collection opens with its captions
+// on (_gridApplyConfigZoom clears the class). The old per-browser key is
+// dropped so it can't linger.
 window._salCtextHidden = function () {
   return document.documentElement.classList.contains('sal-ctext-off');
 };
-(function () {
-  try {
-    if (localStorage.getItem('slam-ctext-off') === '1')
-      document.documentElement.classList.add('sal-ctext-off');
-  } catch (_) {}
-})();
+try { localStorage.removeItem('slam-ctext-off'); } catch (_) {}
 window._salToggleCtext = function () {
   _salAnnotCss();
-  var off = !window._salCtextHidden();
-  document.documentElement.classList.toggle('sal-ctext-off', off);
-  try { localStorage.setItem('slam-ctext-off', off ? '1' : '0'); } catch (_) {}
+  document.documentElement.classList.toggle('sal-ctext-off', !window._salCtextHidden());
 };
 
 function _gridApplyClean() {
