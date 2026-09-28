@@ -2430,7 +2430,10 @@ function _slideshowUpdateLabel(slide) {
     // not something to print over a picture a viewer is watching. A real
     // VidTitle still shows.
     labelText   = row.VidTitle ? String(row.VidTitle) : (st.vss ? '' : _slideshowRowTag(row));
-    commentText = row.comment  ? String(row.comment)  : '';
+    // (dev1051) A bare-integer comment on a video is its caption delay
+    // (grid.js _salAnnotDelayFrac), not words to print.
+    commentText = (row.comment && !(window._salAnnotDelayFrac && window._salAnnotDelayFrac(row) > 0))
+      ? String(row.comment) : '';
   } else if (slide) {
     labelText   = slide.name ? String(slide.name) : '';
     commentText = slide.path ? String(slide.path) : '';

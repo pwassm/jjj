@@ -3128,8 +3128,46 @@ window._salAnnotMount = function (parent, row, measureEl) {
     // changes nothing about the box) — no feedback loop.
     try { el._salRO = new ResizeObserver(fit); el._salRO.observe(box); } catch (_) {}
   }
+  _salAnnotDelay(el, row, box);
   return el;
 };
+
+// (dev1051) CAPTION DELAY. A video FILE row whose `comment` is a bare integer N
+// ("50") holds its caption back until the video is N% of the way through its
+// whole length (the file's duration, not the VidRange clip). The caption shows
+// whenever currentTime is past that point, so it goes away again when a looping
+// cell wraps round or V is scrubbed back. A picture's integer comment does nothing.
+//
+// Polled rather than wired to timeupdate, because the <video> under the box is
+// not there yet when this runs (grid cells mount it after, V a frame later) and
+// can be swapped for a new one mid-life (remount, buffer swap). The poll ends
+// when the caption leaves the DOM. It gives up after 10s if it never arrives.
+// visibility, not display, so the caption is still laid out and fitted while
+// hidden, and Ctrl+C's display:none still wins over it.
+var _SAL_DELAY_VIDEO_RE = /[.](mp4|m4v|mov|webm|ogv|mkv)([?][^#]*)?$/i;
+window._salAnnotDelayFrac = function (row) {
+  if (!row) return 0;
+  if (!row._directVideoFile && !_SAL_DELAY_VIDEO_RE.test(String(row.link || ''))) return 0;
+  var m = /^\s*(\d+)\s*$/.exec(String(row.comment == null ? '' : row.comment));
+  if (!m) return 0;
+  return Math.min(100, parseInt(m[1], 10)) / 100;
+};
+function _salAnnotDelay(el, row, box) {
+  var frac = window._salAnnotDelayFrac(row);
+  if (!(frac > 0)) return;
+  el.style.visibility = 'hidden';
+  var seen = false, born = Date.now();
+  var tick = setInterval(function () {
+    if (!el.isConnected) {
+      if (seen || Date.now() - born > 10000) clearInterval(tick);
+      return;
+    }
+    seen = true;
+    var v = box.querySelector('video');
+    var d = v ? v.duration : 0;
+    el.style.visibility = (d > 0 && isFinite(d) && v.currentTime >= d * frac) ? '' : 'hidden';
+  }, 200);
+}
 
 // (dev0978) ctext = these "+" collection captions. Ctrl+C in G or Vss, or
 // "Toggle ctext" on the G right-click menu, hides / shows them all. A class on
