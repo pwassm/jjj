@@ -2132,20 +2132,56 @@ async function _showShareableMenu() {
   // through the same round rather than dealing a fresh one. A new round never
   // opens on the item the last one closed on.
   const _SM_ALT_Q = 'sal-alt-queue';
-  const _smAltNext = links => {
+  const _smShuffle = a => {
+    for (let k = a.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [a[k], a[j]] = [a[j], a[k]]; }
+    return a;
+  };
+  // (dev1055) `want`, when given, takes the first item left in this round that
+  // passes it. None left → one from the whole list, and the round stays as it
+  // was. Nothing in the list passes → the next item as usual.
+  const _smAltNext = (links, want) => {
     let q = window._smAltQ;
     if (!Array.isArray(q)) { try { q = JSON.parse(localStorage.getItem(_SM_ALT_Q) || '[]'); } catch (x) {} }
     q = (Array.isArray(q) ? q : []).filter(l => links.includes(l));
     if (!q.length) {
-      q = links.slice();
-      for (let k = q.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [q[k], q[j]] = [q[j], q[k]]; }
+      q = _smShuffle(links.slice());
       if (q.length > 1 && q[0] === window._smAltLast) q.push(q.shift());
     }
-    const link = q.shift();
+    let i = want ? q.findIndex(want) : 0;
+    if (i < 0) {
+      const all = links.filter(want);
+      if (all.length) { const l = all[Math.floor(Math.random() * all.length)]; window._smAltLast = l; return l; }
+      i = 0;
+    }
+    const link = q.splice(i, 1)[0];
     window._smAltQ = q;
     window._smAltLast = link;
     try { localStorage.setItem(_SM_ALT_Q, JSON.stringify(q)); } catch (x) {}
     return link;
+  };
+  // (dev1055) PORTRAITS COME AS A TRIPTYCH. Landscape and square items keep the
+  // full screen. A portrait clip cropped to fill a landscape screen loses most
+  // of itself, so portraits come THREE side by side, filling it. Portrait =
+  // Mode 'P' (rowMode), videos only. In the main queue a triptych is ONE item,
+  // '#trioN', one per 3 portraits; its three clips are drawn at random from
+  // their own queue (each once per round before any repeats, mirrored to
+  // localStorage like the main one) and placed left to right in the order
+  // drawn. With fewer than 3 portraits they stay single full-screen slides.
+  const _SM_ALT_TQ = 'sal-alt-trioq', _SM_ALT_TRIO_MS = 1000;
+  const _smAltIsTrio = l => l.startsWith('#trio');
+  const _smAltTrio = ports => {
+    let q = window._smAltTQ;
+    if (!Array.isArray(q)) { try { q = JSON.parse(localStorage.getItem(_SM_ALT_TQ) || '[]'); } catch (x) {} }
+    q = (Array.isArray(q) ? q : []).filter(l => ports.includes(l));
+    const out = [];
+    for (let g = 0; out.length < 3 && g < 30; g++) {
+      if (!q.length) q = _smShuffle(ports.slice());
+      const l = q.shift();
+      if (!out.includes(l)) out.push(l);
+    }
+    window._smAltTQ = q;
+    try { localStorage.setItem(_SM_ALT_TQ, JSON.stringify(q)); } catch (x) {}
+    return out;
   };
   // (dev1036) BUFFER FIRST, ONE AHEAD. The slide after the one on show is
   // downloaded while it shows, and comes in only once it is ready; when this
@@ -2190,16 +2226,24 @@ async function _showShareableMenu() {
       return;
     }
     if (bg) return;
-    const pool = _smDayList.filter(e => e.row && (_SM_DAY_VID.test(String(e.row.link || '').split(/[?#]/)[0])
-                                               || _SM_DAY_IMG.test(String(e.row.link || '').split(/[?#]/)[0])));
+    const pathOf = r => String(r.link || '').split(/[?#]/)[0];
+    const pool = _smDayList.filter(e => e.row && (_SM_DAY_VID.test(pathOf(e.row)) || _SM_DAY_IMG.test(pathOf(e.row))));
     bg = document.createElement('div');
     bg.className = 'sm-alt-bg';
     bg.innerHTML = '<div class="sm-alt-pz" aria-hidden="true">&#10074;&#10074;</div>';
     ov.insertBefore(bg, ov.firstChild);
     if (!pool.length) { try { console.warn('[alt look] no UOD row has direct media; background left black'); } catch (x) {} return; }
-    const links = Array.from(new Set(pool.map(e => String(e.row.link))));
-    const ctl = bg._ctl = { cur: null, nx: null, due: false, paused: false, left: 0, at: 0, timer: null };
+    // (dev1055) Portrait clips leave the single-slide list for '#trioN' items.
+    const modeOf = r => (typeof rowMode === 'function' ? rowMode(r) : String(r.Mode || '').trim().toUpperCase());
+    let ports = Array.from(new Set(pool.filter(e => _SM_DAY_VID.test(pathOf(e.row)) && modeOf(e.row) === 'P')
+                                       .map(e => String(e.row.link))));
+    if (ports.length < 3) ports = [];
+    const links = Array.from(new Set(pool.map(e => String(e.row.link)))).filter(l => !ports.includes(l));
+    for (let k = 1; k <= Math.floor(ports.length / 3); k++) links.push('#trio' + k);
+    const ctl = bg._ctl = { cur: null, nx: null, due: false, paused: false, left: 0, at: 0, timer: null, drawn: 0 };
     const unload = v => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (x) {} };
+    const vidsOf = el => (el.tagName === 'VIDEO' ? [el] : Array.from(el.querySelectorAll('video')));
+    const playAll = s => s.clips.forEach(c => { if (c.v.ended) return; const pr = c.v.play(); if (pr && pr.catch) pr.catch(() => {}); });
     // Pictures run on a clock that a pause stops and a resume continues.
     const runClock = () => {
       clearTimeout(ctl.timer);
@@ -2210,11 +2254,16 @@ async function _showShareableMenu() {
     const timeUp = () => { ctl.due = true; reveal(); };
     const prep = () => {
       if (!bg.isConnected) return;
-      const link = _smAltNext(links);
-      const isVid = _SM_DAY_VID.test(link.split(/[?#]/)[0]);
-      const el = document.createElement(isVid ? 'video' : 'div');
-      el.className = 'sm-alt-slide';
-      const s = { el: el, link: link, isVid: isVid, ready: false, from: 0 };
+      // (dev1055) FOR NOW, while Phil assesses it: the 2nd slide of a Welcome
+      // visit is a triptych, and the 1st never is.
+      const n = ++ctl.drawn;
+      const want = !ports.length ? null : n === 1 ? (l => !_smAltIsTrio(l)) : n === 2 ? _smAltIsTrio : null;
+      const link = _smAltNext(links, want);
+      const trio = _smAltIsTrio(link);
+      const isVid = trio || _SM_DAY_VID.test(link.split(/[?#]/)[0]);
+      const el = document.createElement(isVid && !trio ? 'video' : 'div');
+      el.className = 'sm-alt-slide' + (trio ? ' sm-alt-trio' : '');
+      const s = { el: el, link: link, isVid: isVid, trio: trio, ready: false };
       ctl.nx = s;
       // (dev1038) Readied IN the page — see-through until its turn — not
       // detached: Firefox need not download or decode a video that isn't in
@@ -2239,38 +2288,52 @@ async function _showShareableMenu() {
         clearTimeout(s.guard);
         if (ctl.cur === s) {                        // shown early: play what came, or move on
           s.ready = true;
-          if (el.error) { ctl.due = true; prep(); }
+          if (s.clips && s.clips.some(c => c.v.error)) { ctl.due = true; prep(); }
           else if (!ctl.paused) { begin(s); prep(); }
           return;
         }
         if (ctl.nx !== s) return;
-        if (isVid) unload(el);
+        ctl.nx = null;                              // (dev1055) once: a triptych's clips can each fail
+        vidsOf(el).forEach(unload);
         el.remove();
         setTimeout(prep, 1500);
       };
       s.guard = setTimeout(fail, _SM_ALT_PREP_MS);
       if (isVid) {
-        el.muted = true; el.playsInline = true; el.preload = 'auto';
-        s.long = () => el.duration > _SM_ALT_VID_S + 1;
-        el.addEventListener('loadedmetadata', () => {
-          const p = s.long() ? _smAltPos(link) : 0;
-          if (p > 0 && p < el.duration - 1) { el.currentTime = p; s.from = p; }
-        }, { once: true });
-        const check = () => {
-          const d = el.duration, b = el.buffered;
-          if (!(d > 0) || !isFinite(d)) return;
-          const z = Math.min(d, s.from + _SM_ALT_VID_S + 1) - 0.3;
-          for (let i = 0; i < b.length; i++) if (b.start(i) <= s.from + 0.3 && b.end(i) >= z) { ready(); return; }
-          if (el.networkState === 1 && el.readyState >= 4) ready();
-        };
-        ['progress', 'suspend', 'canplaythrough', 'loadeddata', 'seeked'].forEach(k => el.addEventListener(k, check));
-        // (dev1037) THE VERY FIRST SLIDE shows its first frame as soon as there
-        // is one, rather than leaving the tabs over a black screen while it
-        // buffers; it starts moving once ready. Later slides need no such thing:
-        // the one before them is still up.
-        el.addEventListener('loadeddata', () => { if (!ctl.cur && ctl.nx === s && !s.ready) early(s); });
-        el.addEventListener('error', fail);
-        el.src = link;
+        // (dev1055) Each clip on its own: a single slide has one, a triptych
+        // three (panels inside el). The slide is ready once EVERY clip is, and
+        // one clip failing fails the whole slide.
+        s.clips = (trio ? _smAltTrio(ports) : [link]).map(src => {
+          const v = trio ? el.appendChild(document.createElement('video')) : el;
+          const c = { v: v, link: src, from: 0, ok: false, frame: false };
+          v.muted = true; v.playsInline = true; v.preload = 'auto';
+          c.long = () => v.duration > _SM_ALT_VID_S + 1;
+          v.addEventListener('loadedmetadata', () => {
+            const p = c.long() ? _smAltPos(src) : 0;
+            if (p > 0 && p < v.duration - 1) { v.currentTime = p; c.from = p; }
+          }, { once: true });
+          const check = () => {
+            if (c.ok) return;
+            const d = v.duration, b = v.buffered;
+            if (!(d > 0) || !isFinite(d)) return;
+            const z = Math.min(d, c.from + _SM_ALT_VID_S + 1) - 0.3;
+            let got = v.networkState === 1 && v.readyState >= 4;
+            for (let i = 0; !got && i < b.length; i++) if (b.start(i) <= c.from + 0.3 && b.end(i) >= z) got = true;
+            if (got) { c.ok = true; if (s.clips.every(x => x.ok)) ready(); }
+          };
+          ['progress', 'suspend', 'canplaythrough', 'loadeddata', 'seeked'].forEach(k => v.addEventListener(k, check));
+          // (dev1037) THE VERY FIRST SLIDE shows its first frame as soon as there
+          // is one, rather than leaving the tabs over a black screen while it
+          // buffers; it starts moving once ready. Later slides need no such thing:
+          // the one before them is still up.
+          v.addEventListener('loadeddata', () => {
+            c.frame = true;
+            if (!ctl.cur && ctl.nx === s && !s.ready && s.clips.every(x => x.frame)) early(s);
+          });
+          v.addEventListener('error', fail);
+          v.src = src;
+          return c;
+        });
       } else {
         const im = new Image();
         im.onload = ready;
@@ -2279,11 +2342,20 @@ async function _showShareableMenu() {
         el.style.backgroundImage = 'url("' + link.replace(/"/g, '%22') + '")';
       }
     };
+    // Put a slide on show (1.5 s fade). (dev1055) A triptych's panels come in
+    // one at a time, left to right, _SM_ALT_TRIO_MS apart, on their first frames.
+    const show = s => {
+      if (s.el.parentNode !== bg) bg.appendChild(s.el);   // already there, see-through (dev1038)
+      if (s.clips && window.salLockDownVideo) s.clips.forEach(c => window.salLockDownVideo(c.v));
+      s.shownAt = Date.now();
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        s.el.classList.add('on');
+        if (s.trio) s.clips.forEach((c, i) => setTimeout(() => c.v.classList.add('on'), i * _SM_ALT_TRIO_MS));
+      }));
+    };
     const early = s => {
       ctl.nx = null; ctl.cur = s;
-      if (s.el.parentNode !== bg) bg.appendChild(s.el);
-      if (window.salLockDownVideo) window.salLockDownVideo(s.el);
-      requestAnimationFrame(() => requestAnimationFrame(() => s.el.classList.add('on')));
+      show(s);
     };
     // Bring the readied slide in over the one on show (1.5 s crossfade), start
     // its turn, and start readying the one after it.
@@ -2292,36 +2364,43 @@ async function _showShareableMenu() {
       if (!s || !s.ready || ctl.paused || !bg.isConnected) return;
       if (ctl.cur && ctl.cur.save) ctl.cur.save();   // where the outgoing clip got to
       ctl.nx = null; ctl.due = false; ctl.cur = s;
-      if (s.el.parentNode !== bg) bg.appendChild(s.el);   // already there, see-through (dev1038)
-      if (s.isVid && window.salLockDownVideo) window.salLockDownVideo(s.el);
-      requestAnimationFrame(() => requestAnimationFrame(() => s.el.classList.add('on')));
+      show(s);
       const gone = Array.from(bg.querySelectorAll('.sm-alt-slide')).filter(c => c !== s.el);
-      setTimeout(() => gone.forEach(c => { if (c.tagName === 'VIDEO') unload(c); c.remove(); }), 1600);
+      setTimeout(() => gone.forEach(c => { vidsOf(c).forEach(unload); c.remove(); }), 1600);
       begin(s);
       prep();
     };
     const begin = s => {
       s.begun = true;
       if (!s.isVid) { ctl.left = _SM_ALT_IMG_MS; runClock(); return; }
-      const el = s.el;
-      // t0 = where this turn's playback began. A clip whose 10 s are up keeps
-      // playing (and saving its place) until the next slide is ready.
-      let t0 = null, saved = 0, done = false;
-      s.save = () => {
-        if (t0 === null || !s.long()) return;
-        _smAltPos(s.link, (el.ended || el.currentTime >= el.duration - 1) ? 0 : el.currentTime);
-      };
-      const finish = () => { if (!done) { done = true; timeUp(); } };
-      el.addEventListener('playing', () => { if (t0 === null) t0 = el.currentTime; });
-      el.addEventListener('timeupdate', () => {
-        if (t0 === null || ctl.cur !== s) return;
-        if (s.long() && Math.abs(el.currentTime - saved) >= 2) { saved = el.currentTime; _smAltPos(s.link, saved); }
-        if (el.currentTime - t0 >= _SM_ALT_VID_S) finish();
+      // t0 = where a clip's playback began this turn. A clip whose 10 s are up
+      // keeps playing (and saving its place) until the next slide is ready.
+      // (dev1055) A triptych's turn is over once ALL three clips are through
+      // theirs; one that ends sooner holds its last frame.
+      let done = false;
+      const through = () => { if (!done && s.clips.every(c => c.over)) { done = true; timeUp(); } };
+      s.clips.forEach(c => {
+        const v = c.v;
+        let t0 = null, saved = 0;
+        c.save = () => {
+          if (t0 === null || !c.long()) return;
+          _smAltPos(c.link, (v.ended || v.currentTime >= v.duration - 1) ? 0 : v.currentTime);
+        };
+        const over = () => { c.over = true; through(); };
+        v.addEventListener('playing', () => { if (t0 === null) t0 = v.currentTime; });
+        v.addEventListener('timeupdate', () => {
+          if (t0 === null || ctl.cur !== s) return;
+          if (c.long() && Math.abs(v.currentTime - saved) >= 2) { saved = v.currentTime; _smAltPos(c.link, saved); }
+          if (v.currentTime - t0 >= _SM_ALT_VID_S) over();
+        });
+        v.addEventListener('ended', over);
+        v.addEventListener('error', over);
       });
-      el.addEventListener('ended', finish);
-      el.addEventListener('error', finish);
-      const pr = el.play();
-      if (pr && pr.catch) pr.catch(() => {});
+      s.save = () => s.clips.forEach(c => c.save());
+      // (dev1055) A triptych starts playing once its third panel is in.
+      const go = () => { s.wait = null; if (!ctl.paused && ctl.cur === s) playAll(s); };
+      const hold = s.trio ? s.shownAt + (s.clips.length - 1) * _SM_ALT_TRIO_MS + 1000 - Date.now() : 0;
+      if (hold > 0) s.wait = setTimeout(go, hold); else go();
     };
     // Pause holds the slide on show (a clip stops, a picture's clock stops) and
     // keeps the next one from coming in; resume carries on from there.
@@ -2331,7 +2410,7 @@ async function _showShareableMenu() {
       bg.classList.add('paused');
       const s = ctl.cur;
       if (!s) return;
-      if (s.isVid) s.el.pause();
+      if (s.isVid) s.clips.forEach(c => c.v.pause());
       else if (!ctl.due) { clearTimeout(ctl.timer); ctl.left = Math.max(0, ctl.left - (Date.now() - ctl.at)); }
     };
     ctl.resume = () => {
@@ -2342,7 +2421,7 @@ async function _showShareableMenu() {
       if (ctl.due && ctl.nx && ctl.nx.ready) { reveal(); return; }
       if (!s) return;
       if (!s.begun) { if (s.ready) { begin(s); prep(); } return; }   // (dev1037) an early first slide
-      if (s.isVid) { const pr = s.el.play(); if (pr && pr.catch) pr.catch(() => {}); }
+      if (s.isVid) { if (!s.wait) playAll(s); }   // (dev1055) a triptych still coming in plays when it's in
       else runClock();
     };
     ctl.toggle = () => { if (ctl.paused) ctl.resume(); else ctl.pause(); };
@@ -2360,8 +2439,9 @@ async function _showShareableMenu() {
       ctl.nx = null;
       if (n) clearTimeout(n.guard);
       if (ctl.cur && ctl.cur.save) ctl.cur.save();
+      if (ctl.cur) clearTimeout(ctl.cur.wait);
       bg.querySelectorAll('video').forEach(unload);
-      if (n && n.isVid) unload(n.el);
+      if (n) vidsOf(n.el).forEach(unload);
     };
     prep();
   }
@@ -2642,6 +2722,12 @@ async function _showShareableMenu() {
     + '.sm-alt-bg.paused .sm-alt-pz{display:block;}'
     + '.sm-alt-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:center/cover no-repeat;opacity:0;transition:opacity 1.5s ease;}'
     + '.sm-alt-slide.on{opacity:1;}'
+    // (dev1055) The portrait triptych: three panels side by side, each filling
+    // its third. Black behind them, so the slide it replaces fades out under
+    // the black while the 2nd and 3rd panels are still to come in.
+    + '.sm-alt-trio{display:flex;gap:2px;background-color:#000;}'
+    + '.sm-alt-trio>video{flex:1 1 0;min-width:0;height:100%;object-fit:cover;opacity:0;transition:opacity 1s ease;}'
+    + '.sm-alt-trio>video.on{opacity:1;}'
     + '#shareableMenu.sm-alt .sm-tabs-bottom{display:none !important;}'
     + '#shareableMenu.sm-alt .sm-tabs-top{position:absolute;left:calc(81.25% + 18px);right:0;top:122px;bottom:24px;z-index:3;flex-direction:column;align-items:flex-start;background:transparent;box-shadow:none;padding-right:12px;}'
     + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab{flex:none;max-width:100%;background:none;border:none;padding:3px 0;text-align:left;text-transform:uppercase;letter-spacing:0.04em;font-size:15px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.9);}'
