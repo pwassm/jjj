@@ -2415,7 +2415,10 @@ function _slideshowUpdateLabel(slide) {
     oldAnnot.remove();
   }
   if (row && typeof window._salAnnotMount === 'function') {
-    const annot = window._salAnnotMount(st.overlay, row, st.overlay);
+    // (dev1054) The show's pause and this slide's dwell drive a picture's
+    // //N// caption windows. _ssDwellMs is 0 on hold, and grid.js falls back then.
+    const annot = window._salAnnotMount(st.overlay, row, st.overlay,
+      { paused: () => !!st.paused, periodMs: _ssDwellMs(st) });
     // Above the picture layers and the label/comment text, below the toasts.
     if (annot) annot.style.zIndex = '40010';
   }
@@ -2430,10 +2433,7 @@ function _slideshowUpdateLabel(slide) {
     // not something to print over a picture a viewer is watching. A real
     // VidTitle still shows.
     labelText   = row.VidTitle ? String(row.VidTitle) : (st.vss ? '' : _slideshowRowTag(row));
-    // (dev1051) A bare-integer comment on a video is its caption delay
-    // (grid.js _salAnnotDelayFrac), not words to print.
-    commentText = (row.comment && !(window._salAnnotDelayFrac && window._salAnnotDelayFrac(row) > 0))
-      ? String(row.comment) : '';
+    commentText = row.comment  ? String(row.comment)  : '';
   } else if (slide) {
     labelText   = slide.name ? String(slide.name) : '';
     commentText = slide.path ? String(slide.path) : '';

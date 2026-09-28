@@ -3085,7 +3085,7 @@ function _tBuildRow(vi, di) {
       // Only when not focused/selected so those highlights stay visible.
       else if (col === 'cell') td.style.background = 'rgba(95,250,170,0.10)';
       td.addEventListener('click',   e => onCell(e, vi, ci));
-      td.addEventListener('dblclick', e => { e.stopPropagation(); startEdit(vi, ci); });
+      td.addEventListener('dblclick', e => { e.stopPropagation(); startEdit(vi, ci, undefined, true); });
       tr.appendChild(td);
     });
   return tr;
@@ -3176,7 +3176,10 @@ function onCell(e, vi, ci) {
 // Inline cell editing
 let _editing = null; // { vi, ci, di, col, td, inp, oldVal }
 
-function startEdit(vi, ci, replaceWith) {
+// (dev1054) caretEnd: open with the caret after the last character instead of
+// the whole value selected — what a double-click wants (modify, not replace).
+// Enter/Tab stepping into the next cell still selects all.
+function startEdit(vi, ci, replaceWith, caretEnd) {
   if (_editing) commitEdit();
   const vc  = visCols();
   const col = vc[ci];
@@ -3198,7 +3201,10 @@ function startEdit(vi, ci, replaceWith) {
   td.classList.add('editing');
   td.appendChild(inp);
   inp.focus();
-  if (replaceWith !== undefined) inp.setSelectionRange(inp.value.length, inp.value.length);
+  if (replaceWith !== undefined || caretEnd) {
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+    inp.scrollLeft = inp.scrollWidth;   // a long value: show its end, where the caret is
+  }
   else inp.select();
 
   _editing = { vi, ci, di, col, td, inp, oldVal };

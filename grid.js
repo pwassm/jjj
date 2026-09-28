@@ -3045,19 +3045,172 @@ window._salRowRate = function (row) {
 // and a picture montage (an ftext whose point is its <img>s — that already has
 // its own cell renderer, _buildFtextImgCell).
 window._salAnnotHtml = function (row) {
-  if (!row || !window._salAnnotOn()) return '';
+  var parts = _salAnnotParts(row);
+  return parts ? parts.html : '';
+};
+
+// The row's caption, or null when it gets none: { html, wins }. `html` is the
+// whole caption with any //N// markers cut out. `wins` is null for an untimed
+// caption (shown the whole time), else the timed windows, see _salCapWindows.
+function _salAnnotParts(row) {
+  if (!row || !window._salAnnotOn()) return null;
   var ft = String(row.ftext == null ? '' : row.ftext).trim();
-  if (!ft) return '';
+  if (!ft) return null;
   var link = String(row.link == null ? '' : row.link);
-  if (!link || !_SAL_ANNOT_DIRECT_RE.test(link)) return '';
-  if (ft.charAt(0) === '[' || ft.charAt(0) === '{') return '';
-  if (/<img[ >]/i.test(ft)) return '';
+  if (!link || !_SAL_ANNOT_DIRECT_RE.test(link)) return null;
+  if (ft.charAt(0) === '[' || ft.charAt(0) === '{') return null;
+  if (/<img[ >]/i.test(ft)) return null;
   // (dev0971) Lead directives never show. An ftext that was ONLY directives
   // ("8") captions nothing.
   ft = window._salFtextLead(ft).html;
-  if (!ft.replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/gi, '')) return '';
-  return (typeof renderFtext === 'function') ? renderFtext(ft) : ft;
-};
+  var wins = _salCapWindows(ft);
+  if (wins && !wins.length) return null;             // markers, but nothing between them
+  var bare = ft.replace(_SAL_CAP_MARK_RE, '');
+  if (!bare.replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/gi, '')) return null;
+  var render = function (h) { return (typeof renderFtext === 'function') ? renderFtext(h) : h; };
+  if (wins) wins.forEach(function (w) { w.html = render(w.html); });
+  return { html: render(bare), wins: wins };
+}
+
+// ── (dev1054) CAPTION WINDOWS ───────────────────────────────────────────────
+// //N// markers in a caption's ftext time it against its video or picture. N is
+// a percentage of the length: //25// = a quarter of the way through. Markers
+// pair up in order: the first STARTS a caption, the next ENDS it, the third
+// starts another, and so on. The words between a start and its end are what
+// shows in that window. A start with no end runs to the finish:
+//
+//   <p>//10//Molly climbs a cliff//45//</p><p>//55//"I sense bivalves!"</p>
+//      → "Molly climbs a cliff" from 10% to 45%, the quote from 55% to the end
+//
+// Words outside every window (before the first start, or between an end and
+// the next start) never show. No markers at all = the whole caption for the
+// whole time, as before.
+//
+// The length is the video FILE's duration (not the VidRange clip). For a picture
+// it is its seconds on screen: the ftext's lead number, else the slideshow's
+// dwell, else _SAL_CAP_PICTURE_SEC. In the slideshow the clock stops while the
+// show is paused and starts again from zero on resume, the way the slide's
+// own dwell does. In G and V a picture's windows loop.
+//
+// Markers can sit anywhere in the HTML, including across paragraphs. Each
+// window is cut out as a DOM Range, so its <p>/<b> wrappers come with it.
+var _SAL_CAP_MARK_RE     = /\/\/\s*(\d+(?:\.\d+)?)\s*\/\//g;
+var _SAL_CAP_VIDEO_RE    = /[.](mp4|m4v|mov|webm|ogv|mkv)([?][^#]*)?$/i;
+var _SAL_CAP_PICTURE_SEC = 8;
+
+// [{ a, b, html }] with a/b as 0..1, or null when the ftext has no markers.
+function _salCapWindows(ft) {
+  if (ft.search(_SAL_CAP_MARK_RE) < 0) return null;
+  var tpl = document.createElement('template');
+  tpl.innerHTML = ft;
+  var root = tpl.content, doc = root.ownerDocument || document;
+  var marks = [], tn;
+  var walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  while ((tn = walker.nextNode())) {
+    var re = new RegExp(_SAL_CAP_MARK_RE.source, 'g'), m;
+    while ((m = re.exec(tn.nodeValue))) {
+      marks.push({ node: tn, s: m.index, e: m.index + m[0].length, n: parseFloat(m[1]) });
+    }
+  }
+  // A marker split by a tag (/<b>/10//</b>) never matched above; then there is
+  // nothing to time by and the caption is shown whole.
+  if (!marks.length) return null;
+  var out = [];
+  for (var i = 0; i < marks.length; i += 2) {
+    var st = marks[i], en = marks[i + 1] || null;
+    var r = doc.createRange();
+    r.setStart(st.node, st.e);
+    if (en) r.setEnd(en.node, en.s); else r.setEnd(root, root.childNodes.length);
+    var div = doc.createElement('div');
+    // cloneContents keeps the wrappers of the nodes the range only PARTLY
+    // covers, but not of the one node holding it all. A window inside one
+    // <h4> would come out bare text, a different size from a window that
+    // crosses into the next paragraph. So re-wrap it in its own ancestors.
+    var piece = r.cloneContents();
+    var anc = r.commonAncestorContainer;
+    if (anc.nodeType === 3) anc = anc.parentNode;
+    for (var p = anc; p && p !== root; p = p.parentNode) {
+      var shell = p.cloneNode(false);
+      shell.appendChild(piece);
+      piece = shell;
+    }
+    div.appendChild(piece);
+    // A cut at a paragraph edge leaves the far paragraph behind as an empty
+    // <p></p>, which would paint as a blank line under the caption.
+    // Innermost first (reversed document order), so no element is visited
+    // after a wrapper around it has already been removed.
+    Array.prototype.slice.call(div.querySelectorAll('*')).reverse().forEach(function (e) {
+      if (!e.textContent.replace(/[\s ]/g, '')
+          && !e.querySelector('img,video,iframe,svg,canvas,hr,table')
+          && !/^(img|video|iframe|svg|canvas|hr|table|br)$/i.test(e.nodeName)) e.remove();
+    });
+    var h = div.innerHTML;
+    if (!h.replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/gi, '')) continue;
+    out.push({ a: Math.min(1, st.n / 100), b: en ? Math.min(1, en.n / 100) : 1, html: h });
+  }
+  return out;
+}
+
+// A picture's length in ms, for its caption windows.
+function _salCapPictureMs(row, periodMs) {
+  if (periodMs > 0) return periodMs;
+  var n = window._salRowLeadNum ? window._salRowLeadNum(row) : null;
+  if (n > 0) return n * 1000;
+  try {
+    var s = JSON.parse(localStorage.getItem('sal-slideshow-settings') || '{}');
+    if (s && Number(s.slideSec) > 0) return Number(s.slideSec) * 1000;
+  } catch (_) {}
+  return _SAL_CAP_PICTURE_SEC * 1000;
+}
+
+// Show whichever window(s) the clock is in, and nothing between them. Polled,
+// because the <video> under the box is not there yet when this runs (grid cells
+// mount it after, V a frame later) and can be swapped mid-life (remount, buffer
+// swap). The poll ends when the caption leaves the DOM. It gives up after 10s
+// if the caption never arrives. It uses visibility, not display, so Ctrl+C's
+// display:none still wins.
+function _salAnnotTime(el, row, box, wins, fit, opts) {
+  var isVid = !!row._directVideoFile || _SAL_CAP_VIDEO_RE.test(String(row.link || ''));
+  var picMs = isVid ? 0 : _salCapPictureMs(row, opts && opts.periodMs);
+  var isPaused = (opts && opts.paused) || function () { return false; };
+  var shown = null, last = Date.now(), elapsed = 0, wasPaused = false;
+  var frac = function () {
+    if (isVid) {
+      var v = box.querySelector('video');
+      var d = v ? v.duration : 0;
+      return (d > 0 && isFinite(d)) ? v.currentTime / d : null;
+    }
+    var now = Date.now(), p = !!isPaused();
+    if (!p) elapsed = wasPaused ? 0 : elapsed + (now - last);
+    wasPaused = p; last = now;
+    return (elapsed % picMs) / picMs;
+  };
+  var paint = function () {
+    var f = frac(), on = [];
+    if (f !== null) {
+      for (var i = 0; i < wins.length; i++) {
+        if (f >= wins[i].a && (f < wins[i].b || wins[i].b >= 1)) on.push(i);
+      }
+    }
+    var key = on.join(',');
+    if (key === shown) return;
+    shown = key;
+    if (!on.length) { el.style.visibility = 'hidden'; return; }
+    el.innerHTML = on.map(function (i) { return wins[i].html; }).join('');
+    el.style.visibility = '';
+    fit();
+  };
+  el.style.visibility = 'hidden';
+  var seen = false, born = Date.now();
+  var tick = setInterval(function () {
+    if (!el.isConnected) {
+      if (seen || Date.now() - born > 10000) clearInterval(tick);
+      return;
+    }
+    seen = true;
+    paint();
+  }, 100);
+}
 
 function _salAnnotCss() {
   if (document.getElementById('sal-annot-css')) return;
@@ -3108,15 +3261,17 @@ function _salAnnotFit(el, box) {
 // A ResizeObserver on the measured box re-fits on every window resize, fold and
 // layout change — and does the FIRST fit too, since a grid cell has no size
 // until it is in the DOM, which is after this is called.
-window._salAnnotMount = function (parent, row, measureEl) {
+// (dev1054) `opts` (the slideshow passes it): { paused: fn, periodMs } — the
+// show's pause state and the slide's dwell, for a picture's caption windows.
+window._salAnnotMount = function (parent, row, measureEl, opts) {
   if (!parent) return null;
-  var html = window._salAnnotHtml(row);
-  if (!html) return null;
+  var parts = _salAnnotParts(row);
+  if (!parts) return null;
   _salAnnotCss();
   var box = measureEl || parent;
   var el  = document.createElement('div');
   el.className = 'sal-annot';
-  el.innerHTML = html;
+  el.innerHTML = parts.wins ? '' : parts.html;
   // (dev0971) /lj or /rj at the head of the ftext; centred otherwise.
   var align = window._salFtextLead(row.ftext).align;
   if (align) el.style.textAlign = align;
@@ -3128,46 +3283,9 @@ window._salAnnotMount = function (parent, row, measureEl) {
     // changes nothing about the box) — no feedback loop.
     try { el._salRO = new ResizeObserver(fit); el._salRO.observe(box); } catch (_) {}
   }
-  _salAnnotDelay(el, row, box);
+  if (parts.wins) _salAnnotTime(el, row, box, parts.wins, fit, opts);
   return el;
 };
-
-// (dev1051) CAPTION DELAY. A video FILE row whose `comment` is a bare integer N
-// ("50") holds its caption back until the video is N% of the way through its
-// whole length (the file's duration, not the VidRange clip). The caption shows
-// whenever currentTime is past that point, so it goes away again when a looping
-// cell wraps round or V is scrubbed back. A picture's integer comment does nothing.
-//
-// Polled rather than wired to timeupdate, because the <video> under the box is
-// not there yet when this runs (grid cells mount it after, V a frame later) and
-// can be swapped for a new one mid-life (remount, buffer swap). The poll ends
-// when the caption leaves the DOM. It gives up after 10s if it never arrives.
-// visibility, not display, so the caption is still laid out and fitted while
-// hidden, and Ctrl+C's display:none still wins over it.
-var _SAL_DELAY_VIDEO_RE = /[.](mp4|m4v|mov|webm|ogv|mkv)([?][^#]*)?$/i;
-window._salAnnotDelayFrac = function (row) {
-  if (!row) return 0;
-  if (!row._directVideoFile && !_SAL_DELAY_VIDEO_RE.test(String(row.link || ''))) return 0;
-  var m = /^\s*(\d+)\s*$/.exec(String(row.comment == null ? '' : row.comment));
-  if (!m) return 0;
-  return Math.min(100, parseInt(m[1], 10)) / 100;
-};
-function _salAnnotDelay(el, row, box) {
-  var frac = window._salAnnotDelayFrac(row);
-  if (!(frac > 0)) return;
-  el.style.visibility = 'hidden';
-  var seen = false, born = Date.now();
-  var tick = setInterval(function () {
-    if (!el.isConnected) {
-      if (seen || Date.now() - born > 10000) clearInterval(tick);
-      return;
-    }
-    seen = true;
-    var v = box.querySelector('video');
-    var d = v ? v.duration : 0;
-    el.style.visibility = (d > 0 && isFinite(d) && v.currentTime >= d * frac) ? '' : 'hidden';
-  }, 200);
-}
 
 // (dev0978) ctext = these "+" collection captions. Ctrl+C in G or Vss, or
 // "Toggle ctext" on the G right-click menu, hides / shows them all. A class on
