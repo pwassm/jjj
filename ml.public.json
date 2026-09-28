@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1790570238984,
+    "_salPushTime": 1790571354486,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -90,8 +90,8 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "cell",
-      "dir": "desc"
+      "col": "FTLsaved",
+      "dir": "asc"
     },
     "_salGsize": 3,
     "_salViews": {
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1790570238984
+    "_salSavedAt": 1790571354486
   },
   {
     "UID": "1",
@@ -730,7 +730,7 @@
     ],
     "BA": "",
     "ltype": "",
-    "FTLsaved": "",
+    "FTLsaved": "9",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -924,7 +924,7 @@
     ],
     "BA": "",
     "ltype": "",
-    "FTLsaved": "",
+    "FTLsaved": "9",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -34250,7 +34250,8 @@
     "VidRange": "17.1 30, 70 43",
     "VidComment": ", ",
     "UOD": "",
-    "DictSize": "365"
+    "DictSize": "365",
+    "FTLsaved": "9"
   },
   {
     "UID": "1470",
@@ -39714,7 +39715,8 @@
     "VidComment": ", , ",
     "UOD": "",
     "DictSize": "442",
-    "ftext": ""
+    "ftext": "",
+    "FTLsaved": "9"
   },
   {
     "UID": "1728_all",
@@ -39763,7 +39765,8 @@
     "VidComment": ", , ",
     "UOD": "",
     "DictSize": "442",
-    "ftext": ""
+    "ftext": "",
+    "FTLsaved": "9"
   },
   {
     "UID": "1728_2",
@@ -39787,7 +39790,8 @@
     "VidComment": ", , ",
     "UOD": "",
     "DictSize": "442",
-    "ftext": ""
+    "ftext": "",
+    "FTLsaved": "9"
   },
   {
     "UID": "1728_3",
@@ -39811,7 +39815,8 @@
     "VidComment": "",
     "UOD": "",
     "DictSize": "442",
-    "ftext": ""
+    "ftext": "",
+    "FTLsaved": "9"
   },
   {
     "UID": "1729",
@@ -44485,7 +44490,8 @@
     "cell": "",
     "UOD": "",
     "DictSize": "0",
-    "ftext": ""
+    "ftext": "",
+    "FTLsaved": "9"
   },
   {
     "UID": "1962",
@@ -45609,7 +45615,8 @@
     "Mute": "0",
     "cell": "",
     "DictSize": "682",
-    "ftext": ""
+    "ftext": "",
+    "FTLsaved": "9"
   },
   {
     "UID": "2021",
@@ -45996,7 +46003,8 @@
     "Mode": "L",
     "cell": "",
     "DictSize": "0",
-    "ftext": ""
+    "ftext": "",
+    "FTLsaved": "9"
   },
   {
     "UID": "2041_d",
@@ -46019,7 +46027,8 @@
     "VidRange": "62.5 5.7",
     "VidComment": "",
     "DictSize": "0",
-    "ftext": ""
+    "ftext": "",
+    "FTLsaved": "9"
   },
   {
     "UID": "2042",
@@ -46040,7 +46049,8 @@
     "VidDate": "2026-08-12",
     "cell": "",
     "DictSize": "682",
-    "ftext": ""
+    "ftext": "",
+    "FTLsaved": "9"
   },
   {
     "UID": "2043",
@@ -49430,7 +49440,8 @@
     "Mode": "L",
     "vidLength": "0:44",
     "cell": "",
-    "ftext": ""
+    "ftext": "",
+    "FTLsaved": "9"
   },
   {
     "UID": "2233",
@@ -49486,7 +49497,8 @@
     "VidAuthor": "@anbollenessor1382",
     "Mode": "L",
     "cell": "",
-    "ftext": ""
+    "ftext": "",
+    "FTLsaved": "9"
   },
   {
     "UID": "2236",
@@ -51667,7 +51679,8 @@
     "Mode": "L",
     "ftext": "",
     "vidLength": "30",
-    "cell": ""
+    "cell": "",
+    "FTLsaved": "9"
   },
   {
     "UID": "2346",
