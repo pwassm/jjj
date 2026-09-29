@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1790608010600,
+    "_salPushTime": 1790658959679,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -90,8 +90,8 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "cell",
-      "dir": "asc"
+      "col": "DateAdded",
+      "dir": "desc"
     },
     "_salGsize": 5,
     "_salViews": {
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1790608010600
+    "_salSavedAt": 1790658959679
   },
   {
     "UID": "1",
@@ -52940,5 +52940,57 @@
     "MPix": "V",
     "vidLength": "0:10",
     "cell": ""
+  },
+  {
+    "UID": "2418",
+    "link": "https://youtu.be/njRgHNT5sJ8",
+    "show": "1",
+    "DateAdded": "2026-09-29 05:08:32",
+    "DateModified": "2026-09-29 05:08:55",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "1214",
+    "FtextJunk": "6",
+    "DictSize": "0",
+    "VidTitle": "Stargazer: The Carnivorous Underground Taser",
+    "VidAuthor": "@animalogic",
+    "Mode": "L",
+    "ftext": "",
+    "FTLsaved": "9"
+  },
+  {
+    "UID": "2419",
+    "link": "https://youtu.be/s47F3BwFnvE",
+    "show": "1",
+    "DateAdded": "2026-09-29 05:12:24",
+    "DateModified": "2026-09-29 05:12:27",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "3148",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "What Exactly is: Stargazer | The Gaping Gaze",
+    "VidAuthor": "@OutofPlaceZoologist",
+    "Mode": "L",
+    "ftext": "",
+    "FTLsaved": "9"
+  },
+  {
+    "UID": "2420",
+    "link": "https://youtu.be/wjtt9AJrM-Y",
+    "show": "1",
+    "DateAdded": "2026-09-29 05:15:43",
+    "DateModified": "2026-09-29 05:15:52",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "5221",
+    "FtextJunk": "1",
+    "DictSize": "0",
+    "VidTitle": "The Glycine Breakthrough: What You Need to Know About This Miracle Nutrient (#1 Biochemist)",
+    "VidAuthor": "@autumnsmithdr",
+    "Mode": "L",
+    "ftext": ""
   }
 ]
