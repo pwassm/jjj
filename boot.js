@@ -2167,14 +2167,18 @@ async function _showShareableMenu() {
   // their own queue (each once per round before any repeats, mirrored to
   // localStorage like the main one) and placed left to right in the order
   // drawn. With fewer than 3 portraits they stay single full-screen slides.
-  const _SM_ALT_TQ = 'sal-alt-trioq', _SM_ALT_TRIO_MS = 1000;
+  // (dev1056) TWO panels, not three: the right third sat under the tab column,
+  // so it is left black. Panels keep a third each, in the left and middle
+  // thirds; with fewer than two portraits they stay singles. _SM_ALT_TRIO_N
+  // sets how many; the "trio" names are from dev1055.
+  const _SM_ALT_TQ = 'sal-alt-trioq', _SM_ALT_TRIO_MS = 1000, _SM_ALT_TRIO_N = 2;
   const _smAltIsTrio = l => l.startsWith('#trio');
   const _smAltTrio = ports => {
     let q = window._smAltTQ;
     if (!Array.isArray(q)) { try { q = JSON.parse(localStorage.getItem(_SM_ALT_TQ) || '[]'); } catch (x) {} }
     q = (Array.isArray(q) ? q : []).filter(l => ports.includes(l));
     const out = [];
-    for (let g = 0; out.length < 3 && g < 30; g++) {
+    for (let g = 0; out.length < _SM_ALT_TRIO_N && g < 30; g++) {
       if (!q.length) q = _smShuffle(ports.slice());
       const l = q.shift();
       if (!out.includes(l)) out.push(l);
@@ -2237,9 +2241,9 @@ async function _showShareableMenu() {
     const modeOf = r => (typeof rowMode === 'function' ? rowMode(r) : String(r.Mode || '').trim().toUpperCase());
     let ports = Array.from(new Set(pool.filter(e => _SM_DAY_VID.test(pathOf(e.row)) && modeOf(e.row) === 'P')
                                        .map(e => String(e.row.link))));
-    if (ports.length < 3) ports = [];
+    if (ports.length < _SM_ALT_TRIO_N) ports = [];
     const links = Array.from(new Set(pool.map(e => String(e.row.link)))).filter(l => !ports.includes(l));
-    for (let k = 1; k <= Math.floor(ports.length / 3); k++) links.push('#trio' + k);
+    for (let k = 1; k <= Math.floor(ports.length / _SM_ALT_TRIO_N); k++) links.push('#trio' + k);
     const ctl = bg._ctl = { cur: null, nx: null, due: false, paused: false, left: 0, at: 0, timer: null, drawn: 0 };
     const unload = v => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (x) {} };
     const vidsOf = el => (el.tagName === 'VIDEO' ? [el] : Array.from(el.querySelectorAll('video')));
@@ -2726,7 +2730,9 @@ async function _showShareableMenu() {
     // its third. Black behind them, so the slide it replaces fades out under
     // the black while the 2nd and 3rd panels are still to come in.
     + '.sm-alt-trio{display:flex;gap:2px;background-color:#000;}'
-    + '.sm-alt-trio>video{flex:1 1 0;min-width:0;height:100%;object-fit:cover;opacity:0;transition:opacity 1s ease;}'
+    // (dev1056) Each panel a fixed third, so two fill the left and middle
+    // thirds and the right one (under the tabs) stays black.
+    + '.sm-alt-trio>video{flex:0 0 calc((100% - 4px) / 3);min-width:0;height:100%;object-fit:cover;opacity:0;transition:opacity 1s ease;}'
     + '.sm-alt-trio>video.on{opacity:1;}'
     + '#shareableMenu.sm-alt .sm-tabs-bottom{display:none !important;}'
     + '#shareableMenu.sm-alt .sm-tabs-top{position:absolute;left:calc(81.25% + 18px);right:0;top:122px;bottom:24px;z-index:3;flex-direction:column;align-items:flex-start;background:transparent;box-shadow:none;padding-right:12px;}'
