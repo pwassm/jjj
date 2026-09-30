@@ -318,7 +318,8 @@ window.addEventListener('keydown', function(e) {
   // c (clear sel). (dev0497) It also owns d (download sel), e (enrich sel),
   // m (clear+select top 18) and — via Shift — N/D/E/A (status filter, which
   // lowercase to n/d/e/a here). (dev0635) It also owns w (clipboard IG URL → new
-  // Unharvested single). Bail WITHOUT preventDefault so ig.js's own capture handler
+  // Unharvested single). (dev1064) Bare n = type a 📝 note on the focused row
+  // (already in the list below as Shift+N's lowercase). Bail WITHOUT preventDefault so ig.js's own capture handler
   // — registered after this one — receives them. Without this bail, e would open
   // Edit, m the hamburger menu, w the shareable menu, etc. Other nav keys
   // (t/g/i/…) still fall through so they close Ig and switch screens as before.
@@ -8107,15 +8108,8 @@ async function _wantLinksInner() {
   const lines = txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   if (!lines.length) { toast('No content found.', 1400); return; }
 
-  // Rule 0 (dev0427): Firefox "Save Page As → Text" of an Instagram page →
-  // enrich the matching reel row's VidTitle/ftext/ttxt (caption + others'
-  // comments + the author's other reel URLs). Checked first because a saved
-  // page's line 1 is "Instagram" (neither a URL nor @channel).
-  // (dev1020) Both live in d_ig.js, which the public build does not load; without
-  // it the paste falls through to the ordinary rules below.
-  if (typeof _looksLikeIgSavedText === 'function' && _looksLikeIgSavedText(txt)) {
-    return _importIgSavedText(txt);
-  }
+  // (dev1064) Rule 0 (a pasted Firefox "Save Page As → Text" of an Instagram page)
+  // is gone with its importer; such a paste now falls through to the rules below.
 
   // Rule 2: first line is @channelname → channel CSV import
   if (lines[0].startsWith('@')) {
