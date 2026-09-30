@@ -38,6 +38,11 @@ param(
     # Media inside the carried folders is re-downloadable and would make every
     # first copy a long op - never carried.
     [string[]]$MediaExt = @('*.mp4','*.mkv','*.webm','*.mov','*.m4a','*.mp3','*.wav','*.flac','*.opus','*.ts','*.vob'),
+    # (2026-09-29) Per-target root-file exclusions. C: is the small system drive,
+    # and the dated ig.json.bak-* snapshots (~0.2 GB each, never pruned because
+    # there is no /MIR) had grown C:\_jjjRoot by 3.7 GB in three weeks. E: and F:
+    # still carry every one of them.
+    [hashtable]$TargetExclude = @{ 'C:\_jjjRoot' = @('ig.json.bak*') },
     [switch]  $List
 )
 
@@ -117,7 +122,8 @@ foreach ($t in $Targets) {
             # the commit), /XJ skip junctions, /NFL /NDL quiet file+dir lists.
             # No /MIR and no /PURGE: this only ever ADDS or UPDATES, so a file
             # deleted here can still be recovered from a backup.
-            $rc = robocopy $Source $t /COPY:DAT /R:0 /W:0 /NP /NFL /NDL /NJH /NJS /XJ /XF '.wtest'
+            $xf = @('.wtest') + @($TargetExclude[$t] | Where-Object { $_ })
+            $rc = robocopy $Source $t /COPY:DAT /R:0 /W:0 /NP /NFL /NDL /NJH /NJS /XJ /XF @xf
             $code = $LASTEXITCODE
             if ($code -lt 8) {
                 $n = (Get-ChildItem -LiteralPath $t -File -ErrorAction SilentlyContinue).Count
