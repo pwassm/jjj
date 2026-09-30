@@ -56,3 +56,6 @@
 2026-09-25T03:03:02.621Z	channel CSV: @CaptainEelgrass	2316	https://youtu.be/6V2vwAhIgts	Moon Snail Hunts And Kills Cockle 2 | Salish Sea Marine Wildlife
 2026-09-25T03:03:02.621Z	channel CSV: @CaptainEelgrass	2317	https://youtu.be/LsHKFG5QaNw	Clam Defeats Moon Snail | Salish Sea Marine Wildlife
 2026-09-25T03:03:02.621Z	channel CSV: @CaptainEelgrass	2318	https://youtu.be/1E5j-8Dbw6U	Moon Snail Burrowing For Food | Salish Sea Marine Wildlife
+2026-09-30T03:25:33.511Z	bare-links paste	2419	https://youtu.be/s47F3BwFnvE	What Exactly is: Stargazer | The Gaping Gaze
+2026-09-30T04:12:12.164Z	bare-links paste	2441	https://vimeo.com/329959815	What Nightmares Are Made Of
+2026-09-30T04:17:45.938Z	bare-links paste	1392	https://vimeo.com/67473121	mola mola playground

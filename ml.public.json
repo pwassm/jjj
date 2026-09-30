@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1790658959679,
+    "_salPushTime": 1790743376152,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1790658959679
+    "_salSavedAt": 1790743376152
   },
   {
     "UID": "1",
@@ -52946,8 +52946,10 @@
     "link": "https://youtu.be/njRgHNT5sJ8",
     "show": "1",
     "DateAdded": "2026-09-29 05:08:32",
-    "DateModified": "2026-09-29 05:08:55",
-    "tags": [],
+    "DateModified": "2026-09-30 03:25:51",
+    "tags": [
+      "stargazer"
+    ],
     "Mute": "0",
     "ftextSize": "1214",
     "FtextJunk": "6",
@@ -52963,8 +52965,10 @@
     "link": "https://youtu.be/s47F3BwFnvE",
     "show": "1",
     "DateAdded": "2026-09-29 05:12:24",
-    "DateModified": "2026-09-29 05:12:27",
-    "tags": [],
+    "DateModified": "2026-09-30 03:25:48",
+    "tags": [
+      "stargazer"
+    ],
     "Mute": "0",
     "ftextSize": "3148",
     "FtextJunk": "2",
@@ -52973,7 +52977,8 @@
     "VidAuthor": "@OutofPlaceZoologist",
     "Mode": "L",
     "ftext": "",
-    "FTLsaved": "9"
+    "FTLsaved": "9",
+    "vidLength": "10:42"
   },
   {
     "UID": "2420",
@@ -52990,6 +52995,511 @@
     "DictSize": "0",
     "VidTitle": "The Glycine Breakthrough: What You Need to Know About This Miracle Nutrient (#1 Biochemist)",
     "VidAuthor": "@autumnsmithdr",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2421",
+    "link": "https://youtu.be/J4up4zjVjIs",
+    "show": "1",
+    "DateAdded": "2026-09-29 21:49:06",
+    "DateModified": "2026-09-29 21:49:11",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "5559",
+    "FtextJunk": "1",
+    "DictSize": "0",
+    "VidTitle": "Biochemist Reveals: I Tried 40g of Glycine for 30 Days – Here’s What It Did To Inflammation",
+    "VidAuthor": "@autumnsmithdr",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2422",
+    "link": "https://vimeo.com/248753656",
+    "show": "1",
+    "DateAdded": "2026-09-30 02:39:30",
+    "DateModified": "2026-09-30 02:39:53",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "262",
+    "FtextJunk": "29",
+    "DictSize": "0",
+    "VidTitle": "Underwater Stargazing in Indonesia",
+    "VidAuthor": "C2G2 Productions",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2423",
+    "link": "https://vimeo.com/132714864",
+    "show": "1",
+    "DateAdded": "2026-09-30 02:41:50",
+    "DateModified": "2026-09-30 02:41:55",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "253",
+    "FtextJunk": "30",
+    "DictSize": "0",
+    "VidTitle": "Blue Heron Bridge night dive",
+    "VidAuthor": "Ana Castanosa",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2424",
+    "link": "https://vimeo.com/56888987",
+    "show": "1",
+    "DateAdded": "2026-09-30 02:42:59",
+    "DateModified": "2026-09-30 02:46:12",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "238",
+    "FtextJunk": "32",
+    "DictSize": "0",
+    "VidTitle": "A119 C112 072742",
+    "VidAuthor": "seawildearth",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2425",
+    "link": "https://vimeo.com/178600287",
+    "show": "1",
+    "DateAdded": "2026-09-30 02:44:37",
+    "DateModified": "2026-09-30 02:46:13",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "256",
+    "FtextJunk": "30",
+    "DictSize": "0",
+    "VidTitle": "Diving at the Blue Heron Bridge",
+    "VidAuthor": "Linda Dzierba",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2426",
+    "link": "https://vimeo.com/756031487",
+    "show": "1",
+    "DateAdded": "2026-09-30 02:46:07",
+    "DateModified": "2026-09-30 02:46:14",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "290",
+    "FtextJunk": "26",
+    "DictSize": "0",
+    "VidTitle": "Meet the Stargazer fish an assassin that disappears into the sand",
+    "VidAuthor": "sheree marris",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2427",
+    "link": "https://vimeo.com/755066811",
+    "show": "1",
+    "DateAdded": "2026-09-30 02:47:50",
+    "DateModified": "2026-09-30 02:48:01",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "274",
+    "FtextJunk": "28",
+    "DictSize": "0",
+    "VidTitle": "Meet an underwater sand assassin - The Stargazer.",
+    "VidAuthor": "sheree marris",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2428",
+    "link": "https://vimeo.com/40279294",
+    "show": "1",
+    "DateAdded": "2026-09-30 02:49:47",
+    "DateModified": "2026-09-30 02:54:14",
+    "tags": [
+      "stargazer",
+      "cornucopia-of-underwater-life"
+    ],
+    "Mute": "0",
+    "ftextSize": "259",
+    "FtextJunk": "29",
+    "DictSize": "0",
+    "VidTitle": "The Strange and Wonderful Sulawesi",
+    "VidAuthor": "Randy Bundschuh",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2429",
+    "link": "https://vimeo.com/40279977",
+    "show": "1",
+    "DateAdded": "2026-09-30 02:50:46",
+    "DateModified": "2026-09-30 02:54:16",
+    "tags": [
+      "stargazer",
+      "cornucopia-of-underwater-life"
+    ],
+    "Mute": "0",
+    "ftextSize": "253",
+    "FtextJunk": "30",
+    "DictSize": "0",
+    "VidTitle": "Beyond Muck in Lembeh Strait",
+    "VidAuthor": "Randy Bundschuh",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2430",
+    "link": "https://vimeo.com/40271957",
+    "show": "1",
+    "DateAdded": "2026-09-30 02:51:16",
+    "DateModified": "2026-09-30 02:54:17",
+    "tags": [
+      "stargazer",
+      "cornucopia-of-underwater-life"
+    ],
+    "Mute": "0",
+    "ftextSize": "264",
+    "FtextJunk": "29",
+    "DictSize": "0",
+    "VidTitle": "Extraordinary Critters of Lembeh Strait",
+    "VidAuthor": "Randy Bundschuh",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2431",
+    "link": "https://vimeo.com/29944156",
+    "show": "1",
+    "DateAdded": "2026-09-30 02:53:50",
+    "DateModified": "2026-09-30 02:54:18",
+    "tags": [
+      "cornucopia-of-underwater-life"
+    ],
+    "Mute": "0",
+    "ftextSize": "250",
+    "FtextJunk": "30",
+    "DictSize": "0",
+    "VidTitle": "The Tidal Pools of Napili",
+    "VidAuthor": "Randy Bundschuh",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2432",
+    "link": "https://youtu.be/d98Uq3KPs7U",
+    "show": "1",
+    "DateAdded": "2026-09-30 02:59:09",
+    "DateModified": "2026-09-30 02:59:18",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "265",
+    "FtextJunk": "29",
+    "DictSize": "0",
+    "VidTitle": "L'attaque fatale de l'uranoscopidae",
+    "VidAuthor": "@NatGeoAnimauxFr",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2433",
+    "link": "https://youtu.be/t9eYlbMOddQ",
+    "show": "1",
+    "DateAdded": "2026-09-30 03:01:08",
+    "DateModified": "2026-09-30 03:28:28",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "268",
+    "FtextJunk": "28",
+    "DictSize": "0",
+    "VidTitle": "stargazers   Uranoscopidae",
+    "VidAuthor": "@totalimmersionindonesia7382",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "0:20"
+  },
+  {
+    "UID": "2434",
+    "link": "https://youtu.be/w1MAGs4RDD0",
+    "show": "1",
+    "DateAdded": "2026-09-30 03:49:33",
+    "DateModified": "2026-09-30 03:49:51",
+    "tags": [
+      "cornucopia-of-underwater-life",
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "4400",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "Mucky Secrets - Part 13 - Benthic fishes, stargazer, flounder, flathead - Lembeh Strait",
+    "VidAuthor": "@bubblevision",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2435",
+    "link": "https://youtu.be/fy39fnfBL4w",
+    "show": "1",
+    "DateAdded": "2026-09-30 03:52:55",
+    "DateModified": "2026-09-30 03:53:03",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "2584",
+    "FtextJunk": "3",
+    "DictSize": "0",
+    "VidTitle": "Stargazer Fish: Indonesia Nature 2019",
+    "VidAuthor": "@ChristianBassettNature",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2436",
+    "link": "https://youtu.be/8DqglF2ACQ0",
+    "show": "1",
+    "DateAdded": "2026-09-30 03:53:50",
+    "DateModified": "2026-09-30 04:08:35",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "908",
+    "FtextJunk": "8",
+    "DictSize": "0",
+    "VidTitle": "Stargazer swallows fish alive.",
+    "VidAuthor": "@PangQuong",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2437",
+    "link": "https://youtu.be/rEZpOnIJ6do",
+    "show": "1",
+    "DateAdded": "2026-09-30 03:54:26",
+    "DateModified": "2026-09-30 04:08:37",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "3562",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "Facts: The Stargazer",
+    "VidAuthor": "@DeepMarineScenes",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2438",
+    "link": "https://vimeo.com/35853121",
+    "show": "1",
+    "DateAdded": "2026-09-30 04:06:00",
+    "DateModified": "2026-09-30 04:08:32",
+    "tags": [
+      "cornucopia-of-underwater-life"
+    ],
+    "Mute": "0",
+    "ftextSize": "252",
+    "FtextJunk": "30",
+    "DictSize": "0",
+    "VidTitle": "Muck Dives in Lembeh - Part 7",
+    "VidAuthor": "Manta-Passion",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "2:40"
+  },
+  {
+    "UID": "2439",
+    "link": "https://vimeo.com/150104320",
+    "show": "1",
+    "DateAdded": "2026-09-30 04:08:04",
+    "DateModified": "2026-09-30 04:08:15",
+    "tags": [
+      "cornucopia-of-underwater-life"
+    ],
+    "Mute": "0",
+    "ftextSize": "305",
+    "FtextJunk": "25",
+    "DictSize": "0",
+    "VidTitle": "Critters of the Lembeh Strait | Episode 21 - 2015 |  Spookiest Critters - Part 1",
+    "VidAuthor": "Sascha Janson",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2440",
+    "link": "https://vimeo.com/142697025",
+    "show": "1",
+    "DateAdded": "2026-09-30 04:09:45",
+    "DateModified": "2026-09-30 04:09:49",
+    "tags": [
+      "cornucopia-of-underwater-life"
+    ],
+    "Mute": "0",
+    "ftextSize": "316",
+    "FtextJunk": "24",
+    "DictSize": "0",
+    "VidTitle": "Critters of the Lembeh Strait | Episode 19 - 2015 | The Good, The Bad and The Ugly - Part 1",
+    "VidAuthor": "Sascha Janson",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2441",
+    "link": "https://vimeo.com/329959815",
+    "show": "1",
+    "DateAdded": "2026-09-30 04:11:06",
+    "DateModified": "2026-09-30 04:11:13",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "253",
+    "FtextJunk": "30",
+    "DictSize": "0",
+    "VidTitle": "What Nightmares Are Made Of",
+    "VidAuthor": "Khaled Sultani",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2442",
+    "link": "https://vimeo.com/329959815",
+    "show": "1",
+    "DateAdded": "2026-09-30 04:12:21",
+    "DateModified": "2026-09-30 04:12:38",
+    "tags": [
+      "bobbit-worm"
+    ],
+    "Mute": "0",
+    "ftextSize": "253",
+    "FtextJunk": "30",
+    "DictSize": "0",
+    "VidTitle": "What Nightmares Are Made Of",
+    "VidAuthor": "Khaled Sultani",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2443",
+    "link": "https://vimeo.com/329820894",
+    "show": "1",
+    "DateAdded": "2026-09-30 04:13:49",
+    "DateModified": "2026-09-30 04:13:52",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "257",
+    "FtextJunk": "30",
+    "DictSize": "0",
+    "VidTitle": "A day in the life of a frogfish",
+    "VidAuthor": "Khaled Sultani",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2444",
+    "link": "https://vimeo.com/329674409",
+    "show": "1",
+    "DateAdded": "2026-09-30 04:14:09",
+    "DateModified": "2026-09-30 04:14:11",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "264",
+    "FtextJunk": "29",
+    "DictSize": "0",
+    "VidTitle": "A day in the life of a coconut octopus",
+    "VidAuthor": "Khaled Sultani",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2445",
+    "link": "https://youtu.be/yhjYbTNgvc8",
+    "show": "1",
+    "DateAdded": "2026-09-30 04:20:48",
+    "DateModified": "2026-09-30 04:20:51",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "1175",
+    "FtextJunk": "6",
+    "DictSize": "0",
+    "VidTitle": "Whitemargin Stargazer Attacking Cardinalfish, Cu, Kbr, Sulawesi, Indonesia",
+    "VidAuthor": "@Naturefootage",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2446",
+    "link": "https://youtu.be/YaBq8ti7fbA",
+    "show": "1",
+    "DateAdded": "2026-09-30 04:21:07",
+    "DateModified": "2026-09-30 04:21:09",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "1736",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "VidTitle": "This Creepy Fish Hides in the Sand Before Killing",
+    "VidAuthor": "@crazycreaturesshow",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2447",
+    "link": "https://youtu.be/fXIcPkqpdPY",
+    "show": "1",
+    "DateAdded": "2026-09-30 04:23:16",
+    "DateModified": "2026-09-30 04:26:46",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "281",
+    "FtextJunk": "27",
+    "DictSize": "0",
+    "VidTitle": "Scuba divers beware: Meet the Whitemargin Stargazer!",
+    "VidAuthor": "@WAVESofINSIGHT",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "0:47",
+    "VidRange": "24.7 6.4",
+    "VidComment": "Whitemargin Stargazer Tongue"
+  },
+  {
+    "UID": "2448",
+    "link": "https://youtu.be/NyF4Q4lqvzM",
+    "show": "1",
+    "DateAdded": "2026-09-30 04:42:43",
+    "DateModified": "2026-09-30 04:42:56",
+    "tags": [
+      "diehl-migration"
+    ],
+    "Mute": "0",
+    "ftextSize": "476",
+    "FtextJunk": "16",
+    "DictSize": "0",
+    "VidTitle": "The deep sea is never far away -Diel Vertical Migration",
+    "VidAuthor": "@homoplankton2754",
     "Mode": "L",
     "ftext": ""
   }

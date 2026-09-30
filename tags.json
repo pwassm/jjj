@@ -8443,5 +8443,33 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "stargazer",
+    "label": "Stargazer",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "bobbit-worm",
+    "label": "Bobbit worm",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "diehl-migration",
+    "label": "Diel migration",
+    "kind": "other",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
   }
 ]

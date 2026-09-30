@@ -3938,7 +3938,18 @@ function showCtx(x, y, target) {
                  && _tMediaFolderFor(data[di] && data[di].link);
       // (dev1021) Plain click skips a row whose file is already on disk (the proxy
       // checks by filename); Alt+click forces the download anyway.
-      if (_dlF) { addCI(menu, '⬇ Download → ' + _dlF, ev => tDownloadRowMedia(di, !!(ev && ev.altKey))); addCS(menu); }
+      // (dev1058) YouTube / Vimeo: Download also writes a LosslessCut <name>-proj.llc
+      // when the row has labelled segments, and each labelled segment gets its own
+      // "✂ Segment only" item (that segment alone; Alt+click refetches).
+      if (_dlF) {
+        addCI(menu, '⬇ Download → ' + _dlF, ev => tDownloadRowMedia(di, !!(ev && ev.altKey)));
+        if ((_dlF === 'yt_media' || _dlF === 'vm_media') && typeof _tLabelledSegs === 'function') {
+          _tLabelledSegs(data[di]).forEach((s, si) => addCI(menu,
+            '✂ Segment only: ' + s.name + '  (' + s.start + 's, ' + s.dur + 's)',
+            ev => tDownloadRowSegment(di, si, !!(ev && ev.altKey))));
+        }
+        addCS(menu);
+      }
       // (dev0851) A MakeCard row (image + <hr> + text) can be exported back to
       // the standalone .html the .ahk used to write, image re-inlined as base64.
       if (typeof makeCardRowIsCard === 'function' && makeCardRowIsCard(data[di])) {
