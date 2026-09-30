@@ -3943,7 +3943,8 @@ function vpSetAPoint() {
   if (_vpState.isYT) {
     _vpState.aPoint = _vpState.player.getCurrentTime();
   } else {
-    _vpState.player.getCurrentTime().then(t => { _vpState.aPoint = t; vpUpdateABStyle(); });
+    // (dev1060) …then parked mid-frame (disk videos): the frame on screen, exactly.
+    _vpState.player.getCurrentTime().then(t => { _vpState.aPoint = t; vpUpdateABStyle(); _vpSnapMark('aPoint'); });
     return;
   }
   vpUpdateABStyle();
@@ -3954,10 +3955,18 @@ function vpSetBPoint() {
   if (_vpState.isYT) {
     _vpState.bPoint = _vpState.player.getCurrentTime();
   } else {
-    _vpState.player.getCurrentTime().then(t => { _vpState.bPoint = t; vpUpdateABStyle(); });
+    _vpState.player.getCurrentTime().then(t => { _vpState.bPoint = t; vpUpdateABStyle(); _vpSnapMark('bPoint'); });
     return;
   }
   vpUpdateABStyle();
+}
+
+// (dev1060) A mark's label. A disk-video mark sits mid-frame, so it shows that
+// frame's own start to the millisecond — the same number LosslessCut shows for
+// it (6.267 for frame 188 of a 30fps clip). Elsewhere, the mark to 1/100 s.
+function _vpMarkLabel(v) {
+  if (!_vpDiskAbsPath()) return v.toFixed(2);
+  return Math.max(0, v - _vpFrameSec() / 2).toFixed(3);
 }
 
 function vpUpdateABStyle() {
@@ -3979,7 +3988,7 @@ function vpUpdateABStyle() {
   if (_vpState.aPoint !== null) {
     aBtn.style.background = '#080';
     aBtn.style.borderColor = '#0f0';
-    aBtn.textContent = 'A:' + _vpState.aPoint.toFixed(2);   // (dev1059) a frame shows
+    aBtn.textContent = 'A:' + _vpMarkLabel(_vpState.aPoint);   // (dev1060)
   } else {
     aBtn.style.background = '#530';
     aBtn.style.borderColor = '#f80';
@@ -3988,7 +3997,7 @@ function vpUpdateABStyle() {
   if (_vpState.bPoint !== null) {
     bBtn.style.background = '#080';
     bBtn.style.borderColor = '#0f0';
-    bBtn.textContent = 'B:' + _vpState.bPoint.toFixed(2);   // (dev1059) a frame shows
+    bBtn.textContent = 'B:' + _vpMarkLabel(_vpState.bPoint);
   } else {
     bBtn.style.background = '#530';
     bBtn.style.borderColor = '#f80';
@@ -4291,6 +4300,7 @@ function _vpMarkWholeVideo() {
   _vpState.aPoint = 0;
   _vpState.bPoint = dur;
   vpUpdateABStyle();
+  _vpSnapMark('aPoint'); _vpSnapMark('bPoint');   // (dev1060) the first and last frames
   if (typeof toast === 'function') {
     toast('⇧A whole video — A 0.0s → B ' + dur.toFixed(1) + 's (' + _vpDurStr(dur) + ')', 2200);
   }
@@ -4306,9 +4316,7 @@ function _vpFrameSec() {
   if (st.frameSec) return st.frameSec;
   if (!st._fpsAsked) {
     st._fpsAsked = true;
-    const row = window._vpCurrentRow;
-    const abs = row && row._directVideoFile
-      && _vpCropResolveAbsPathCached(row.comment || row.VidTitle || '');
+    const abs = _vpDiskAbsPath();
     if (abs) _vpProbeFps(abs).then(f => {
       const m = /^(\d+)\/(\d+)$/.exec(String(f || ''));
       const fps = m ? (+m[1] / +m[2]) : parseFloat(f);
@@ -4317,28 +4325,168 @@ function _vpFrameSec() {
   }
   return 1 / 30;
 }
+// The disk path of the video V is showing, when it is known without asking.
+function _vpDiskAbsPath() {
+  const row = window._vpCurrentRow;
+  return (row && row._directVideoFile)
+    ? _vpCropResolveAbsPathCached(row.comment || row.VidTitle || '') : null;
+}
+
+// (dev1060) ── A mark is THE FRAME YOU SEE AT IT ─────────────────────────────
+// Measured 2026-09-30 on UID 2447's segment: Chrome shows the frame with the
+// largest pts ≤ currentTime, and ffmpeg keeps frames with pts ≥ start and < end.
+// So a mark between two frames made A DROP the frame on screen, and a mark on a
+// frame edge could land either side of it after the proxy's 3-decimal rounding —
+// the stray frame or two at the end of the stargazer clips. Now, on a disk video:
+//   A = the first frame kept, B = the last frame kept — both exactly what is on
+//       screen when the playhead sits on the mark;
+//   every mark is parked in the MIDDLE of its frame, so what Chrome shows there
+//       is never in doubt;
+//   the render cuts half a frame OUTSIDE A's and B's frames (_vpCutTimes).
+// Frame times are the file's own (ffprobe packets, the LLC keyframes probe), so
+// a variable frame rate phone clip is as exact as a steady one. Without them
+// (YouTube / Vimeo in V, proxy down) frames are taken as a k/fps grid from 0.
+async function _vpFrameTable(t) {
+  const st = _vpState;
+  const abs = _vpDiskAbsPath();
+  if (!st || !abs) return null;
+  const el = st.player && st.player.el;
+  const dur = (el && Number.isFinite(el.duration)) ? el.duration : Infinity;
+  const ok = c => {
+    if (!c || c.abs !== abs || c.times.length < 2) return false;
+    const i = _vpShownIdx(c.times, t);
+    if (i < 0) return false;
+    // Room either side, unless the table genuinely reaches that end of the file.
+    return (i >= 1 || c.fromTop) && (i <= c.times.length - 2 || c.times[c.times.length - 1] >= dur - 0.5);
+  };
+  if (ok(st._ft)) return st._ft;
+  const read = async (fromSec, spanSec) => {
+    try {
+      const r = await fetch(PROXY_BASE + '/exec/ffprobe', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: abs, keyframes: { fromSec, spanSec } })
+      });
+      const j = await r.json();
+      const pk = j && j.result && j.result.packets;
+      if (!Array.isArray(pk)) return null;
+      const times = pk.filter(p => p && !/D/.test(String(p.flags || '')))
+        .map(p => parseFloat(p.pts_time)).filter(Number.isFinite).sort((x, y) => x - y);
+      return { abs, times, fromTop: fromSec < 1 };
+    } catch (_) { return null; }
+  };
+  const from = Math.max(0, t - 3);
+  let c = await read(from, 6);
+  // A seek can land past the keyframe wanted (a seek to 0 on an edit-listed mp4
+  // did): read from the top of the file instead.
+  if (!ok(c)) c = await read(0, t + 3);
+  if (!ok(c)) return null;
+  if (st === _vpState) st._ft = c;
+  return c;
+}
+// The frame on screen at t: the last one whose pts ≤ t (1µs of float slack).
+function _vpShownIdx(times, t) {
+  let lo = 0, hi = times.length - 1, ans = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (times[m] <= t + 1e-6) { ans = m; lo = m + 1; } else hi = m - 1; }
+  return ans;
+}
+function _vpFrameMid(times, i, fd) {
+  return (i + 1 < times.length) ? (times[i] + times[i + 1]) / 2 : times[i] + fd / 2;
+}
+// The middle of the frame shown at t, moved `step` frames (±1 for the arrows).
+// Falls back to the k/fps grid. Never before the first frame.
+async function _vpFrameMidAt(t, step) {
+  const fd = _vpFrameSec();
+  const c = await _vpFrameTable(t);
+  if (c) {
+    const i = Math.max(0, Math.min(c.times.length - 1, _vpShownIdx(c.times, t) + (step || 0)));
+    return _vpFrameMid(c.times, i, fd);
+  }
+  const k = Math.max(0, Math.floor(t / fd + 1e-6) + (step || 0));
+  return (k + 0.5) * fd;
+}
+// A LosslessCut range (keeps pts ≥ start and < end) → the marks' two frames.
+async function _vpMarksFromCut(start, end) {
+  const fd = _vpFrameSec();
+  const ca = await _vpFrameTable(start), cb = await _vpFrameTable(Math.max(start, end - fd));
+  let a, b;
+  if (ca) {
+    let i = _vpShownIdx(ca.times, start);
+    if (i < 0 || ca.times[i] < start - 1e-6) i++;               // first frame ≥ start
+    a = _vpFrameMid(ca.times, Math.min(i, ca.times.length - 1), fd);
+  } else a = (Math.ceil(start / fd - 1e-6) + 0.5) * fd;
+  if (cb) {
+    const j = _vpShownIdx(cb.times, end - 2e-6);                // last frame < end
+    b = _vpFrameMid(cb.times, Math.max(0, j), fd);
+  } else b = (Math.ceil(end / fd - 1e-6) - 0.5) * fd;
+  return { a, b };
+}
+// Render times for the frames shown at a … b: half a frame outside each.
+async function _vpCutTimes(a, b) {
+  const fd = _vpFrameSec();
+  const ca = await _vpFrameTable(a), cb = await _vpFrameTable(b);
+  let startSec, endSec;
+  if (ca) {
+    const i = _vpShownIdx(ca.times, a);
+    startSec = (i > 0) ? (ca.times[i - 1] + ca.times[i]) / 2 : 0;
+  } else startSec = Math.max(0, (Math.floor(a / fd + 1e-6) - 0.5) * fd);
+  if (cb) endSec = _vpFrameMid(cb.times, Math.max(0, _vpShownIdx(cb.times, b)), fd);
+  else endSec = (Math.floor(b / fd + 1e-6) + 0.5) * fd;
+  return { startSec, endSec };
+}
+// Park a freshly set mark in the middle of the frame it was set on. Nothing on
+// screen moves; it only takes the mark off a frame edge.
+async function _vpSnapMark(key) {
+  const st = _vpState;
+  if (!st || st[key] == null || !_vpDiskAbsPath()) return;
+  const was = st[key];
+  const mid = await _vpFrameMidAt(was, 0);
+  if (st !== _vpState || st[key] !== was) return;   // moved on meanwhile
+  st[key] = mid;
+  vpUpdateABStyle();
+}
+
+// (dev1060) One presented frame of a playing disk video, against the A→B loop.
+// B's own frame on screen → jump back once that frame has had its time; any
+// later frame → jump now. (A B on the file's last frame ends the video first,
+// so a jump that finds it ended plays on from A, as the poll always did.)
+function _vpLoopOnFrame(st, vid, mt) {
+  if (vid.paused || window._vpFSB || st.abSuspended) return;
+  const a = st.aPoint, b = st.bPoint;
+  if (a == null || b == null || !(b > a)) return;
+  const fd = _vpFrameSec();
+  const jump = () => {
+    if (_vpState !== st || st.aPoint !== a || st.bPoint !== b) return;
+    if (vid.paused && !vid.ended) return;          // paused by hand meanwhile
+    vid.currentTime = a;
+    if (vid.paused) vid.play().catch(() => {});
+  };
+  if (mt > b + 1e-4) { clearTimeout(st._loopT); st._loopT = null; jump(); return; }
+  if (mt > b - fd + 1e-4 && !st._loopT) {
+    st._loopT = setTimeout(() => { st._loopT = null; jump(); },
+                           Math.max(0, fd * 1000 / (vid.playbackRate || 1) - 4));
+  }
+}
 
 // Move A or B by `dir` frames (-1 / +1).
 // (dev1059) Was ±0.1s, three frames at 30fps; a frame is the smallest step there
-// is. A paused disk video is also parked on the frame the mark now means, so
-// each nudge can be judged by eye: A's own frame, and for B the LAST frame the
-// clip keeps (just under B — the render stops before B, and at B itself the
-// A→B loop would jump back to A).
+// is. (dev1060) …and it now PAUSES and puts the playhead on the frame the mark
+// means: A's arrows show the first frame the clip keeps, B's the last. Clicks
+// queue, so three fast clicks are three frames.
 function vpAdjustAB(which, dir) {
-  if (!_vpState) return;
-  const delta = dir * _vpFrameSec();
-  let at = null;
-  if (which === 'a' && _vpState.aPoint !== null) {
-    _vpState.aPoint = Math.max(0, _vpState.aPoint + delta);
-    at = _vpState.aPoint;
+  const st = _vpState;
+  if (!st) return;
+  st._nudgeQ = (st._nudgeQ || Promise.resolve()).then(async () => {
+    const key = (which === 'a') ? 'aPoint' : 'bPoint';
+    if (st !== _vpState || st[key] == null) return;
+    if (_vpIsPlaying()) _vpPauseNow();
+    const at = _vpDiskAbsPath()
+      ? await _vpFrameMidAt(st[key], dir)
+      : Math.max(0, st[key] + dir * _vpFrameSec());
+    if (st !== _vpState) return;
+    st[key] = at;
     vpUpdateABStyle();
-  } else if (which === 'b' && _vpState.bPoint !== null) {
-    _vpState.bPoint = Math.max(0, _vpState.bPoint + delta);
-    at = Math.max(0, _vpState.bPoint - 0.001);
-    vpUpdateABStyle();
-  }
-  const el = _vpState.player && _vpState.player.el;
-  if (at != null && el && el.paused) _vpSeekAbsolute(at);
+    _vpSeekAbsolute(at);
+  }).catch(() => {});
 }
 
 // Save A-B range.
@@ -4596,7 +4744,12 @@ function vpUpdateTimeline() {
     if (!window._vpFSB && !_vpState.abSuspended
         && _vpState.aPoint !== null && _vpState.bPoint !== null
         && _vpState.bPoint > _vpState.aPoint) {
-      if (ct >= _vpState.bPoint) {
+      // (dev1060) A disk video loops per frame (_vpLoopOnFrame); here that is
+      // only the safety net — or the end of the file, where frames stop coming.
+      const bWrap = _vpState._rvfcLoop
+        ? Math.min(_vpState.bPoint + 0.3, (_vpState.duration || Infinity) - 0.001)
+        : _vpState.bPoint;
+      if (ct >= bWrap) {
         if (_vpState.isYT) {
           _vpState.player.seekTo(_vpState.aPoint, true);
           if (_vpState.player.playVideo) _vpState.player.playVideo();
@@ -10289,8 +10442,12 @@ async function _vpGoSave(opts) {
   if (!id) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
   _vpRememberCropName(parts.base, id);   // (dev0921)
   const safeId = _vpCropSafeId(id);
-  const startSec = Math.min(_vpState.aPoint, _vpState.bPoint);
-  const endSec   = Math.max(_vpState.aPoint, _vpState.bPoint);
+  // (dev1060) Frame-exact: the frame shown at A is the first kept and the frame
+  // shown at B the last; the cut sits half a frame outside both (_vpCutTimes).
+  const _cut = await _vpCutTimes(Math.min(_vpState.aPoint, _vpState.bPoint),
+                                 Math.max(_vpState.aPoint, _vpState.bPoint));
+  const startSec = _cut.startSec;
+  const endSec   = _cut.endSec;
   const durStr = _vpDurStr(endSec - startSec);
   // (dev0720) kenPayload: zoom ramp · (dev0777) trackPayload: moving window
   // (dev0863) detailParts is what the filename used to spell out — size, shape,
@@ -11282,7 +11439,22 @@ function vpMountDirectVideo(host, link, seg, muted) {
   // first click is already exact. Reset first: a slideshow reuses the state.
   _vpState.frameSec = 0;
   _vpState._fpsAsked = false;
+  _vpState._ft = null;   // (dev1060) this video's frame times, read on demand
   _vpFrameSec();
+  // (dev1060) The A→B loop, frame by frame. The 250ms poll let playback run up
+  // to ~7 frames past B before jumping back — the very frames B was placed to
+  // leave out, so a right B looked wrong. Each presented frame is checked
+  // instead; the poll in vpUpdateTimeline stays as the safety net.
+  if (typeof vid.requestVideoFrameCallback === 'function') {
+    const st = _vpState;
+    st._rvfcLoop = true;
+    const onFrame = (now, md) => {
+      if (_vpState !== st || !st.player || st.player.el !== vid) return;
+      try { _vpLoopOnFrame(st, vid, md.mediaTime); } catch (_) {}
+      vid.requestVideoFrameCallback(onFrame);
+    };
+    vid.requestVideoFrameCallback(onFrame);
+  }
   // (dev0280) Slideshow plays each video once then advances. Native 'ended'
   // fires only when nothing is looping the clip (e.g. Full mode) — the
   // Selected-mode end is handled in vpUpdateTimeline. Gated on the slideshow
@@ -12023,18 +12195,24 @@ async function _vectApplyLlc(absPath) {
       && document.getElementById('vp-a') && document.getElementById('vp-b');
     if (!ready) { if (tries++ < 150) setTimeout(whenReady, 100); return; }
     const dur = el.duration;
-    const a = Math.max(0, Math.min(dur, +seg.start || 0));
-    const b = (seg.end != null && Number.isFinite(+seg.end)) ? Math.min(dur, +seg.end) : dur;
-    if (!(b > a)) return;
-    _vpState.aPoint = a;
-    _vpState.bPoint = b;
-    vpUpdateABStyle();
-    _vpSeekAbsolute(a);
-    if (typeof toast === 'function') {
-      toast('A/B from ' + j.file + ':  ' + a.toFixed(2) + ' → ' + b.toFixed(2) + 's' +
-            (seg.name ? '  · ' + seg.name : '') +
-            (j.segs.length > 1 ? '  (segment ' + (idx + 1) + ' of ' + j.segs.length + ')' : ''), 4500);
-    }
+    const s0 = Math.max(0, Math.min(dur, +seg.start || 0));
+    const e0 = (seg.end != null && Number.isFinite(+seg.end)) ? Math.min(dur + 1, +seg.end) : dur + 1;
+    if (!(e0 > s0)) return;
+    // (dev1060) LosslessCut keeps pts ≥ start and < end, so A is the first frame
+    // at or after start and B the last one before end — each parked mid-frame.
+    const st = _vpState;
+    _vpMarksFromCut(s0, e0).then(m => {
+      if (st !== _vpState || !(m.b >= m.a)) return;
+      st.aPoint = m.a;
+      st.bPoint = m.b;
+      vpUpdateABStyle();
+      _vpSeekAbsolute(m.a);
+      if (typeof toast === 'function') {
+        toast('A/B from ' + j.file + ':  ' + m.a.toFixed(2) + ' → ' + m.b.toFixed(2) + 's' +
+              (seg.name ? '  · ' + seg.name : '') +
+              (j.segs.length > 1 ? '  (segment ' + (idx + 1) + ' of ' + j.segs.length + ')' : ''), 4500);
+      }
+    }).catch(() => {});
   })();
 }
 

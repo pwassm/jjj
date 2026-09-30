@@ -124,10 +124,13 @@ window.parseVideoAsset = function(v) {
 };
 
 // Serialize array of segments back to VidRange string
+// (dev1060) To the millisecond, not the tenth: a tenth is three frames, and E's
+// arrows now place a segment's ends on single frames. parseFloat drops trailing
+// zeros, so an old "24.7" still writes as "24.7".
 window.serializeSegments = function(segs) {
   return segs.map(function(s) {
-    var st = parseFloat(Number(s.start).toFixed(1));
-    var d  = parseFloat(Number(s.dur).toFixed(1));
+    var st = parseFloat(Number(s.start).toFixed(3));
+    var d  = parseFloat(Number(s.dur).toFixed(3));
     return d === 1 ? String(st) : st + ' ' + d;
   }).join(', ');
 };
@@ -1634,7 +1637,8 @@ window.openVideoEditor = function(it) {
   
   var veSelectedMode = true; // true = loop segment, false = play full video
 
-  var fmt = function(v) { return parseFloat(Number(v).toFixed(1)); };
+  // (dev1060) Milliseconds, not tenths — see serializeSegments.
+  var fmt = function(v) { return parseFloat(Number(v).toFixed(3)); };
 
   // mm:ss formatter for total video duration
   function toMMSS(sec) {
@@ -1946,11 +1950,66 @@ window.openVideoEditor = function(it) {
     updateStats(); renderTimeline(); renderSegTabs();
   }
 
-  // Frame step = 0.1s — one visible "click" step when paused
-  // (1/30 ≈ 0.033 rounds to 0.0 with toFixed(1), so we use 0.1 as the step unit)
-  var FRAME_SEC = 0.1;
-  // Use higher precision for frame arithmetic
-  var fmt2 = function(v) { return parseFloat(Number(v).toFixed(2)); };
+  // (dev1060) ── One frame, and the frame you see ──────────────────────────
+  // The rule V uses (vp.js _vpCutTimes): Start is the FIRST frame kept and
+  // Start+Dur the LAST, each exactly what is on screen with the playhead on it
+  // (a player shows the frame with the largest time ≤ the playhead; ffmpeg keeps
+  // times ≥ start and < end, so the proxy cuts half a frame outside both — see
+  // mediaFrameCut). The ◀ ▶ arrows move one end ONE frame, PAUSE, and park the
+  // playhead on that frame: Start's show the first frame kept, Dur's the last.
+  // The other end stays put. Marks sit mid-frame, (k + ½)/fps, so the player
+  // can never show the neighbour. The rate is the video's own — /media/fps reads
+  // the downloaded file when there is one, else yt-dlp — and 30 until it answers.
+  var FRAME_SEC = 1 / 30;
+  (function () {
+    var lk = String(it.link || '');
+    if (!/youtu\.?be|vimeo\.com/i.test(lk)) return;
+    if (window._salIsLocalHost && !window._salIsLocalHost()) return;
+    fetch('http://127.0.0.1:8081/media/fps?url=' + encodeURIComponent(lk) +
+          '&linkpage=' + encodeURIComponent(it.linkpage || ''))
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (j && j.ok && j.fps > 1 && j.fps < 1000) FRAME_SEC = 1 / j.fps; })
+      .catch(function () {});
+  })();
+  function frameIdx(t) { return Math.floor(t / FRAME_SEC + 1e-6); }
+  function frameMid(k) { return fmt((Math.max(0, k) + 0.5) * FRAME_SEC); }
+  // Start: one frame earlier / later; the last frame stays where it is.
+  function nudgeStartFrame(dir) {
+    if (!segs.length) return;
+    var seg = segs[activeSegIdx];
+    var end = seg.start + seg.dur;
+    var k = frameIdx(seg.start) + dir;
+    if (k < 0) return;
+    if (k >= frameIdx(end)) {
+      if (typeof toast === 'function') toast('Start is already on the frame before the end', 1400);
+      return;
+    }
+    seg.start = frameMid(k);
+    seg.dur = fmt(end - seg.start);
+    iStart.value = seg.start;
+    iDur.value = seg.dur;
+    updateSegData();
+    editorSeekFreeze(seg.start);                 // the first frame kept
+  }
+  // Dur: the LAST frame one earlier / later; Start stays.
+  function nudgeEndFrame(dir) {
+    if (!segs.length) return;
+    var seg = segs[activeSegIdx];
+    var k = frameIdx(seg.start + seg.dur) + dir;
+    if (k <= frameIdx(seg.start)) return;
+    if (dir > 0 && !totalVideoDur) {
+      if (typeof toast === 'function') toast('Waiting on video metadata — try again in a moment', 1600);
+      return;
+    }
+    if (totalVideoDur && frameMid(k) > totalVideoDur) {
+      if (typeof toast === 'function') toast('Cannot extend past end of video', 1600);
+      return;
+    }
+    seg.dur = fmt(frameMid(k) - seg.start);
+    iDur.value = seg.dur;
+    updateSegData();
+    editorSeekFreeze(seg.start + seg.dur);       // the last frame kept
+  }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -2083,25 +2142,17 @@ window.openVideoEditor = function(it) {
     mountLoop();  // loops entire active segment
   });
 
-  // ── Start carets: adjust ±0.1s and loop the short start preview ─────────
-  // (dev0260) Was: suspend + freeze on the new start frame. That left the
-  // player paused (_salPaused=true), which made subsequent ±1 / ±5 clicks
-  // silently no-op their play resume. Now matches ±1/±5: short loop from
-  // new start, keeps playing. Don't reach inside the seg's start (i.e.
-  // start can't go negative).
+  // ── Start carets: one frame, paused on the first frame kept ────────────
+  // (dev0260) had made these loop instead of freeze, and ±0.1s. (dev1060) Back
+  // to what their titles always said — one frame, pause — see nudgeStartFrame.
+  // ±1 / ±5 still respect the pause (zip0131): they seek, Space plays.
   document.getElementById('vs-frame').addEventListener('pointerdown', function(e) {
     e.preventDefault();
-    segs[activeSegIdx].start = fmt2(Math.max(0, segs[activeSegIdx].start - FRAME_SEC));
-    iStart.value = segs[activeSegIdx].start;
-    updateSegData();
-    playStartLoop();
+    nudgeStartFrame(-1);
   });
   document.getElementById('vs+frame').addEventListener('pointerdown', function(e) {
     e.preventDefault();
-    segs[activeSegIdx].start = fmt2(segs[activeSegIdx].start + FRAME_SEC);
-    iStart.value = segs[activeSegIdx].start;
-    updateSegData();
-    playStartLoop();
+    nudgeStartFrame(1);
   });
 
   // -5 -1 0 +1 +5: adjust start, play from new start for min(3, dur) then loop
@@ -2124,43 +2175,14 @@ window.openVideoEditor = function(it) {
   // player paused. Now matches ±1/±5: short loop from ~3s before new end,
   // keeps playing. dur+ caret still honors the totalVideoDur cap (silent
   // first time, toast second consecutive time), matching the ±1/±5 cap.
+  // (dev1060) One frame, paused on the last frame kept — see nudgeEndFrame.
   document.getElementById('vd-frame').addEventListener('pointerdown', function(e) {
     e.preventDefault();
-    segs[activeSegIdx].dur = fmt2(Math.max(0.1, segs[activeSegIdx].dur - FRAME_SEC));
-    iDur.value = segs[activeSegIdx].dur;
-    updateSegData();
-    playEndLoop();
+    nudgeEndFrame(-1);
   });
   document.getElementById('vd+frame').addEventListener('pointerdown', function(e) {
     e.preventDefault();
-    if (!totalVideoDur) {
-      if (_durCapBlockedOnce) {
-        if (typeof toast === 'function')
-          toast('Waiting on video metadata — try again in a moment', 1600);
-        _durCapBlockedOnce = false;
-      } else {
-        _durCapBlockedOnce = true;
-      }
-      return;
-    }
-    var seg = segs[activeSegIdx];
-    var maxDur = fmt2(Math.max(0.1, totalVideoDur - seg.start));
-    if (fmt2(seg.dur + FRAME_SEC) > maxDur + 0.005) {
-      if (_durCapBlockedOnce) {
-        if (typeof toast === 'function')
-          toast('Cannot extend past end of video', 1600);
-        _durCapBlockedOnce = false;
-      } else {
-        _durCapBlockedOnce = true;
-      }
-      playEndLoop();
-      return;
-    }
-    _durCapBlockedOnce = false;
-    seg.dur = fmt2(seg.dur + FRAME_SEC);
-    iDur.value = seg.dur;
-    updateSegData();
-    playEndLoop();
+    nudgeEndFrame(1);
   });
 
   // -5 -1 0 +1 +5: adjust duration, play from 3s before new end, loop
