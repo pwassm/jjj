@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1790743376152,
+    "_salPushTime": 1790743745559,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1790743376152
+    "_salSavedAt": 1790743745559
   },
   {
     "UID": "1",
@@ -53500,6 +53500,24 @@
     "DictSize": "0",
     "VidTitle": "The deep sea is never far away -Diel Vertical Migration",
     "VidAuthor": "@homoplankton2754",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2449",
+    "link": "https://youtu.be/9YKBfKX_8ng",
+    "show": "1",
+    "DateAdded": "2026-09-30 04:48:16",
+    "DateModified": "2026-09-30 04:48:21",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "1114",
+    "FtextJunk": "7",
+    "DictSize": "0",
+    "VidTitle": "Whitemargin Stargazer Attacking Cardinalfish, Cu, Kbr, Sulawesi, Indonesia",
+    "VidAuthor": "@Naturefootage",
     "Mode": "L",
     "ftext": ""
   }

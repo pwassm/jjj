@@ -1900,7 +1900,7 @@ function gridOpenFullscreen(row, contained) {
     aMinusBtn.id = 'vp-a-minus';
     aMinusBtn.className = 'vp-btn';
     aMinusBtn.textContent = '◀';
-    aMinusBtn.title = 'A -0.1s';
+    aMinusBtn.title = 'A one frame back';
     aMinusBtn.style.cssText += 'background:#530;border-color:#f80;color:#f80;padding:4px 6px;font-size:10px;min-width:20px;';
     
     const aBtn = document.createElement('button');
@@ -1915,7 +1915,7 @@ function gridOpenFullscreen(row, contained) {
     aPlusBtn.id = 'vp-a-plus';
     aPlusBtn.className = 'vp-btn';
     aPlusBtn.textContent = '▶';
-    aPlusBtn.title = 'A +0.1s';
+    aPlusBtn.title = 'A one frame on';
     aPlusBtn.style.cssText += 'background:#530;border-color:#f80;color:#f80;padding:4px 6px;font-size:10px;min-width:20px;';
     
     // ABsave button
@@ -1932,7 +1932,7 @@ function gridOpenFullscreen(row, contained) {
     bMinusBtn.id = 'vp-b-minus';
     bMinusBtn.className = 'vp-btn';
     bMinusBtn.textContent = '◀';
-    bMinusBtn.title = 'B -0.1s';
+    bMinusBtn.title = 'B one frame back';
     bMinusBtn.style.cssText += 'background:#530;border-color:#f80;color:#f80;padding:4px 6px;font-size:10px;min-width:20px;';
     
     const bBtn = document.createElement('button');
@@ -1947,7 +1947,7 @@ function gridOpenFullscreen(row, contained) {
     bPlusBtn.id = 'vp-b-plus';
     bPlusBtn.className = 'vp-btn';
     bPlusBtn.textContent = '▶';
-    bPlusBtn.title = 'B +0.1s';
+    bPlusBtn.title = 'B one frame on';
     bPlusBtn.style.cssText += 'background:#530;border-color:#f80;color:#f80;padding:4px 6px;font-size:10px;min-width:20px;';
     
     abWrap.appendChild(aMinusBtn);
@@ -3479,7 +3479,7 @@ function vpKeyHandler(e) {
   // them.
   //
   // s / d — one frame back / forward, the ← / → twins. (dev0719's ±5 jumps are
-  // gone with a and f; the ±0.1s toolbar buttons still nudge a mark in place.)
+  // gone with a and f; the toolbar ◀ ▶ still nudge a mark in place, one frame a click since dev1059.)
   //
   // All four are gated to an OPEN crop overlay, which is exactly when the
   // cheat-sheet listing them is on screen. Outside it the letters stay free,
@@ -3979,7 +3979,7 @@ function vpUpdateABStyle() {
   if (_vpState.aPoint !== null) {
     aBtn.style.background = '#080';
     aBtn.style.borderColor = '#0f0';
-    aBtn.textContent = 'A:' + _vpState.aPoint.toFixed(1);
+    aBtn.textContent = 'A:' + _vpState.aPoint.toFixed(2);   // (dev1059) a frame shows
   } else {
     aBtn.style.background = '#530';
     aBtn.style.borderColor = '#f80';
@@ -3988,7 +3988,7 @@ function vpUpdateABStyle() {
   if (_vpState.bPoint !== null) {
     bBtn.style.background = '#080';
     bBtn.style.borderColor = '#0f0';
-    bBtn.textContent = 'B:' + _vpState.bPoint.toFixed(1);
+    bBtn.textContent = 'B:' + _vpState.bPoint.toFixed(2);   // (dev1059) a frame shows
   } else {
     bBtn.style.background = '#530';
     bBtn.style.borderColor = '#f80';
@@ -4115,10 +4115,11 @@ function vpWireControls() {
   }
   document.getElementById('vp-a').onclick = vpToggleA;
   document.getElementById('vp-b').onclick = vpToggleB;
-  document.getElementById('vp-a-minus').onclick = () => vpAdjustAB('a', -0.1);
-  document.getElementById('vp-a-plus').onclick = () => vpAdjustAB('a', 0.1);
-  document.getElementById('vp-b-minus').onclick = () => vpAdjustAB('b', -0.1);
-  document.getElementById('vp-b-plus').onclick = () => vpAdjustAB('b', 0.1);
+  // (dev1059) One frame per click, not 0.1s — see vpAdjustAB.
+  document.getElementById('vp-a-minus').onclick = () => vpAdjustAB('a', -1);
+  document.getElementById('vp-a-plus').onclick = () => vpAdjustAB('a', 1);
+  document.getElementById('vp-b-minus').onclick = () => vpAdjustAB('b', -1);
+  document.getElementById('vp-b-plus').onclick = () => vpAdjustAB('b', 1);
   document.getElementById('vp-ab-save').onclick = vpSaveAB;
   document.getElementById('vp-close').onclick = vpClose;
   
@@ -4295,16 +4296,49 @@ function _vpMarkWholeVideo() {
   }
 }
 
-// Adjust A or B by delta
-function vpAdjustAB(which, delta) {
+// (dev1059) One frame of THIS video, for the ◀ ▶ nudges beside A and B. The
+// rate is ffprobe's, asked once per mount (vpMountDirectVideo starts it) when
+// the file's disk path is known without prompting — VECT always knows it. Until
+// the answer lands, and on YouTube / Vimeo, a frame is 1/30 s like the s/d keys.
+function _vpFrameSec() {
+  const st = _vpState;
+  if (!st) return 1 / 30;
+  if (st.frameSec) return st.frameSec;
+  if (!st._fpsAsked) {
+    st._fpsAsked = true;
+    const row = window._vpCurrentRow;
+    const abs = row && row._directVideoFile
+      && _vpCropResolveAbsPathCached(row.comment || row.VidTitle || '');
+    if (abs) _vpProbeFps(abs).then(f => {
+      const m = /^(\d+)\/(\d+)$/.exec(String(f || ''));
+      const fps = m ? (+m[1] / +m[2]) : parseFloat(f);
+      if (fps > 1 && fps < 1000) st.frameSec = 1 / fps;
+    });
+  }
+  return 1 / 30;
+}
+
+// Move A or B by `dir` frames (-1 / +1).
+// (dev1059) Was ±0.1s, three frames at 30fps; a frame is the smallest step there
+// is. A paused disk video is also parked on the frame the mark now means, so
+// each nudge can be judged by eye: A's own frame, and for B the LAST frame the
+// clip keeps (just under B — the render stops before B, and at B itself the
+// A→B loop would jump back to A).
+function vpAdjustAB(which, dir) {
   if (!_vpState) return;
+  const delta = dir * _vpFrameSec();
+  let at = null;
   if (which === 'a' && _vpState.aPoint !== null) {
     _vpState.aPoint = Math.max(0, _vpState.aPoint + delta);
+    at = _vpState.aPoint;
     vpUpdateABStyle();
   } else if (which === 'b' && _vpState.bPoint !== null) {
     _vpState.bPoint = Math.max(0, _vpState.bPoint + delta);
+    at = Math.max(0, _vpState.bPoint - 0.001);
     vpUpdateABStyle();
   }
+  const el = _vpState.player && _vpState.player.el;
+  if (at != null && el && el.paused) _vpSeekAbsolute(at);
 }
 
 // Save A-B range.
@@ -6344,10 +6378,13 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // (dev0871) Encoder. H.264 is what every build before this one wrote, and it
     // stays the default — it plays everywhere. H.265 is roughly half the size
     // for the same picture, and is refused by older players and some editors.
-    '<select id="vp-crop-enc" title="Video codec of the saved clip. H.264 plays everywhere. H.265 (HEVC) is about half the file for the same picture, but older players and some editors will not open it." ' +
+    // (dev1059) GIF — not a codec, a different file: no sound, 256 colours,
+    // ≤30fps, and no more than 720 on the short side. For a few seconds only.
+    '<select id="vp-crop-enc" title="Video codec of the saved clip. H.264 plays everywhere. H.265 (HEVC) is about half the file for the same picture, but older players and some editors will not open it. GIF: silent, 256 colours, 30fps at most, 720 at most on the short side — for a few seconds." ' +
       'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;flex:0 0 auto;">' +
       '<option value="h264" selected>H.264</option>' +
       '<option value="h265">H.265</option>' +
+      '<option value="gif">GIF</option>' +
     '</select>' +
     // (dev0871) Loop. Both settings write <clip>.html beside the mp4 — a page
     // that plays it on repeat, which is the only place "looping" can actually
@@ -7828,11 +7865,13 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   if (encSel) {
     encSel.value = state.vcodec;
     encSel.addEventListener('change', () => {
-      state.vcodec = (encSel.value === 'h265') ? 'h265' : 'h264';
+      state.vcodec = (encSel.value === 'h265' || encSel.value === 'gif') ? encSel.value : 'h264';
       if (typeof toast === 'function') {
         toast(state.vcodec === 'h265'
           ? 'H.265 — about half the size, slower to encode, and older players will refuse it'
-          : 'H.264 — plays everywhere', 2600);
+          : state.vcodec === 'gif'
+            ? 'GIF — silent, 256 colours, 30fps at most, 720 at most on the short side. Keep it to a few seconds.'
+            : 'H.264 — plays everywhere', 3200);
       }
     });
   }
@@ -10276,9 +10315,16 @@ async function _vpGoSave(opts) {
     // (dev0297) When the resolution dropdown is "Same" (no scale), the actual
     // output dims are the crop dims, so report THAT in the filename rather
     // than the literal word 'source' (which was uninformative).
-    const sizeStr = (s.resHeight === 'source')
+    // (dev1059) A GIF is held to 720 on the short side, whatever the dropdown
+    // says: past that the file balloons for a picture 256 colours can't carry.
+    let resHeight = s.resHeight;
+    if (s.vcodec === 'gif') {
+      const shortPx = (resHeight === 'source') ? Math.min(sw, sh) : +resHeight;
+      if (shortPx > 720) resHeight = 720;
+    }
+    const sizeStr = (resHeight === 'source')
       ? (Math.min(sw, sh) + 'p')
-      : (s.resHeight + 'p');
+      : (resHeight + 'p');
     // (dev0318) Crop position. No tilt → axis-aligned crop (unchanged path).
     // Tilt → rotate the whole frame by -angle onto an expanded D×D canvas so the
     // tilted rect becomes axis-aligned, then crop there. Geometry verified:
@@ -10423,7 +10469,7 @@ async function _vpGoSave(opts) {
                        Math.abs(s.speed).toString().replace('.', '_') + 'x');
     }
     // (dev0871) …and the encoder and the loop, for the same reason.
-    if (s.vcodec === 'h265') detailParts.push('h265');
+    if (s.vcodec === 'h265' || s.vcodec === 'gif') detailParts.push(s.vcodec);
     if (s.loop === 'boom') detailParts.push('boomerang');
     else if (s.loop === 'fwd') detailParts.push('loop');
     detailParts.push(durStr);
@@ -10438,8 +10484,8 @@ async function _vpGoSave(opts) {
       crf: (s.vcodec === 'h265') ? Math.min(51, s.crf + 5) : s.crf,
       vcodec: s.vcodec || 'h264',
       preset: s.slow ? 'slow' : 'medium',
-      aspect: effAspect, resHeight: s.resHeight,   // (dev0778) derived, see above
-      audio: !!s.audio,               // (dev0719) bar's 🔇/🔊 switch → -an / -c:a copy
+      aspect: effAspect, resHeight: resHeight,     // (dev0778) derived, see above; (dev1059) GIF cap
+      audio: !!s.audio && s.vcodec !== 'gif',   // (dev0719) 🔇/🔊 → -an / -c:a copy; (dev1059) a GIF has none
       trim: { startSec, endSec },
       overwrite: false
     };
@@ -10501,10 +10547,18 @@ async function _vpGoSave(opts) {
   // (dev0863) One name for both paths: beside the original, called after it,
   // numbered by the proxy if that name is taken.
   const detail = detailParts.filter(Boolean).join(' · ');
+  const gifOut = (payload.vcodec === 'gif');   // (dev1059)
   const free = await _vpCropFreePath(
-    outDir + parts.sep + _vpCropOutStem(parts.base, safeId) + '.mp4');
+    outDir + parts.sep + _vpCropOutStem(parts.base, safeId) + (gifOut ? '.gif' : '.mp4'));
   payload.output = free.path;
   outName = String(free.path).split(/[\\/]/).pop();
+  // (dev1059) A stale proxy refuses vcodec 'gif' outright — better said here.
+  if (gifOut && !(await _vpProxyHasFeature('vpgif'))) {
+    if (typeof toast === 'function') {
+      toast('GIF needs an updated proxy — restart "node proxy.js", or pick H.264', 4400);
+    }
+    return;
+  }
   // (dev0867) A stale proxy drops payload.color and renders the clip ungraded,
   // which looks like a success at the end of a long encode and is not one.
   if (payload.color && !(await _vpProxyHasFeature('color'))) {
@@ -10744,7 +10798,8 @@ async function _vpGoSave(opts) {
       // itself is already written and good.
       const loopMode = (cropOn && _vpState.crop) ? _vpState.crop.loop : 'off';
       let loopNote = '';
-      if (loopMode === 'fwd' || loopMode === 'boom') {
+      // (dev1059) A GIF loops by itself; the page would only wrap it in a video tag.
+      if ((loopMode === 'fwd' || loopMode === 'boom') && !gifOut) {
         loopNote = (await _vpWriteLoopHtml(payload.output, loopMode)) ? ' + .html' : '';
       }
       if (typeof toast === 'function') toast('saved → ' + outName + xmp + meta + loopNote + dates, 3200);
@@ -11223,6 +11278,11 @@ function vpMountDirectVideo(host, link, seg, muted) {
     isMuted: () => Promise.resolve(vid.muted)
   };
   _vpState.isYT = false;
+  // (dev1059) This video's frame length for the A/B nudges, asked now so the
+  // first click is already exact. Reset first: a slideshow reuses the state.
+  _vpState.frameSec = 0;
+  _vpState._fpsAsked = false;
+  _vpFrameSec();
   // (dev0280) Slideshow plays each video once then advances. Native 'ended'
   // fires only when nothing is looping the clip (e.g. Full mode) — the
   // Selected-mode end is handled in vpUpdateTimeline. Gated on the slideshow
@@ -11933,7 +11993,49 @@ function _vectOpenVideo(absPath) {
   // here — vpMountDirectVideo consumes it. This is the safety net for a row
   // that somehow never reaches that mount, so the next V open isn't surprised.
   setTimeout(() => { window._vectAutoCrop = false; }, 3000);
+  _vectApplyLlc(absPath);   // (dev1059)
   return true;
+}
+
+// (dev1059) A LosslessCut project beside the video (<stem>-proj.llc, or the
+// older <name>.mp4.llc, or <stem>.llc) → its segment becomes A and B, exactly as
+// if they had been pressed there. The segment marked selected wins, else the
+// first; a segment with no end runs to the end of the video. The player is
+// polled for, since the mount is on a timeout and its duration comes later; the
+// row check stops a slow answer landing on a different video. Silent when there
+// is no .llc, or the proxy predates /vect/llc (it 404s).
+async function _vectApplyLlc(absPath) {
+  let j;
+  try {
+    const r = await fetch(PROXY_BASE + '/vect/llc?p=' + encodeURIComponent(absPath), { cache: 'no-store' });
+    if (!r.ok) return;
+    j = await r.json();
+  } catch (_) { return; }
+  if (!j || !j.ok || !j.file || !Array.isArray(j.segs) || !j.segs.length) return;
+  const idx = Math.max(0, j.segs.findIndex(s => s.selected));
+  const seg = j.segs[idx];
+  let tries = 0;
+  (function whenReady() {
+    const row = window._vpCurrentRow;
+    const el = _vpState && _vpState.player && _vpState.player.el;
+    const ready = row && row.comment === absPath && el && el.readyState >= 1
+      && Number.isFinite(el.duration) && el.duration > 0
+      && document.getElementById('vp-a') && document.getElementById('vp-b');
+    if (!ready) { if (tries++ < 150) setTimeout(whenReady, 100); return; }
+    const dur = el.duration;
+    const a = Math.max(0, Math.min(dur, +seg.start || 0));
+    const b = (seg.end != null && Number.isFinite(+seg.end)) ? Math.min(dur, +seg.end) : dur;
+    if (!(b > a)) return;
+    _vpState.aPoint = a;
+    _vpState.bPoint = b;
+    vpUpdateABStyle();
+    _vpSeekAbsolute(a);
+    if (typeof toast === 'function') {
+      toast('A/B from ' + j.file + ':  ' + a.toFixed(2) + ' → ' + b.toFixed(2) + 's' +
+            (seg.name ? '  · ' + seg.name : '') +
+            (j.segs.length > 1 ? '  (segment ' + (idx + 1) + ' of ' + j.segs.length + ')' : ''), 4500);
+    }
+  })();
 }
 
 // Picture → a bare full-window host with the file in it, then the same crop
