@@ -731,8 +731,18 @@ window.gridNewEmbed = function(all) {
   say('↻ new embed ' + (cell.dataset.cell || '') + ' — click ▶ in the middle to play', 1800);
 };
 
-function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
+function fitGridHtmlThumb(cellEl, wrapEl, innerEl, opts) {
   const VIRT_W = 600;
+  // (dev1061) opts.fill — pick the canvas width that lets the words FILL the
+  // cell (used for a web-link row's quote, _salLinkTextRow). At the fixed 600px
+  // canvas a short section is width-bound: in a 5×5 cell (~380px wide) it
+  // scaled to 0.63× — 9px type over a mostly empty cell. A narrower canvas wraps
+  // the same words into more, shorter lines, and the scale that fits those is
+  // larger; a wider one helps a tall section in a wide cell. Every candidate is
+  // one layout pass, on one cell, only when it is re-fitted.
+  const widths = (opts && opts.fill)
+    ? [900, 780, 680, 600, 550, 505, 465, 430, 395, 365, 335, 310, 285, 262, 240, 220]
+    : [VIRT_W];
   // (dev0729) Height of this content with EVERY collapsible open. Used as the
   // fit height on cells whose cards the viewer can open in place, so the scale
   // and the offsets below are the same whether the cards are open or closed —
@@ -762,12 +772,18 @@ function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
     // height. Without this reset, repeated calls compound their
     // measurements and the fit ratio gets progressively wrong.
     innerEl.style.transform = '';
-    innerEl.style.width = VIRT_W + 'px';
-    let naturalH = Math.max(1, innerEl.scrollHeight);
-    // Toggleable cell (the sectioned text slide) → lay it out at its open size
-    // in both states. Every other thumbnail still fits exactly what it shows.
-    if (cellEl._salSect) naturalH = Math.max(naturalH, expandedH());
-    const scale = Math.min(cw / VIRT_W, ch / naturalH);
+    let best = null;
+    for (const w of widths) {
+      innerEl.style.width = w + 'px';
+      let h = Math.max(1, innerEl.scrollHeight);
+      // Toggleable cell (the sectioned text slide) → lay it out at its open size
+      // in both states. Every other thumbnail still fits exactly what it shows.
+      if (cellEl._salSect) h = Math.max(h, expandedH());
+      const s = Math.min(cw / w, ch / h);
+      if (!best || s > best.s + 1e-6) best = { w: w, h: h, s: s };
+    }
+    const W = best.w, naturalH = best.h, scale = best.s;
+    innerEl.style.width = W + 'px';
     innerEl.style.transform = 'scale(' + scale + ')';
     // Center horizontally and vertically inside the cell when the
     // scaled content is smaller than the cell on either axis.
@@ -775,7 +791,7 @@ function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
     // quarter of the way down instead of dead centre — the title line reads as
     // the head of something that opens downward, and the body it reveals has
     // the room to grow there.
-    const offX = Math.max(0, (cw - VIRT_W * scale) / 2);
+    const offX = Math.max(0, (cw - W * scale) / 2);
     const freeY = Math.max(0, ch - naturalH * scale);
     const offY = cellEl._salSect ? freeY * 0.25 : freeY / 2;
     innerEl.style.left = offX + 'px';
@@ -980,7 +996,10 @@ function _gridExpandCell(cell) {
   return true;
 }
 
-window._gridSectionKey = function (key) {
+// (dev1061) ←/→ page the HOVERED sectioned cell when there is one (a web-link
+// quote can be sectioned in any cell now, not only 1a), else 1a as before.
+// A swipe passes the swiped cell as `target`.
+window._gridSectionKey = function (key, target) {
   if (key === 'ArrowUp') {
     let tc = (_gridHoverCell && _gridHoverCell._rowData
               && _gridIsTextRow(_gridHoverCell._rowData)) ? _gridHoverCell : null;
@@ -997,7 +1016,10 @@ window._gridSectionKey = function (key) {
     return true;
   }
   if (key === 'ArrowDown') return false;   // ↓ only acts inside the reader
-  const cell = document.querySelector('#gridContainer .grid-cell[data-cell="1a"]');
+  const _paged = c => !!(c && c._salSect && c._salSect.inner && c._salSect.inner.isConnected);
+  const cell = _paged(target) ? target
+             : _paged(_gridHoverCell) ? _gridHoverCell
+             : document.querySelector('#gridContainer .grid-cell[data-cell="1a"]');
   if (!cell || !cell._salSect || !cell._salSect.inner.isConnected) return false;
   const s = cell._salSect;
   if (key === 'ArrowRight' || key === 'ArrowLeft') {
@@ -1791,6 +1813,26 @@ function _gridIsTextRow(row) {
   // in G never opens Xe (the ftext-truthy gate below misses it until content exists).
   return row.ltype === 't' || row.VidRange === 'text' || !!(row.ftext && String(row.ftext).trim());
 }
+
+// (dev1061) A WEB-LINK row (ltype 'w') whose ftext is words only — 2450, a quote
+// typed into Xe under the article's link. G tried the article URL as a picture,
+// and when that failed painted just the first line as a coloured label; V showed
+// the URL as a broken picture. These rows now READ AS TEXT: V opens its text
+// reader for all of them, and G shows the text one ══ section at a time.
+// `maxChars` is G's cap (_GRID_LINK_TEXT_MAX): a long pasted article would be a
+// grey smudge in a cell, so it keeps its label there. The article link itself is
+// untouched. Existence/size tests read row.ftext, never the translation (dev0933).
+const _GRID_LINK_TEXT_MAX = 1500;
+window._salLinkTextRow = function (row, maxChars) {
+  if (!row || row.ltype !== 'w' || !row.link) return false;
+  if (typeof isVideoRow === 'function' && isVideoRow(row)) return false;
+  if (/\.(jpe?g|png|gif|webp|svg|bmp|tiff?|avif)(\?|#|$)/i.test(row.link)) return false;
+  const ft = String(row.ftext || '').trim();
+  if (!ft || ft[0] === '[' || ft[0] === '{') return false;
+  if (/<(img|video|iframe|audio|source|embed|object)[\s>]/i.test(ft)) return false;
+  const chars = ft.replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, 'x').replace(/\s+/g, ' ').trim().length;
+  return chars > 0 && (!maxChars || chars <= maxChars);
+};
 
 // ══════════════════════════════════════════════════════════════════════════════
 // (dev0860) FLASH CARDS IN G
@@ -3387,7 +3429,9 @@ function gridShow() {
       const cardParts = row ? _gridCardParts(row) : null;
       if (row) {
         const isVid = isVideoRow(row);
-        const isText = row.VidRange === 'text' || (row.ftext && !row.link);
+        // (dev1061) a short web-link quote reads as text too — see _salLinkTextRow
+        const isLinkText = window._salLinkTextRow(row, _GRID_LINK_TEXT_MAX);
+        const isText = row.VidRange === 'text' || (row.ftext && !row.link) || isLinkText;
         const isQuiz = !!(row.qfile || (row.ftext && !row.link && (row.ftext.trim().startsWith('[') || row.ftext.trim().startsWith('{'))));
         const isImgLink = /\.(jpe?g|png|gif|webp|svg|bmp|tiff?)(\?.*)?$/i.test(row.link || '');
         const hasFtextImgs = !!(row.ftext && row.ftext.includes('<img'));
@@ -3455,7 +3499,8 @@ function gridShow() {
             + 'color:#222;padding:16px;box-sizing:border-box;';
           // (dev0588) Cell 1a renders SECTIONED (split at <hr>, details
           // collapsed, arrow/tap nav); every other cell keeps the full thumb.
-          if (cellStr === '1a') _gridSectionSetup(cell, wrap, inner, row);
+          // (dev1061) …and a web-link quote pages by section in ANY cell.
+          if (cellStr === '1a' || isLinkText) _gridSectionSetup(cell, wrap, inner, row);
           else inner.innerHTML = (typeof renderFtext === "function" ? renderFtext(_rowFtext(row)) : _rowFtext(row));
           _ensureGridThumbTableCss();
           _gridThumbApplySlideColors(wrap, inner);
@@ -3465,7 +3510,7 @@ function gridShow() {
           // Scale after the cell has its real dimensions. rAF gives the
           // grid one paint to compute its 5×5 layout; without it the
           // cell measures 0×0 and the scale comes out to NaN.
-          fitGridHtmlThumb(cell, wrap, inner);
+          fitGridHtmlThumb(cell, wrap, inner, isLinkText ? { fill: true } : null);
         } else if (isVid && row.link) {
           const vidHost = document.createElement('div');
           vidHost.id = 'grid-vid-' + cellStr;
@@ -3825,7 +3870,9 @@ function gridUpdateCell(cellStr, row) {
     cellEl._rowData = row;
     cellEl.style.background = '#000';
     const isVid = isVideoRow(row);
-    const isText = row.VidRange === 'text' || (row.ftext && !row.link);
+    // (dev1061) a short web-link quote reads as text too — see _salLinkTextRow
+    const isLinkText = window._salLinkTextRow(row, _GRID_LINK_TEXT_MAX);
+    const isText = row.VidRange === 'text' || (row.ftext && !row.link) || isLinkText;
     const isQuiz = !!(row.qfile || (row.ftext && !row.link && (row.ftext.trim().startsWith('[') || row.ftext.trim().startsWith('{'))));
     const isImgLink = /\.(jpe?g|png|gif|webp|svg|bmp|tiff?)(\?.*)?$/i.test(row.link || '');
     const hasFtextImgs = !!(row.ftext && row.ftext.includes('<img'));
@@ -3878,14 +3925,14 @@ function gridUpdateCell(cellStr, row) {
         + 'transform-origin:top left;font-family:Arial,sans-serif;'
         + 'color:#222;padding:16px;box-sizing:border-box;';
       // (dev0588) Cell 1a renders SECTIONED — same as gridShow's branch.
-      if (cellStr === '1a') _gridSectionSetup(cellEl, wrap, inner, row);
+      if (cellStr === '1a' || isLinkText) _gridSectionSetup(cellEl, wrap, inner, row);   // (dev1061)
       else inner.innerHTML = (typeof renderFtext === "function" ? renderFtext(_rowFtext(row)) : _rowFtext(row));
       _ensureGridThumbTableCss();
       _gridThumbApplySlideColors(wrap, inner);
       wrap.appendChild(inner);
       cellEl.appendChild(wrap);
       cellEl.style.background = '#fff';
-      fitGridHtmlThumb(cellEl, wrap, inner);
+      fitGridHtmlThumb(cellEl, wrap, inner, isLinkText ? { fill: true } : null);
     } else if (isVid && row.link) {
       // Video cell
       const vidHost = document.createElement('div');
@@ -4233,7 +4280,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
     // NEXT section (there is no video to pause on a text cell); swipe RIGHT
     // above still opens the fullscreen reader. Every other cell pauses/plays.
     if (dx < -40 && Math.abs(dy) < Math.abs(dx)) {
-      if (cell._salSect) { if (window._gridSectionKey) window._gridSectionKey('ArrowRight'); return; }
+      if (cell._salSect) { if (window._gridSectionKey) window._gridSectionKey('ArrowRight', cell); return; }
       gridTogglePauseCell(cellStr);
       return;
     }
@@ -4437,7 +4484,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
       }
       // (dev0643) Within-cell swipe left on the sectioned 1a text slide advances
       // a section (touch mirror of the pointer path above).
-      if (cell._salSect) { if (window._gridSectionKey) window._gridSectionKey('ArrowRight'); return; }
+      if (cell._salSect) { if (window._gridSectionKey) window._gridSectionKey('ArrowRight', cell); return; }
       gridTogglePauseCell(cellStr);
       return;
     }

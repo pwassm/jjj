@@ -46,6 +46,25 @@
   // already has, and a v1-authored title parses back into the attribute rather
   // than being flattened to plain text on the next autosave.
   var _SUM_H = ':scope > h1,:scope > h2,:scope > h3,:scope > h4,:scope > h5,:scope > h6';
+
+  // (dev1061) SMALL TEXT. A line (paragraph) or a collapsible's title can sit
+  // BELOW the normal size, at one of these fractions of it, stored as an inline
+  // em font-size on that block. em, not px: every context multiplies it by its
+  // own base (Xe 18px, V's reader up to 25px, G's scaled thumbnail), so a step
+  // is the same PROPORTION everywhere and no render CSS had to learn about it.
+  // Only these values parse back in. Any other font-size on a <p> — pasted junk,
+  // v1's px sizes — is dropped on load exactly as before.
+  var SMALL_SIZES = [0.5, 0.6, 0.7, 0.8, 0.9];
+  function _parseSmallEm(el) {
+    var m = /^\s*(0?\.\d+)em\s*$/.exec((el && el.style && el.style.fontSize) || '');
+    if (!m) return null;
+    var v = Math.round(parseFloat(m[1]) * 100) / 100;
+    return SMALL_SIZES.indexOf(v) >= 0 ? v : null;
+  }
+  function _renderSmallEm(attrs) {
+    return attrs.fontSize ? { style: 'font-size: ' + attrs.fontSize + 'em' } : {};
+  }
+
   var DetailsSummary = Node.create({
     name: 'detailsSummary',
     content: 'inline*',
@@ -61,6 +80,9 @@
           },
           renderHTML: function () { return {}; },   // composed in renderHTML below
         },
+        // (dev1061) A title below normal size (level 0 only; a heading level
+        // and a small size never coexist — see _rungAttrsForSummary).
+        fontSize: { default: null, parseHTML: _parseSmallEm, renderHTML: _renderSmallEm },
       };
     },
     parseHTML: function () {
@@ -502,10 +524,26 @@
     },
   });
 
+  // (dev1061) The small sizes, on paragraphs only (above normal is headings).
+  // Merges with text-align into one style attribute: "text-align: center;
+  // font-size: 0.6em".
+  var FontSizeAttr = L.Extension.create({
+    name: 'xe2FontSize',
+    addGlobalAttributes: function () {
+      return [{
+        types: ['paragraph'],
+        attributes: {
+          fontSize: { default: null, parseHTML: _parseSmallEm, renderHTML: _renderSmallEm },
+        },
+      }];
+    },
+  });
+
   function buildExtensions() {
     return [
       StarterKit,
       TextAlignAttr,
+      FontSizeAttr,
       DetailsSummary, Details, Small, SlideSection, StyledDiv, TeCut, XAll,
       CheckBox,
       Underline,
@@ -1258,10 +1296,49 @@
     document.body.appendChild(pop);
   }
 
-  // A+/A− text size stepper: walks the current block along the em ladder
-  // (h6 0.9 → p 1 → h4 1.1 → h3 1.25 → h2 1.5 → h1 2). Stays schema-clean —
-  // no inline font-size spans (the v1 corruption vector).
-  var SIZE_LADDER = [['heading', 6], ['paragraph', 0], ['heading', 4], ['heading', 3], ['heading', 2], ['heading', 1]];
+  // A+/A− text size stepper: walks the current block along an em ladder.
+  // Stays schema-clean — no inline font-size spans (the v1 corruption vector);
+  // a size is a property of the whole line.
+  // (dev1061) Ten rungs, 0.5× to 2×. BELOW normal the rungs are paragraphs
+  // with a small size (SMALL_SIZES); above it they are headings as before. h6
+  // used to be the one rung below normal — bold, so the first A− on a quote
+  // turned it bold, and it went no smaller than 0.9. An h6 or h5 already in a
+  // slide still steps from the rung its size matches (0.9 / normal).
+  // The picker (Aa▾) offers the same ten rungs by name.
+  var SIZE_LADDER = [
+    ['paragraph', 0.5], ['paragraph', 0.6], ['paragraph', 0.7], ['paragraph', 0.8], ['paragraph', 0.9],
+    ['paragraph', null], ['heading', 4], ['heading', 3], ['heading', 2], ['heading', 1]];
+  var NORMAL_RUNG = 5;
+  var RUNG_EM = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 2];   // same em values as every render context
+  var RUNG_NAME = ['50%', '60%', '70%', '80%', '90%', 'Normal', 'H4', 'H3', 'H2', 'H1'];
+
+  // The rung a heading level sits on (h5 is 1em = normal, h6 is 0.9em).
+  function _rungOfLevel(lv) {
+    return lv === 1 ? 9 : lv === 2 ? 8 : lv === 3 ? 7 : lv === 4 ? 6 : lv === 6 ? 4 : NORMAL_RUNG;
+  }
+  // The rung of a paragraph, heading or summary node.
+  function _rungOfNode(node) {
+    if (!node) return NORMAL_RUNG;
+    var t = node.type.name;
+    if (t === 'heading') return _rungOfLevel(node.attrs.level);
+    if (t === 'detailsSummary' && node.attrs.level) return _rungOfLevel(node.attrs.level);
+    var i = SMALL_SIZES.indexOf(node.attrs.fontSize);
+    return i >= 0 ? i : NORMAL_RUNG;
+  }
+  // The rung of the line the cursor is on.
+  function currentRung(editor) {
+    var $f = editor.state.selection.$from;
+    for (var d = $f.depth; d > 0; d--) {
+      var t = $f.node(d).type.name;
+      if (t === 'paragraph' || t === 'heading' || t === 'detailsSummary') return _rungOfNode($f.node(d));
+    }
+    return NORMAL_RUNG;
+  }
+  // A rung → the attributes a summary needs to render at that same size.
+  function _rungAttrsForSummary(idx) {
+    var n = SIZE_LADDER[idx];
+    return n[0] === 'heading' ? { level: n[1], fontSize: null } : { level: 0, fontSize: n[1] };
+  }
 
   // (dev0730) Heading level of the <summary> the cursor sits in — 0 for a plain
   // title, null when the cursor isn't in a summary at all (i.e. the ordinary
@@ -1273,8 +1350,9 @@
     }
     return null;
   }
+  // (dev1061) A heading level and a small size never sit on one title together.
   function setSummaryLevel(editor, level) {
-    editor.chain().focus().updateAttributes('detailsSummary', { level: level }).run();
+    editor.chain().focus().updateAttributes('detailsSummary', { level: level, fontSize: null }).run();
   }
 
   // (dev0880) The position of the <summary> belonging to the <details> the
@@ -1297,16 +1375,12 @@
     }
     return null;
   }
-  function setSummaryLevelAt(editor, pos, level) {
+  function setSummaryAttrsAt(editor, pos, attrs) {
     var n = editor.state.doc.nodeAt(pos);
-    if (!n || n.attrs.level === level) return;
+    if (!n || (n.attrs.level === attrs.level && (n.attrs.fontSize || null) === attrs.fontSize)) return;
     var tr = editor.state.tr;
-    tr.setNodeMarkup(pos, undefined, Object.assign({}, n.attrs, { level: level }));
+    tr.setNodeMarkup(pos, undefined, Object.assign({}, n.attrs, attrs));
     editor.view.dispatch(tr);
-  }
-  // A ladder slot → the level a summary needs to render at that same size.
-  function summaryLevelForSlot(slot) {
-    return slot[0] === 'paragraph' ? 0 : slot[1];
   }
   // H1/H2/H3 button: the block for a body line, the title size for a summary.
   // Re-clicking the level a title already has clears it, matching toggleHeading.
@@ -1315,41 +1389,54 @@
     if (cur === null) { editor.chain().focus().toggleHeading({ level: level }).run(); return; }
     setSummaryLevel(editor, cur === level ? 0 : level);
   }
+  // (dev1061) P = back to a normal line: headings become paragraphs and a small
+  // size is cleared. Goes through _paragraphSizeCmd, not setParagraph — on a
+  // line that is ALREADY a paragraph, TipTap's setParagraph falls through to
+  // clearNodes, which lifts the line out of its list or collapsible.
   function paragraphOrSummary(editor) {
-    if (summaryLevel(editor) === null) editor.chain().focus().setParagraph().run();
+    if (summaryLevel(editor) === null) editor.chain().focus().command(_paragraphSizeCmd(null)).run();
     else setSummaryLevel(editor, 0);
   }
 
-  function stepBlockSize(editor, dir) {
-    // A summary walks the SAME ladder, expressed as its own level attribute.
-    var sl = summaryLevel(editor);
-    if (sl !== null) {
-      var sc = 1;
-      for (var j = 0; j < SIZE_LADDER.length; j++) {
-        var s = SIZE_LADDER[j];
-        var shit = (s[0] === 'paragraph') ? (!sl || sl === 5) : (s[1] === sl);
-        if (shit) { sc = j; break; }
-      }
-      var sn = sc + dir;
-      if (sn < 0 || sn >= SIZE_LADDER.length) return;
-      setSummaryLevel(editor, SIZE_LADDER[sn][0] === 'paragraph' ? 0 : SIZE_LADDER[sn][1]);
+  // (dev1061) Every heading and paragraph the selection touches becomes a
+  // paragraph at `size` (null = normal). Collapsible titles are skipped — they
+  // size through their own attributes. A retype is setNodeMarkup, which moves
+  // nothing, and it keeps the line's alignment. One transaction, one undo.
+  function _paragraphSizeCmd(size) {
+    return function (p) {
+      var tr = p.tr, sel = tr.selection, P = tr.doc.type.schema.nodes.paragraph;
+      tr.doc.nodesBetween(sel.from, sel.to, function (node, pos) {
+        var t = node.type.name;
+        if (t === 'detailsSummary') return false;
+        if (t === 'heading') {
+          tr.setNodeMarkup(pos, P, { textAlign: node.attrs.textAlign || null, fontSize: size });
+          return false;
+        }
+        if (t === 'paragraph') {
+          if ((node.attrs.fontSize || null) !== size) {
+            tr.setNodeMarkup(pos, undefined, Object.assign({}, node.attrs, { fontSize: size }));
+          }
+          return false;
+        }
+      });
+      return true;
+    };
+  }
+
+  // Put the line(s) under the cursor on rung `idx` of the ladder.
+  function applyRung(editor, idx) {
+    if (idx < 0 || idx >= SIZE_LADDER.length) return;
+    // A summary takes the rung as its own attributes (level / fontSize).
+    if (summaryLevel(editor) !== null) {
+      editor.chain().focus().updateAttributes('detailsSummary', _rungAttrsForSummary(idx)).run();
       return;
     }
-    var cur = 1; // default slot: paragraph (h5 is the same size — treated as p)
-    for (var i = 0; i < SIZE_LADDER.length; i++) {
-      var t = SIZE_LADDER[i];
-      var hit = (t[0] === 'paragraph') ? editor.isActive('paragraph')
-                                       : editor.isActive('heading', { level: t[1] });
-      if (hit) { cur = i; break; }
-    }
-    var ni = cur + dir;
-    if (ni < 0 || ni >= SIZE_LADDER.length) return;
-    var n = SIZE_LADDER[ni];
+    var n = SIZE_LADDER[idx];
     // (dev0880) Take the summary's position BEFORE the block changes. Retyping a
     // paragraph to a heading does not move anything, so the position stays good
     // either way — but reading it first keeps that assumption in one place.
     var sumPos = summaryPosForBody(editor);
-    if (n[0] === 'paragraph') editor.chain().focus().setParagraph().run();
+    if (n[0] === 'paragraph') editor.chain().focus().command(_paragraphSizeCmd(n[1])).run();
     else editor.chain().focus().setHeading({ level: n[1] }).run();
     // (dev0880) A SUMMARY IS THE TITLE OF ITS OWN BODY AND MUST NOT END UP
     // SMALLER THAN IT. A summary at level 0 sits at the paragraph rung, so the
@@ -1360,7 +1447,78 @@
     // Stepping the SUMMARY itself is left alone (the branch above returns early)
     // — that is an explicit, deliberate change to the title, and the body should
     // not be dragged along behind it.
-    if (sumPos !== null) setSummaryLevelAt(editor, sumPos, summaryLevelForSlot(n));
+    if (sumPos !== null) setSummaryAttrsAt(editor, sumPos, _rungAttrsForSummary(idx));
+  }
+
+  function stepBlockSize(editor, dir) {
+    var ni = currentRung(editor) + dir;
+    if (ni < 0 || ni >= SIZE_LADDER.length) {
+      _toast(dir < 0 ? 'Already the smallest size (50%)' : 'Already the largest size (H1)');
+      return;
+    }
+    applyRung(editor, ni);
+    _toast('Text size: ' + RUNG_NAME[ni] + _vSizeNote(ni));
+  }
+
+  // (dev1061) What a rung comes out at in V's full-window reader on THIS
+  // screen. The reader's base is clamp(16px, 1.15vw + 9px, 25px) (vp.js
+  // _bodyCss) and every rung is an em of it. G has no one answer: a cell scales
+  // its text to the cell.
+  function _vBasePx() {
+    var w = window.innerWidth || 1280;
+    return Math.max(16, Math.min(25, 0.0115 * w + 9));
+  }
+  function _vSizeNote(idx) {
+    return '  (≈' + Math.round(_vBasePx() * RUNG_EM[idx]) + 'px in V)';
+  }
+
+  // (dev1061) Aa▾ — every size by name, largest first, each drawn at its real
+  // proportion, with a ✓ on the one the cursor's line has now.
+  function showSizePicker(anchorBtn) {
+    var old = document.getElementById('xe2SizePicker');
+    if (old) { old.remove(); return; }
+    if (!_api) return;
+    var cur = currentRung(_api.editor);
+    var r = anchorBtn.getBoundingClientRect();
+    var pop = document.createElement('div');
+    pop.id = 'xe2SizePicker';
+    pop.style.cssText = 'position:fixed;z-index:36800;background:#0d0d1e;border:1px solid #4af;' +
+      'border-radius:8px;padding:6px;box-shadow:0 6px 24px rgba(0,0,0,0.7);' +
+      'left:' + r.left + 'px;top:' + (r.bottom + 4) + 'px;display:flex;flex-direction:column;gap:3px;' +
+      'max-height:calc(100vh - ' + Math.round(r.bottom + 16) + 'px);overflow:auto;';
+    var head = document.createElement('div');
+    head.style.cssText = 'color:#89a;font-size:11px;padding:2px 4px 4px;max-width:300px;line-height:1.35;';
+    head.textContent = 'Size of the line(s) under the cursor. Ordinary screen text is about 14–16px. ' +
+      'In G a cell scales its text to fit the cell.';
+    pop.appendChild(head);
+    function onDoc(e) {
+      if (!pop.contains(e.target) && e.target !== anchorBtn) {
+        pop.remove();
+        document.removeEventListener('mousedown', onDoc, true);
+      }
+    }
+    for (var i = SIZE_LADDER.length - 1; i >= 0; i--) {
+      (function (idx) {
+        var b = document.createElement('button');
+        b.className = 'xe2-btn';
+        b.style.cssText = 'text-align:left;display:flex;align-items:center;gap:10px;padding:4px 9px;';
+        var bold = SIZE_LADDER[idx][0] === 'heading' ? 'bold' : 'normal';
+        b.innerHTML = '<span style="display:inline-block;min-width:60px;font-size:' + Math.round(16 * RUNG_EM[idx]) +
+          'px;font-weight:' + bold + ';color:#eee;line-height:1.1;">Aa</span>' +
+          '<span style="min-width:52px;">' + RUNG_NAME[idx] + '</span>' +
+          '<span style="color:#89a;font-size:11px;">≈' + Math.round(_vBasePx() * RUNG_EM[idx]) + 'px in V</span>' +
+          (idx === cur ? ' <span style="color:#6d8;">&#10003;</span>' : '');
+        b.onmousedown = function (ev) { ev.preventDefault(); };
+        b.onclick = function () {
+          pop.remove();
+          document.removeEventListener('mousedown', onDoc, true);
+          if (_api) applyRung(_api.editor, idx);
+        };
+        pop.appendChild(b);
+      })(i);
+    }
+    document.addEventListener('mousedown', onDoc, true);
+    document.body.appendChild(pop);
   }
 
   // Color swatch popup (same palette as v1's teShowColorPicker).
@@ -2293,8 +2451,10 @@
       ['H2', 'Heading 2 — on a collapsible’s title line it sizes the title', function (e) { headingOrSummary(e, 2); }],
       ['H3', 'Heading 3 — on a collapsible’s title line it sizes the title', function (e) { headingOrSummary(e, 3); }],
       ['P', 'Paragraph — on a collapsible’s title line it clears the title size', function (e) { paragraphOrSummary(e); }],
-      ['A&#8722;', 'Smaller text — step the current line down the size ladder', function (e) { stepBlockSize(e, -1); }],
-      ['A+', 'Larger text — step the current line up the size ladder', function (e) { stepBlockSize(e, 1); }],
+      ['A&#8722;', 'Smaller text — step the current line(s) down one size: H1 → H2 → H3 → H4 → Normal → 90% → 80% → 70% → 60% → 50%. 60% reads like ordinary screen text in V', function (e) { stepBlockSize(e, -1); }],
+      ['A+', 'Larger text — step the current line(s) up one size, 50% up to H1', function (e) { stepBlockSize(e, 1); }],
+      // (dev1061)
+      ['Aa&#9662;', 'Text size — pick any of the ten sizes (50% to H1) for the line(s) under the cursor, with how big each comes out in V on this screen', function (e, btn) { showSizePicker(btn); }],
       ['&bull;', 'Bullet list', function (e) { e.chain().focus().toggleBulletList().run(); }],
       ['1.', 'Numbered list', function (e) { e.chain().focus().toggleOrderedList().run(); }],
       ['|'],
@@ -2829,6 +2989,9 @@
     // the only way to prove a summary tracks its body without driving a toolbar.
     _stepBlockSize: stepBlockSize,
     _summaryPosForBody: summaryPosForBody,
+    _applyRung: applyRung,            // (dev1061)
+    _currentRung: currentRung,
+    _paragraphOrSummary: paragraphOrSummary,
     // (dev0757) media-unit selection — exported for the headless jsdom suite
     _isMediaWrapper: _isMediaWrapper,
     _mediaUnitPos: _mediaUnitPos,

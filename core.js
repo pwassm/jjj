@@ -9020,7 +9020,12 @@ function ftextStats(html) {
   // (dev0716) …and <video …>, which carries the same deliberate sizing style.
   const scan = html.replace(/<img\b[^>]*>/gi, '').replace(/<video\b[^>]*>/gi, '');
   let junk = 0;
-  for (const m of scan.matchAll(/\sstyle="[^"]*"/gi)) junk += m[0].length;
+  // (dev1061) Xe's small text sizes (style="font-size: 0.6em") are formatting,
+  // not junk; anything else in the same style still counts in full.
+  for (const m of scan.matchAll(/\sstyle="([^"]*)"/gi)) {
+    if (!m[1].replace(/font-size:\s*0?\.\d+em;?/gi, '').trim()) continue;
+    junk += m[0].length;
+  }
   for (const m of scan.matchAll(/\sclass="([^"]*)"/gi)) {
     const c = (m[1] || '').trim();
     if (c !== 'te-cut' && c !== 'te-slide') junk += m[0].length;

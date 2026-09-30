@@ -2091,12 +2091,17 @@ function gridOpenFullscreen(row, contained) {
       }
     }
 
-  } else if ((row.ftext && !row.link) || row.qfile) {
+  } else if ((row.ftext && !row.link) || row.qfile
+             || (typeof window._salLinkTextRow === 'function' && window._salLinkTextRow(row))) {
     // (dev0530) ftext must NEVER win over a media link: a row that carries
     // BOTH ftext and an image/video link should show the MEDIA, not the text.
     // The video branch above already claimed real video rows (isVideoRow), and
     // the image branch below claims any remaining `row.link`; so ftext only
     // renders when there is no link at all. (qfile quizzes have no link.)
+    // (dev1061) …or when the link is a web PAGE (ltype 'w', not a picture or
+    // video) and the ftext is words only — 2450's quote. The image branch
+    // showed such a link as a broken picture. grid.js _salLinkTextRow decides;
+    // no length cap here, since the reader scrolls.
     // (dev0644) Mark this open as the TEXT READER: ↓ closes it back to the
     // grid (vpKeyHandler), pairing with the grid's ↑ = expand-t-cell. The
     // designation-page re-entries re-arm this flag after gridOpenFullscreen

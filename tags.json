@@ -8471,5 +8471,13 @@
     "rank": "species",
     "common": "",
     "extinct": false
+  },
+  {
+    "id": "stargazerno",
+    "label": "Stargazerno",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]
