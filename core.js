@@ -318,8 +318,7 @@ window.addEventListener('keydown', function(e) {
   // c (clear sel). (dev0497) It also owns d (download sel), e (enrich sel),
   // m (clear+select top 18) and — via Shift — N/D/E/A (status filter, which
   // lowercase to n/d/e/a here). (dev0635) It also owns w (clipboard IG URL → new
-  // Unharvested single). (dev1064) Bare n = type a 📝 note on the focused row
-  // (already in the list below as Shift+N's lowercase). Bail WITHOUT preventDefault so ig.js's own capture handler
+  // Unharvested single). Bail WITHOUT preventDefault so ig.js's own capture handler
   // — registered after this one — receives them. Without this bail, e would open
   // Edit, m the hamburger menu, w the shareable menu, etc. Other nav keys
   // (t/g/i/…) still fall through so they close Ig and switch screens as before.
