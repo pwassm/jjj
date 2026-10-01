@@ -1324,14 +1324,14 @@ window.gridPlaySteps = function(cellStr, row) {
 
   var interval = Math.max(16, Math.round(x * 1000));
   var pos = 0;
-  seek(s * FRAME);
+  seek((s + 0.5) * FRAME);   // (dev1073) mid-frame, as V's step panel parks
   // (dev0556) x=0 or d=0 = a saved FREEZE-FRAME (made by wheeling the V step
   // panel's rate or d box down to 0 before Save): hold frame s, no loop.
   if (x === 0 || d === 0) return;
   window.seeLearnVideoTimers[cellId] = setInterval(function() {
     if (busy()) return;                          // let the prior seek land first (disk/Vimeo)
     pos = (pos >= d) ? 0 : pos + 1;              // forward loop: s … s+d … restart at s
-    seek((s + pos) * FRAME);
+    seek((s + pos + 0.5) * FRAME);
   }, interval);
 };
 

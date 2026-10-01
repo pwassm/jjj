@@ -396,7 +396,7 @@ window.HOTKEYS = [
     } },
 
   { key: 'v', label: 'V', group: 'Screens', scope: 'global',
-    desc: 'View the focused T row / last grid row fullscreen (V/I/Q/Xs); toggles closed if already open — except on a video, where v switches the slim timeline and the full toolbar',
+    desc: 'View the focused T row / the grid cell under the mouse (else the last grid row) fullscreen (V/I/Q/Xs); toggles closed if already open — except on a video, where v switches the slim timeline and the full toolbar',
     fn(ctx) {
       // (zip0159) Mirrors swipe-right behaviour.
       if (ctx.teOpen) return;
@@ -409,6 +409,12 @@ window.HOTKEYS = [
       if (!ctx.gridOpen && focus !== null) {
         const di = vr(focus.r);
         if (di >= 0 && di < data.length) row = data[di];
+      }
+      // (dev1073) From G: the cell under the mouse — probed afresh, so it is the
+      // right cell even after 2/3/4/5 re-laid the grid under a still mouse.
+      if (!row && ctx.gridOpen && typeof window._gridRowUnderMouse === 'function') {
+        row = window._gridRowUnderMouse();
+        if (row && typeof _lastGridRow !== 'undefined') _lastGridRow = row;
       }
       // From G: use last interacted grid row
       if (!row && typeof _lastGridRow !== 'undefined' && _lastGridRow) row = _lastGridRow;

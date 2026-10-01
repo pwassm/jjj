@@ -2656,6 +2656,20 @@ function gridAdjustCellZoom(cellEl, delta) {
 // (dev0346's mouse-wheel zoom was removed: plain/Ctrl wheel fight the browser's
 // own scroll/page-zoom, so zoom is keyboard-driven — [ ] global, Ctrl+[ ] cell.)
 var _gridHoverCell = null;
+// (dev1073) Where the mouse last was over G, so a key can ask what is under it
+// NOW. _gridHoverCell is only refreshed by a mousemove, so after 2/3/4/5 re-lay
+// the grid under a still mouse it names a cell that has gone (or moved); a
+// fresh probe at the same point finds the cell that is there now.
+var _gridMouseXY = null;
+window._gridRowUnderMouse = function () {
+  let cell = null;
+  if (_gridMouseXY) {
+    const el = document.elementFromPoint(_gridMouseXY.x, _gridMouseXY.y);
+    cell = (el && el.closest) ? el.closest('#gridContainer .grid-cell') : null;
+  }
+  if (!cell && _gridHoverCell && _gridHoverCell.isConnected) cell = _gridHoverCell;
+  return (cell && cell._rowData) ? cell._rowData : null;
+};
 
 // (dev0363) Alt-click handler: set this row's centre of interest — the point
 // the cell frames itself around. Writes the row's "COI" column as
@@ -3686,8 +3700,9 @@ function gridShow() {
     overlay._hoverWired = true;
     overlay.addEventListener('mousemove', e => {
       _gridHoverCell = (e.target && e.target.closest) ? e.target.closest('.grid-cell') : null;
+      _gridMouseXY = { x: e.clientX, y: e.clientY };   // (dev1073) for _gridRowUnderMouse
     }, true);
-    overlay.addEventListener('mouseleave', () => { _gridHoverCell = null; }, true);
+    overlay.addEventListener('mouseleave', () => { _gridHoverCell = null; _gridMouseXY = null; }, true);
     // (dev0888) WHEEL UP = the ↑ key: expand the cell under the pointer to the
     // whole window. On a wall of flash cards the pointer is already on the card
     // you mean, so a wheel is a shorter gesture than moving focus and pressing

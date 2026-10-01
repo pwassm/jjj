@@ -1212,6 +1212,12 @@ function gridOpenFullscreen(row, contained) {
       content._fsbWired = true;
 
       const FRAME = 1 / 30;     // ~1 video frame (matches the arrow-key step)
+      // (dev1073) Frame f is shown by parking MID-frame, (f+0.5)/30: at f/30
+      // exactly, which frame a player shows hangs on float rounding and the
+      // source's real rate (29.97 shows f-1 there). The proxy's step-clip cut
+      // takes the frame on screen at the same mid-frame time, so the panel and
+      // the saved clip agree frame for frame.
+      const atFrame = f => (f + 0.5) * FRAME;
       const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
       // ── shared, stateless UI + player helpers ──────────────────────────
@@ -1327,7 +1333,7 @@ function gridOpenFullscreen(row, contained) {
         // (dev0415) Optional seed: saved x/s/d replayed from G "Play steps".
         let secs = isFinite(init.secs) ? clamp(+(+init.secs).toFixed(2), 0, 10) : 0.50;  // Row-1 rate: 1 frame / secs (0 = frozen)
         let startFrame = isFinite(init.startFrame) ? Math.max(0, init.startFrame | 0)
-                                                   : Math.max(0, Math.round(curT() / FRAME));  // box "s"
+                                                   : Math.max(0, Math.floor(curT() / FRAME + 1e-6));  // box "s" (dev1073: the frame ON screen)
         let numFrames  = isFinite(init.numFrames) ? Math.max(0, init.numFrames | 0) : 10;      // box "d" (0 = hold start frame)
         let activeStart = startFrame, activeDur = numFrames;       // what a running loop uses
         let autoTimer = null, autoDir = 0;            // Row-1 free-run step
@@ -1386,7 +1392,7 @@ function gridOpenFullscreen(row, contained) {
           const f = activeStart + playPos;
           if (span === 0 && f === lastTickFrame) return;   // (dev0555) d=0 → hold the start frame, don't re-seek every tick
           lastTickFrame = f;
-          seekAbs(f * FRAME);
+          seekAbs(atFrame(f));
         }
         function armPlay() {                           // (re)start ticking at the current rate
           if (playTimer) { clearInterval(playTimer); playTimer = null; }
@@ -1400,7 +1406,7 @@ function gridOpenFullscreen(row, contained) {
           if (_vpIsPlaying()) _vpPauseNow();
           applyPending();                              // begin from the shown s/d
           playMode = mode; playDir = 1; playPos = 0;
-          seekAbs(activeStart * FRAME);
+          seekAbs(atFrame(activeStart));
           armPlay(); syncBtns();
         }
 
@@ -1459,7 +1465,7 @@ function gridOpenFullscreen(row, contained) {
           if (_vpIsPlaying()) _vpPauseNow();
           applyPending();
           lastTickFrame = -1;
-          seekAbs(frame * FRAME);
+          seekAbs(atFrame(frame));
           syncBtns();
           _vpUpdateABLines();                          // (dev1071) the green/red pair follows s / d
         }

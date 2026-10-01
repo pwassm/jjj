@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1790873785936,
+    "_salPushTime": 1790885663871,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -90,10 +90,10 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "DateAdded",
+      "col": "UID",
       "dir": "desc"
     },
-    "_salGsize": 5,
+    "_salGsize": 2,
     "_salViews": {
       "view1": {
         "name": "view1",
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1790873785936
+    "_salSavedAt": 1790885663871
   },
   {
     "UID": "1",
@@ -53299,7 +53299,7 @@
     "link": "https://youtu.be/8DqglF2ACQ0",
     "show": "1",
     "DateAdded": "2026-09-30 03:53:50",
-    "DateModified": "2026-09-30 04:08:35",
+    "DateModified": "2026-10-01 20:14:23",
     "tags": [
       "stargazer"
     ],
@@ -53311,7 +53311,8 @@
     "VidAuthor": "@PangQuong",
     "Mode": "L",
     "ftext": "",
-    "cell": "2b"
+    "cell": "2b",
+    "steps": "0.50,9207,17"
   },
   {
     "UID": "2437",
@@ -53508,7 +53509,7 @@
     "link": "https://youtu.be/fXIcPkqpdPY",
     "show": "1",
     "DateAdded": "2026-09-30 04:23:16",
-    "DateModified": "2026-09-30 04:26:46",
+    "DateModified": "2026-10-01 20:04:59",
     "tags": [
       "stargazer"
     ],
@@ -53523,7 +53524,8 @@
     "vidLength": "0:47",
     "VidRange": "24.7 6.4",
     "VidComment": "Whitemargin Stargazer Tongue",
-    "cell": "1b"
+    "cell": "1b",
+    "steps": "0.20,917,12"
   },
   {
     "UID": "2447_d",
