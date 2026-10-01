@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1790830799549,
+    "_salPushTime": 1790870153685,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -90,7 +90,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "DateAdded",
+      "col": "UID",
       "dir": "desc"
     },
     "_salGsize": 5,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1790830799550
+    "_salSavedAt": 1790870153685
   },
   {
     "UID": "1",
@@ -53524,6 +53524,28 @@
     "VidRange": "24.7 6.4",
     "VidComment": "Whitemargin Stargazer Tongue",
     "cell": "1b"
+  },
+  {
+    "UID": "2447_d",
+    "link": "https://youtu.be/fXIcPkqpdPY",
+    "show": "1",
+    "DateAdded": "2026-10-01 15:39:14",
+    "DateModified": "2026-10-01 15:39:14",
+    "tags": [
+      "stargazer"
+    ],
+    "Mute": "0",
+    "ftextSize": "281",
+    "FtextJunk": "27",
+    "DictSize": "0",
+    "VidTitle": "Scuba divers beware: Meet the Whitemargin Stargazer!",
+    "VidAuthor": "@WAVESofINSIGHT",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "0:47",
+    "VidRange": "24.7 6.4",
+    "VidComment": "Whitemargin Stargazer Tongue",
+    "cell": ""
   },
   {
     "UID": "2448",

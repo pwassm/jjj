@@ -1186,6 +1186,8 @@ function gridOpenFullscreen(row, contained) {
     // Right-click the V video area pops ONE small floating panel AT THE CURSOR
     // (it never centers and never moves itself). It has NOTHING to do with the
     // A-B select feature — Row 3 carries its OWN start/duration. Rows:
+    //   (dev1070) Set AB / Save AB on top are the one bridge, and one-way and
+    //         on demand: the window → V's A and B, or straight to My Loops.
     //   Row 1 PLAY-IN-STEPS:  ◀ [secs] ▶  ◀ free-runs backward / ▶ forward,
     //         one frame every `secs` s (wheel secs ±0.05, range 0–10;
     //         (dev0555) wheeling down to 0 FREEZES on the current frame,
@@ -1198,10 +1200,9 @@ function gridOpenFullscreen(row, contained) {
     //         wheel ±1). ⇄ plays the window then reverses (ping-pong loop);
     //         ▶ plays the window then restarts from s (forward loop). Both
     //         step one frame every Row-1 `secs`.
-    //   Row 4: Choose / Save (still stubs).
-    // Changing `secs` re-rates a running loop IMMEDIATELY; changing s or d
-    // takes effect at the END of the current cycle (the box is tinted amber
-    // while a change is pending).
+    //   Row 4: Choose (screen-record) / Save (row.steps + steps/*.mp4).
+    // Changing `secs` re-rates a running loop IMMEDIATELY; (dev1070) changing s
+    // or d stops everything and shows the first / last frame of the window.
     // Right-click while a loop runs → stop it (panel stays, two-stage); a
     // further right-click closes the panel and resumes play.
     // Wired ONCE on #gridFsContent (it persists across opens); handlers read
@@ -1446,20 +1447,62 @@ function gridOpenFullscreen(row, contained) {
         r3boom.onclick = e => { e.stopPropagation(); startPlay('boom'); };
         r3fwd.onclick  = e => { e.stopPropagation(); startPlay('fwd'); };
         r3.append(r3boom, r3sBox, r3dBox, r3fwd);
+        // (dev1070) Wheeling s or d STOPS everything (both loops and native play)
+        // and parks on the frame the box names — s shows the window's first
+        // frame, d its last (s+d, the last one the loop plays). The old rule
+        // (a running loop took the change at the end of its cycle, box amber
+        // meanwhile) left you watching a loop instead of the frame you were
+        // choosing.
+        function stopAndShow(frame) {
+          stopPlay();
+          if (autoDir) { autoDir = 0; armAuto(); }
+          if (_vpIsPlaying()) _vpPauseNow();
+          applyPending();
+          lastTickFrame = -1;
+          seekAbs(frame * FRAME);
+          syncBtns();
+        }
         r3sBox.addEventListener('wheel', e => {        // s = start frame, ±1
           e.preventDefault(); e.stopPropagation();
           startFrame = clamp(startFrame + (e.deltaY < 0 ? 1 : -1), 0, 1e9);
           r3sBox.textContent = String(startFrame);
-          if (!playMode) activeStart = startFrame;     // idle → now; running → end of cycle
-          refreshPendingMarks();
+          stopAndShow(startFrame);
         }, { passive: false });
         r3dBox.addEventListener('wheel', e => {        // d = # frames, ±1; (dev0555) floor 0 = hold the start frame
           e.preventDefault(); e.stopPropagation();
           numFrames = clamp(numFrames + (e.deltaY < 0 ? 1 : -1), 0, 100000);
           r3dBox.textContent = String(numFrames);
-          if (!playMode) activeDur = numFrames;
-          refreshPendingMarks();
+          stopAndShow(startFrame + numFrames);
         }, { passive: false });
+
+        // ── (dev1070) Row 0b — Set AB / Save AB: the window as V's A→B ──
+        // Set AB puts V's A on the window's first frame (s) and B on its last
+        // (s+d), then parks on A. Each mark goes mid-frame, and on a disk video
+        // _vpSnapMark moves it to the middle of the real frame there (dev1060).
+        // Save AB is the toolbar's AB💾 (a "My Loops" entry); with A or B unset it
+        // takes them from the window first, so one click saves the window.
+        function setABFromWindow(quiet) {
+          if (!_vpState || !_vpState.player) return false;
+          stopAndShow(startFrame);
+          _vpState.aPoint = (startFrame + 0.5) * FRAME;
+          _vpState.bPoint = (startFrame + numFrames + 0.5) * FRAME;
+          vpUpdateABStyle();
+          _vpSnapMark('aPoint'); _vpSnapMark('bPoint');
+          if (!quiet && typeof toast === 'function')
+            toast('A→B = frames ' + startFrame + '–' + (startFrame + numFrames)
+              + (numFrames ? '' : ' (d is 0: A and B on one frame)'), 1800);
+          return true;
+        }
+        const rAB = mkRow();
+        const setABBtn  = mkBtn('Set AB', 'Set V\'s A to the start frame (s) and B to the last frame (s+d)', 64);
+        const saveABBtn = mkBtn('Save AB', 'Save A→B as a loop in My Loops, like the toolbar\'s AB💾 (unset A/B come from this window first)', 64);
+        setABBtn.style.cssText  += 'font-size:13px;background:#530;border-color:#f80;color:#f80;';
+        saveABBtn.style.cssText += 'font-size:13px;background:#350;border-color:#8f0;color:#8f0;';
+        setABBtn.onclick  = e => { e.stopPropagation(); setABFromWindow(false); };
+        saveABBtn.onclick = e => { e.stopPropagation();
+          if (_vpState && (_vpState.aPoint == null || _vpState.bPoint == null)) setABFromWindow(true);
+          vpSaveAB(); };
+        rAB.append(setABBtn, saveABBtn);
 
         // ── (dev0419) "Choose" = record JUST the V video region to an .mp4 ──
         // gdigrab can crop to a screen rect, so instead of the whole desktop we
@@ -1658,7 +1701,7 @@ function gridOpenFullscreen(row, contained) {
         closeX.onclick = ev => { ev.stopPropagation(); removeFSB(false); };
         r0.append(closeX);
 
-        panel.append(r0, r1, r2, r3, r4);
+        panel.append(r0, rAB, r1, r2, r3, r4);
         content.appendChild(panel);
         const pos = placePanel(panel, clientX, clientY);
         syncBtns();
@@ -1908,7 +1951,8 @@ function gridOpenFullscreen(row, contained) {
     aBtn.className = 'vp-btn';
     aBtn.textContent = 'A';
     aBtn.title = 'Set A point (click again to clear)';
-    aBtn.style.cssText += 'background:#530;border-color:#f80;color:#f80;';
+    // (dev1070) Fixed width, set or not — _vpSizeABBtns fits it to the video.
+    aBtn.style.cssText += 'background:#530;border-color:#f80;color:#f80;' + VP_AB_BTN_CSS;
     
     // A+ caret
     const aPlusBtn = document.createElement('button');
@@ -1940,7 +1984,7 @@ function gridOpenFullscreen(row, contained) {
     bBtn.className = 'vp-btn';
     bBtn.textContent = 'B';
     bBtn.title = 'Set B point (click again to clear)';
-    bBtn.style.cssText += 'background:#530;border-color:#f80;color:#f80;';
+    bBtn.style.cssText += 'background:#530;border-color:#f80;color:#f80;' + VP_AB_BTN_CSS;
     
     // B+ caret
     const bPlusBtn = document.createElement('button');
@@ -3682,6 +3726,35 @@ function _vpTlTimeAtFrac(f) {
   return w.t0 + Math.max(0, Math.min(1, f)) * w.span;
 }
 
+// (dev1070) The bar AS DRAWN. In Selected mode (unzoomed) the bar lays the
+// segments end to end — the playhead and the bands have used that layout since
+// dev0258 — but the A/B lines and Ctrl-click still went through the linear
+// whole-video scale, so a B set on the playhead drew where that time sits in
+// the FULL video, nowhere near the playhead. These two put marks and clicks
+// through the same concatenation. A time outside every segment has no place on
+// that bar: null, and its line hides.
+function _vpBarConcat() {
+  return !!(_vpState && _vpState.isSelected && _vpState.segs && _vpState.segs.length
+    && !_vpTlWindow().zoomed);
+}
+function _vpBarPctOf(t) {
+  if (!_vpBarConcat()) return _vpTlPctOf(t);
+  const total = _vpSelectedTotal(), pos = _vpSelectedPos(t);
+  return (pos != null && total > 0) ? (pos / total) * 100 : null;
+}
+function _vpBarTimeAtFrac(f) {
+  if (!_vpBarConcat()) return _vpTlTimeAtFrac(f);
+  const segs = _vpState.segs;
+  const pos = Math.max(0, Math.min(1, f)) * _vpSelectedTotal();
+  let cumul = 0;
+  for (let i = 0; i < segs.length; i++) {
+    if (pos < cumul + segs[i].dur || i === segs.length - 1)
+      return segs[i].start + Math.max(0, Math.min(segs[i].dur, pos - cumul));
+    cumul += segs[i].dur;
+  }
+  return _vpTlTimeAtFrac(f);
+}
+
 function _vpDurNow() {
   if (!_vpState || !_vpState.player) return 0;
   if (_vpState.duration > 0) return _vpState.duration;
@@ -3974,9 +4047,25 @@ function _vpMarkLabel(v) {
   return Math.max(0, v - _vpFrameSec() / 2).toFixed(3);
 }
 
+// (dev1070) A and B keep ONE width whether a mark is set or not, so setting or
+// clearing one no longer shoves the rest of the cluster along the bar. The
+// width is the longest label this video can show — its duration's — and the
+// font is monospace, so `ch` counts it exactly (+22px = padding and border).
+// Until the duration is known it assumes three whole-second digits.
+const VP_AB_BTN_CSS = 'box-sizing:border-box;white-space:nowrap;overflow:hidden;width:calc(9ch + 22px);';
+function _vpSizeABBtns() {
+  const dur = _vpDurNow();
+  const n = ('A:' + _vpMarkLabel(dur > 0 ? dur : 100)).length;
+  ['vp-a', 'vp-b'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.style.width = 'calc(' + n + 'ch + 22px)';
+  });
+}
+
 function vpUpdateABStyle() {
   const aBtn = document.getElementById('vp-a');
   const bBtn = document.getElementById('vp-b');
+  _vpSizeABBtns();
   // (dev0701) Setting/clearing/nudging A or B is a fresh arming — drop any
   // scrub-suspension so the new window loops immediately.
   if (_vpState) _vpState.abSuspended = false;
@@ -4054,8 +4143,8 @@ function _vpUpdateABLines() {
     // (dev0925) A zoomed bar shows a slice of the video, so a mark can fall off
     // the end of it. Hide it rather than clamping — a line pinned to the edge
     // claims a time it is not at.
-    const pct = _vpTlPctOf(point);
-    if (pct < -0.5 || pct > 100.5) { el.style.display = 'none'; return; }
+    const pct = _vpBarPctOf(point);   // (dev1070) Selected mode = the concatenated bar
+    if (pct == null || pct < -0.5 || pct > 100.5) { el.style.display = 'none'; return; }
     el.style.left = 'calc(' + Math.max(0, Math.min(100, pct)) + '% - 1px)';
     el.style.display = '';
   }
@@ -4215,7 +4304,8 @@ function vpWireControls() {
     const r = _vpWrapLocalRect(timeline);
     // (dev0925) through the window, so a Ctrl-click on a zoomed bar sets the
     // mark it is pointing at. Identity while the bar spans the whole video.
-    return _vpTlTimeAtFrac((p.x - r.left) / r.width);
+    // (dev1070) …and through the segment concatenation in Selected mode.
+    return _vpBarTimeAtFrac((p.x - r.left) / r.width);
   };
   timeline.addEventListener('pointerdown', e => {
     // (dev0919) Alt+click sets where an armed zoom BEGINS — Alt because Ctrl
@@ -4674,6 +4764,10 @@ function vpUpdateTimeline() {
       + ':' + tlw.t0.toFixed(2) + '-' + tlw.t1.toFixed(2);
     if (_vpState.markersToken !== renderToken) {
       _vpState.markersToken = renderToken;
+      // (dev1070) Same layout change moves the A/B lines (Selected ↔ Full
+      // re-lays the bar), and a duration just learned fixes the A/B width.
+      _vpUpdateABLines();
+      _vpSizeABBtns();
       markers.innerHTML = '';
       // (dev0258) Per-segment color palette — matches video.js (E timeline)
       // so a given segment looks the same in V and E.

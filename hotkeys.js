@@ -717,7 +717,8 @@ window.HOTKEYS = [
   { label: 'R-click in V', group: 'Gestures', scope: 'V', dev: true, helpSection: 'Gestures',
     impl: 'vp.js floating step button (dev0410)',
     desc: 'Open the floating step-button panel (frame nudge, free-run wheel, ping-pong/loop); right-click again closes it. '
-      + 'Wheel the rate box down to 0 = freeze frame; wheel the frames box down to 0 = hold the start frame (dev0555)' },
+      + 'Wheel the rate box down to 0 = freeze frame; wheel the frames box down to 0 = hold the start frame (dev0555). '
+      + 'Wheeling s or d stops play and shows the first / last frame; Set AB puts A/B on that window, Save AB saves it to My Loops (dev1070)' },
 
   { label: 'Swipe → title bar / FAST swipe ← anywhere', group: 'Gestures', scope: 'Xe', dev: true, helpSection: 'Gestures',
     impl: 'xe.js swipe + flick',
