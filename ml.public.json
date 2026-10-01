@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1790790765388,
+    "_salPushTime": 1790820710463,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1790790765388
+    "_salSavedAt": 1790820710463
   },
   {
     "UID": "1",
@@ -53674,6 +53674,77 @@
     "DictSize": "0",
     "VidTitle": "The Most Beautiful Spider In The World",
     "VidAuthor": "@officialzonea",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2457",
+    "link": "https://youtu.be/ojVcyeDiAjM",
+    "show": "1",
+    "DateAdded": "2026-10-01 01:54:00",
+    "DateModified": "2026-10-01 01:54:03",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "239",
+    "FtextJunk": "32",
+    "DictSize": "0",
+    "VidTitle": "Octopus Fight",
+    "VidAuthor": "@projectdive",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "9:50"
+  },
+  {
+    "UID": "2458",
+    "link": "https://youtu.be/M9vjNVuX_so",
+    "show": "1",
+    "DateAdded": "2026-10-01 02:01:44",
+    "DateModified": "2026-10-01 02:01:51",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "1595",
+    "FtextJunk": "5",
+    "DictSize": "0",
+    "VidTitle": "Ground-Breaking New Study Challenges Causes of Heart Disease",
+    "VidAuthor": "@NutritionMadeSimple",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2459",
+    "link": "https://youtu.be/n__t3_rT2Pw",
+    "show": "1",
+    "DateAdded": "2026-10-01 02:04:31",
+    "DateModified": "2026-10-01 02:04:36",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "1758",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "VidTitle": "The Salt and Blood Pressure Story is Changing",
+    "VidAuthor": "@NutritionMadeSimple",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2460",
+    "link": "https://youtu.be/GpzX3NQzmio",
+    "show": "1",
+    "DateAdded": "2026-10-01 02:07:04",
+    "DateModified": "2026-10-01 02:07:07",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "2198",
+    "FtextJunk": "3",
+    "DictSize": "0",
+    "VidTitle": "Should You Take Fish Oil for Your Brain? (The Latest Science)",
+    "VidAuthor": "@NutritionMadeSimple",
     "Mode": "L",
     "ftext": ""
   }
