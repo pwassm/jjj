@@ -1465,8 +1465,13 @@ function gridOpenFullscreen(row, contained) {
         }
         r3sBox.addEventListener('wheel', e => {        // s = start frame, ±1
           e.preventDefault(); e.stopPropagation();
-          startFrame = clamp(startFrame + (e.deltaY < 0 ? 1 : -1), 0, 1e9);
+          // (dev1072) The END stays put: s forward N → d down N, back N → d up N.
+          // s can't pass the end (d floors at 0, the hold-one-frame case).
+          const endFrame = startFrame + numFrames;
+          startFrame = clamp(startFrame + (e.deltaY < 0 ? 1 : -1), 0, endFrame);
+          numFrames = endFrame - startFrame;
           r3sBox.textContent = String(startFrame);
+          r3dBox.textContent = String(numFrames);
           stopAndShow(startFrame);
         }, { passive: false });
         r3dBox.addEventListener('wheel', e => {        // d = # frames, ±1; (dev0555) floor 0 = hold the start frame
