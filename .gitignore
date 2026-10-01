@@ -148,6 +148,8 @@ localmedia-export*.json
 # staged active tunnel must NEVER be committed. (Runtime state/log live under
 # %LOCALAPPDATA%\ProtonVpnRotate, outside the repo.)
 vpn-configs/*.conf
+# (dev1069) …and in any sub-folder (retired/ parks confs out of the rotation)
+vpn-configs/**/*.conf
 proton_active.conf
 
 # Logs
