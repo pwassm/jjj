@@ -1461,6 +1461,7 @@ function gridOpenFullscreen(row, contained) {
           lastTickFrame = -1;
           seekAbs(frame * FRAME);
           syncBtns();
+          _vpUpdateABLines();                          // (dev1071) the green/red pair follows s / d
         }
         r3sBox.addEventListener('wheel', e => {        // s = start frame, ±1
           e.preventDefault(); e.stopPropagation();
@@ -1709,6 +1710,10 @@ function gridOpenFullscreen(row, contained) {
 
         return {
           el: panel, pos,
+          // (dev1071) The window as times, for the timeline's green/red pair
+          // (_vpUpdateABLines shows these instead of A/B while the panel is open).
+          // Mid-frame, the same as Set AB puts the marks.
+          marks() { return { a: (startFrame + 0.5) * FRAME, b: (startFrame + numFrames + 0.5) * FRAME }; },
           cleanup() {
             // (dev0418) Dismissed mid-record → tell the proxy to finalize the
             // mp4 (fire-and-forget; the file is still saved even as V closes).
@@ -1731,6 +1736,7 @@ function gridOpenFullscreen(row, contained) {
         if (!f) return;
         try { f.cleanup(); } catch (_) {}
         window._vpFSB = null;
+        _vpUpdateABLines();                            // (dev1071) green/red back to A/B
         if (resumePlay && _vpState && _vpState.player && !_vpIsPlaying()) {
           try { vpTogglePlay(); } catch (_) {}
         }
@@ -1747,6 +1753,7 @@ function gridOpenFullscreen(row, contained) {
         const f = buildFSB(null, null, { secs: secs0, startFrame: startFrame0,
                                          numFrames: numFrames0, autoPlay: !!autoPlay });
         window._vpFSB = f;
+        _vpUpdateABLines();                            // (dev1071) its window on the bar
         try {
           const cr = content.getBoundingClientRect();
           const pw = f.el.offsetWidth || 180, ph = f.el.offsetHeight || 200;
@@ -1769,6 +1776,7 @@ function gridOpenFullscreen(row, contained) {
           return;
         }
         window._vpFSB = buildFSB(e.clientX, e.clientY);          // open AT the cursor
+        _vpUpdateABLines();                                      // (dev1071) its window on the bar
         if (_vpIsPlaying()) _vpPauseNow();                       // pause so stepping shows
       });
     })();
@@ -3802,11 +3810,52 @@ function vpTogglePlay() {
   const p = _vpState.player;
   if (_vpState.isYT) {
     const state = p.getPlayerState();
-    if (state === 1) p.pauseVideo(); else _vpYtNudgePlay(p);   // (dev0642)
+    if (state === 1) p.pauseVideo();
+    else { _vpSeekIntoLoop(p.getCurrentTime()); _vpYtNudgePlay(p); }   // (dev0642)
   } else {
-    p.getPaused().then(paused => { if (paused) p.play(); else p.pause(); });
+    p.getPaused().then(paused => {
+      if (!paused) { p.pause(); return; }
+      return Promise.resolve(p.getCurrentTime()).then(ct => { _vpSeekIntoLoop(ct); p.play(); });
+    });
   }
   vpUpdatePlayBtn();
+}
+
+// (dev1071) ── WHAT PLAY LOOPS OVER ─────────────────────────────────────────
+// Nudging A or B never starts playback (it pauses and parks on the mark); play
+// starts with Space / ▶, and what it loops over depends on the last thing done:
+//   nudged A  → A … A+2 s   (stops short at B)
+//   nudged B  → B−2 s … B   (starts no earlier than A)
+//   otherwise → A … B, until a click on the bar OUTSIDE A→B; then free play over
+//               what the bar shows (its zoomed window, the Selected segments,
+//               or the whole video) until a click lands back inside A→B.
+// Setting, clearing or Ctrl-clicking a mark, or any click on the bar, ends a
+// nudge's 2 s mode (vpUpdateABStyle / _vpScrubTo clear abLastAdj). The step
+// panel runs its own seeks, so everything stands down while it is open.
+const VP_NUDGE_PLAY_SEC = 2;
+function _vpLoopRange(st) {
+  if (!st || window._vpFSB) return null;
+  const A = st.aPoint, B = st.bPoint;
+  const both = (A != null && B != null && B > A);
+  if (st.abLastAdj === 'a' && A != null) {
+    let b = both ? Math.min(A + VP_NUDGE_PLAY_SEC, B) : A + VP_NUDGE_PLAY_SEC;
+    if (st.duration > 0) b = Math.min(b, st.duration);
+    return (b > A) ? { a: A, b: b } : null;
+  }
+  if (st.abLastAdj === 'b' && B != null) {
+    const a = both ? Math.max(B - VP_NUDGE_PLAY_SEC, A) : Math.max(0, B - VP_NUDGE_PLAY_SEC);
+    return (B > a) ? { a: a, b: B } : null;
+  }
+  if (!both) return null;
+  if (!st.abSuspended) return { a: A, b: B };
+  const w = _vpTlWindow();
+  return w.zoomed ? { a: w.t0, b: w.t1 } : null;
+}
+// A play that starts outside the range starts at its beginning — so after a
+// B nudge (playhead parked ON B) Space plays the 2 s leading up to B.
+function _vpSeekIntoLoop(ct) {
+  const r = _vpLoopRange(_vpState);
+  if (r && !(ct >= r.a - 0.01 && ct < r.b - 0.01)) _vpSeekAbsolute(r.a);
 }
 
 // (dev0725) Seek to an ABSOLUTE time, both player shapes. The FSB has had its
@@ -4068,7 +4117,9 @@ function vpUpdateABStyle() {
   _vpSizeABBtns();
   // (dev0701) Setting/clearing/nudging A or B is a fresh arming — drop any
   // scrub-suspension so the new window loops immediately.
-  if (_vpState) _vpState.abSuspended = false;
+  // (dev1071) …and it ends a nudge's 2 s play mode; vpAdjustAB sets that again
+  // straight after calling this.
+  if (_vpState) { _vpState.abSuspended = false; _vpState.abLastAdj = null; }
   // (dev0925) Losing a mark takes the timeline zoom with it — there is nothing
   // left for the bar to span. MOVING one deliberately does not re-fit: a ruler
   // that slides while you nudge against it is the thing x exists to avoid.
@@ -4148,8 +4199,13 @@ function _vpUpdateABLines() {
     el.style.left = 'calc(' + Math.max(0, Math.min(100, pct)) + '% - 1px)';
     el.style.display = '';
   }
-  place(aEl, _vpState.aPoint);
-  place(bEl, _vpState.bPoint);
+  // (dev1071) While the step panel is open the green/red pair is ITS window
+  // (s and s+d), moving as s / d are wheeled; closing it hands them back to A/B.
+  // One pair, not two: identical colours for two ranges would be unreadable.
+  const fsbM = (window._vpFSB && typeof window._vpFSB.marks === 'function')
+    ? window._vpFSB.marks() : null;
+  place(aEl, fsbM ? fsbM.a : _vpState.aPoint);
+  place(bEl, fsbM ? fsbM.b : _vpState.bPoint);
   // (dev0925) A zoomed bar has to LOOK zoomed. Nothing about a rescaled bar is
   // self-evident — it is the same blue rectangle either way, and if it reads as
   // unchanged then the feature reads as broken. Three cues: the ends outside
@@ -4257,6 +4313,14 @@ function vpWireControls() {
     // silent no-op instead of a seek.
     const dur = _vpDurNow();
     if (!_vpState || !dur) return;
+    // (dev1071) Any click on the bar ends a nudge's 2 s play mode, and decides
+    // the A→B loop in BOTH layouts: outside A→B suspends it (free play over
+    // what the bar shows), inside re-arms it. See _vpLoopRange.
+    _vpState.abLastAdj = null;
+    const _abAt = t => {
+      if (_vpState.aPoint !== null && _vpState.bPoint !== null)
+        _vpState.abSuspended = (t < _vpState.aPoint || t >= _vpState.bPoint);
+    };
     const p = (typeof window.rotateXY === 'function')
       ? window.rotateXY(e)
       : { x: e.clientX, y: e.clientY };
@@ -4274,6 +4338,7 @@ function vpWireControls() {
         if (pos < cumul + segs[i].dur || i === segs.length - 1) {
           _vpState.segIdx = i;
           const t = segs[i].start + Math.max(0, Math.min(segs[i].dur - 0.05, pos - cumul));
+          _abAt(t);
           if (_vpState.isYT) _vpState.player.seekTo(t, true);
           else _vpState.player.setCurrentTime(t);
           return;
@@ -4286,11 +4351,9 @@ function vpWireControls() {
       // within one poller tick: the A-B branch in vpUpdateTimeline sees ct past
       // B and yanks the playhead back to A, so on any row with a loop armed
       // (every "My Loops" open — those start in FULL mode) clicking the far end
-      // of the bar looked like the timeline was dead. The click wins now; the
-      // loop re-arms by itself when playback re-enters A→B.
-      if (_vpState.aPoint !== null && _vpState.bPoint !== null) {
-        _vpState.abSuspended = (t < _vpState.aPoint || t >= _vpState.bPoint);
-      }
+      // of the bar looked like the timeline was dead. The click wins now.
+      // (dev1071) The loop re-arms on a click INSIDE A→B, no longer by itself.
+      _abAt(t);
       if (_vpState.isYT) _vpState.player.seekTo(t, true);
       else _vpState.player.setCurrentTime(t);
     }
@@ -4545,12 +4608,16 @@ async function _vpSnapMark(key) {
 // later frame → jump now. (A B on the file's last frame ends the video first,
 // so a jump that finds it ended plays on from A, as the poll always did.)
 function _vpLoopOnFrame(st, vid, mt) {
-  if (vid.paused || window._vpFSB || st.abSuspended) return;
-  const a = st.aPoint, b = st.bPoint;
-  if (a == null || b == null || !(b > a)) return;
+  if (vid.paused) return;
+  // (dev1071) The range is _vpLoopRange's — A→B, a nudge's 2 s, or the zoomed
+  // bar — and it already stands down for the step panel / a suspended loop.
+  const r = _vpLoopRange(st);
+  if (!r) return;
+  const a = r.a, b = r.b;
   const fd = _vpFrameSec();
   const jump = () => {
-    if (_vpState !== st || st.aPoint !== a || st.bPoint !== b) return;
+    const r2 = (_vpState === st) ? _vpLoopRange(st) : null;
+    if (!r2 || r2.a !== a || r2.b !== b) return;
     if (vid.paused && !vid.ended) return;          // paused by hand meanwhile
     vid.currentTime = a;
     if (vid.paused) vid.play().catch(() => {});
@@ -4580,6 +4647,7 @@ function vpAdjustAB(which, dir) {
     if (st !== _vpState) return;
     st[key] = at;
     vpUpdateABStyle();
+    st.abLastAdj = which;   // (dev1071) Space now plays the 2 s at this mark (_vpLoopRange)
     _vpSeekAbsolute(at);
   }).catch(() => {});
 }
@@ -4706,7 +4774,7 @@ function _vpSelectedPos(ct) {
 function vpUpdateTimeline() {
   if (!_vpState || !_vpState.player) return;
 
-  const updateUI = (ct, dur) => {
+  const updateUI = (ct, dur, live) => {
     _vpState.currentTime = ct;
     _vpState.duration = dur;
     if (!(dur > 0)) { vpUpdatePlayBtn(); return; }
@@ -4836,24 +4904,26 @@ function vpUpdateTimeline() {
     // (dev0701) …and stands down while a manual scrub has parked the playhead
     // outside the window (see _vpScrubTo); it re-arms the moment playback is
     // back inside A→B.
-    if (_vpState.abSuspended && _vpState.aPoint !== null && _vpState.bPoint !== null
-        && ct >= _vpState.aPoint && ct < _vpState.bPoint) {
-      _vpState.abSuspended = false;
-    }
-    if (!window._vpFSB && !_vpState.abSuspended
-        && _vpState.aPoint !== null && _vpState.bPoint !== null
-        && _vpState.bPoint > _vpState.aPoint) {
+    // (dev1071) …but it no longer re-arms by itself when playback wanders back
+    // into A→B: after a click outside, play is free over what the bar shows
+    // until a click lands inside A→B again (_vpScrubTo). The range itself —
+    // A→B, a nudge's 2 s, or the zoomed bar — is _vpLoopRange's.
+    const lr = _vpLoopRange(_vpState);
+    if (lr) {
       // (dev1060) A disk video loops per frame (_vpLoopOnFrame); here that is
       // only the safety net — or the end of the file, where frames stop coming.
       const bWrap = _vpState._rvfcLoop
-        ? Math.min(_vpState.bPoint + 0.3, (_vpState.duration || Infinity) - 0.001)
-        : _vpState.bPoint;
-      if (ct >= bWrap) {
+        ? Math.min(lr.b + 0.3, (_vpState.duration || Infinity) - 0.001)
+        : lr.b;
+      // (dev1071) Only while playing (or ended). A PAUSED playhead parked on B —
+      // exactly where nudging B leaves it — counted as "reached B", so the
+      // loop jumped to A and started playing on every B nudge.
+      if (live && ct >= bWrap) {
         if (_vpState.isYT) {
-          _vpState.player.seekTo(_vpState.aPoint, true);
+          _vpState.player.seekTo(lr.a, true);
           if (_vpState.player.playVideo) _vpState.player.playVideo();
         } else {
-          _vpState.player.setCurrentTime(_vpState.aPoint);
+          _vpState.player.setCurrentTime(lr.a);
           if (_vpState.player.play) _vpState.player.play();
         }
       }
@@ -4898,15 +4968,23 @@ function vpUpdateTimeline() {
     vpUpdatePlayBtn();
   };
   
+  // (dev1071) `live` = playing, or ended at the file's end (dev0263: a loop
+  // whose B is the very end finds the player ENDED, not playing).
   if (_vpState.isYT) {
     const ct = _vpState.player.getCurrentTime();
     const dur = _vpState.player.getDuration();
-    updateUI(ct, dur);
+    let ps = -1;
+    try { ps = _vpState.player.getPlayerState(); } catch (_) {}
+    updateUI(ct, dur, ps === 1 || ps === 0);
   } else {
+    const p = _vpState.player;
     Promise.all([
-      _vpState.player.getCurrentTime(),
-      _vpState.player.getDuration()
-    ]).then(([ct, dur]) => updateUI(ct, dur));
+      p.getCurrentTime(),
+      p.getDuration(),
+      p.getPaused ? Promise.resolve(p.getPaused()).catch(() => false) : false,
+      p.el ? !!p.el.ended
+           : (p.getEnded ? Promise.resolve(p.getEnded()).catch(() => false) : false)
+    ]).then(([ct, dur, paused, ended]) => updateUI(ct, dur, !paused || !!ended));
   }
 }
 
@@ -8570,7 +8648,11 @@ function _vpCropHelpShow() {
                              'step one frame back or forward (pauses first)') +
         row(K('⇧←') + K('⇧→'), 'jump to the start / end of the clip') +
         row('Ctrl+click',    'set start / end straight off the timeline') +
-        row(K('Space'),      'play / pause') +
+        row(K('Space'),      'play / pause. The ◀ ▶ beside A and B pause and park on ' +
+                             'the mark; then Space plays the 2 s FROM A (after an A ' +
+                             'nudge) or the 2 s UP TO B (after a B nudge), looping. ' +
+                             'Otherwise it loops A→B until you click the bar outside ' +
+                             'A→B; a click back inside re-arms it.') +
         row(K('x'),          'e<u>X</u>pand — blow the timeline up onto the cut, so ' +
                              'the whole bar is A–B (plus 15% either side, so both ' +
                              'marks can still be dragged outward). A:2.7 to B:4.9 ' +
