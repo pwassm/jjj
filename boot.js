@@ -824,7 +824,10 @@ async function _showShareableMenu() {
   // greetTop loses a closing </div>, greetIntro gains a stray one. Left as-is,
   // that stray </div> closes the page container early and leaks the list out.
   // Round-trip each half through a temp element so the browser re-balances it.
-  const _balanceHtml = h => { const d = document.createElement('div'); d.innerHTML = h; return d.innerHTML; };
+  // (dev1075) …in an INERT div (core.js _salInertDiv): a plain detached div
+  // started downloading every picture and clip in every tab's prose at once.
+  const _smParseDiv = () => (typeof _salInertDiv === 'function' ? _salInertDiv() : document.createElement('div'));
+  const _balanceHtml = h => { const d = _smParseDiv(); d.innerHTML = h; return d.innerHTML; };
   // (dev0382) Linkify scheme'd URLs at render time, exactly as the Xe editor and
   // the V/grid slide views do (renderFtext). Without this, a raw https:// URL in
   // the greeting/Other ctxt rendered as plain, non-blue, non-clickable text on
@@ -891,14 +894,14 @@ async function _showShareableMenu() {
   // that <details>' content minus the summary (or the whole block if it isn't
   // wrapped in <details>). DateModified shows as a short YYYY-MM-DD.
   const _smSummaryText = html => {
-    const d = document.createElement('div'); d.innerHTML = String(html || '');
+    const d = _smParseDiv(); d.innerHTML = String(html || '');
     const s = d.querySelector('summary');
     let t = s ? s.textContent.trim() : '';
     if (!t) t = (d.textContent || '').trim().split('\n').map(x => x.trim()).filter(Boolean)[0] || '';
     return t;
   };
   const _smDetailBody = html => {
-    const d = document.createElement('div'); d.innerHTML = String(html || '');
+    const d = _smParseDiv(); d.innerHTML = String(html || '');
     const det = d.querySelector('details');
     if (det) { const s = det.querySelector(':scope > summary'); if (s) s.remove(); return det.innerHTML; }
     return d.innerHTML;
@@ -1004,10 +1007,15 @@ async function _showShareableMenu() {
     const isVid = _SM_DAY_VID.test(path);
     // On screen from the moment the page opens, so a video autoplays — muted,
     // like every video on this page — instead of waiting to be unfolded.
+    // (dev1075) Under the new look this page is hidden behind the slideshow, so
+    // the file waits in data-smsrc and is not fetched: the day's clip was
+    // downloading, and autoplaying unseen, alongside the slideshow's first clip.
+    // _smAltSync swaps it in and out with the look.
+    const srcAt = (window._smAltOn !== false ? 'data-smsrc="' : 'src="') + src + '"';
     const media = bad ? ''
       : (isVid
-          ? '<video src="' + src + '" controls autoplay loop muted playsinline preload="metadata"></video>'
-          : '<img src="' + src + '" alt="">');
+          ? '<video ' + srcAt + ' controls autoplay loop muted playsinline preload="metadata"></video>'
+          : '<img ' + srcAt + ' alt="">');
     // The caption is the row's ftext WHOLE (dev0781 showed only its first line,
     // as the summary of the fold that is now gone), through the same renderer
     // every other slide uses — so a ⊘ cut, a collapsible and a v.NNN link all
@@ -2172,6 +2180,10 @@ async function _showShareableMenu() {
   // thirds; with fewer than two portraits they stay singles. _SM_ALT_TRIO_N
   // sets how many; the "trio" names are from dev1055.
   const _SM_ALT_TQ = 'sal-alt-trioq', _SM_ALT_TRIO_MS = 1000, _SM_ALT_TRIO_N = 2;
+  // (dev1075) FOR NOW no portrait clips on Welcome at all (Phil, 2026-10-03):
+  // false leaves every Mode-P video out of the slideshow, so no triptychs
+  // either. true brings back the dev1056 two-panel slides as they were.
+  const _SM_ALT_PORTRAITS = false;
   const _smAltIsTrio = l => l.startsWith('#trio');
   const _smAltTrio = ports => {
     let q = window._smAltTQ;
@@ -2220,6 +2232,14 @@ async function _showShareableMenu() {
     const on = window._smAltOn !== false;
     ov.classList.toggle('sm-alt', on);
     _smBrandFit();
+    // (dev1075) The day's picture or clip on Welcome's own page is fetched only
+    // under the old look, where that page can be seen (see _smDayInnerHtml).
+    ov.querySelectorAll('#smDayItem .sm-daymedia [' + (on ? 'src' : 'data-smsrc') + ']').forEach(el => {
+      const s = el.getAttribute(on ? 'src' : 'data-smsrc');
+      el.removeAttribute(on ? 'src' : 'data-smsrc');
+      el.setAttribute(on ? 'data-smsrc' : 'src', s);   // a clip's autoplay starts it again
+      if (on && el.tagName === 'VIDEO') { try { el.load(); } catch (x) {} }   // drops its download
+    });
     let bg = ov.querySelector('.sm-alt-bg');
     const home = on && window._smCurPage === _pgOf('intro');
     if (!home) {
@@ -2231,20 +2251,23 @@ async function _showShareableMenu() {
     }
     if (bg) return;
     const pathOf = r => String(r.link || '').split(/[?#]/)[0];
-    const pool = _smDayList.filter(e => e.row && (_SM_DAY_VID.test(pathOf(e.row)) || _SM_DAY_IMG.test(pathOf(e.row))));
+    const modeOf = r => (typeof rowMode === 'function' ? rowMode(r) : String(r.Mode || '').trim().toUpperCase());
+    const portVid = e => _SM_DAY_VID.test(pathOf(e.row)) && modeOf(e.row) === 'P';
+    const pool = _smDayList.filter(e => e.row && (_SM_DAY_VID.test(pathOf(e.row)) || _SM_DAY_IMG.test(pathOf(e.row)))
+                                      && (_SM_ALT_PORTRAITS || !portVid(e)));   // (dev1075)
     bg = document.createElement('div');
     bg.className = 'sm-alt-bg';
-    bg.innerHTML = '<div class="sm-alt-pz" aria-hidden="true">&#10074;&#10074;</div>';
+    bg.innerHTML = '<div class="sm-alt-pz" aria-hidden="true">&#10074;&#10074;</div>'
+                 + '<div class="sm-alt-ld" aria-label="Loading"></div>';   // (dev1075)
     ov.insertBefore(bg, ov.firstChild);
     if (!pool.length) { try { console.warn('[alt look] no UOD row has direct media; background left black'); } catch (x) {} return; }
     // (dev1055) Portrait clips leave the single-slide list for '#trioN' items.
-    const modeOf = r => (typeof rowMode === 'function' ? rowMode(r) : String(r.Mode || '').trim().toUpperCase());
-    let ports = Array.from(new Set(pool.filter(e => _SM_DAY_VID.test(pathOf(e.row)) && modeOf(e.row) === 'P')
-                                       .map(e => String(e.row.link))));
+    let ports = Array.from(new Set(pool.filter(portVid).map(e => String(e.row.link))));
     if (ports.length < _SM_ALT_TRIO_N) ports = [];
     const links = Array.from(new Set(pool.map(e => String(e.row.link)))).filter(l => !ports.includes(l));
     for (let k = 1; k <= Math.floor(ports.length / _SM_ALT_TRIO_N); k++) links.push('#trio' + k);
-    const ctl = bg._ctl = { cur: null, nx: null, due: false, paused: false, left: 0, at: 0, timer: null, drawn: 0 };
+    const isVidLink = l => _SM_DAY_VID.test(l.split(/[?#]/)[0]);
+    const ctl = bg._ctl = { cur: null, nx: null, due: false, paused: false, left: 0, at: 0, timer: null, drawn: 0, spinT: null };
     const unload = v => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (x) {} };
     const vidsOf = el => (el.tagName === 'VIDEO' ? [el] : Array.from(el.querySelectorAll('video')));
     const playAll = s => s.clips.forEach(c => { if (c.v.ended) return; const pr = c.v.play(); if (pr && pr.catch) pr.catch(() => {}); });
@@ -2255,13 +2278,36 @@ async function _showShareableMenu() {
       ctl.at = Date.now();
       ctl.timer = setTimeout(() => { ctl.left = 0; timeUp(); }, ctl.left);
     };
-    const timeUp = () => { ctl.due = true; reveal(); };
+    const timeUp = () => { ctl.due = true; reveal(); spin(); };
+    // (dev1075) THE LOADING SIGN: a spinner over the show while it waits on the
+    // network with nothing moving — nothing on screen yet, the first slide up on
+    // its first frame but still buffering, a clip stalled mid-play, or a slide
+    // whose time is up standing still (a picture, a clip that has ended) until
+    // the next is ready. Only after 0.6 s of that, so a fast line never sees it
+    // flash; never while paused (the ❚❚ shows then).
+    const stuck = () => {
+      if (ctl.paused || !bg.isConnected) return false;
+      const s = ctl.cur;
+      if (!s || !s.begun) return true;
+      if (!s.isVid) return ctl.due;
+      return s.clips.some(c => !c.v.paused && !c.v.ended && c.v.readyState < 3)
+          || (ctl.due && s.clips.every(c => c.v.ended || c.v.paused));
+    };
+    const spin = () => {
+      if (!stuck()) { clearTimeout(ctl.spinT); ctl.spinT = null; bg.classList.remove('busy'); return; }
+      if (ctl.spinT || bg.classList.contains('busy')) return;
+      ctl.spinT = setTimeout(() => { ctl.spinT = null; if (stuck()) bg.classList.add('busy'); }, 600);
+    };
     const prep = () => {
       if (!bg.isConnected) return;
       // (dev1055) FOR NOW, while Phil assesses it: the 2nd slide of a Welcome
       // visit is a triptych, and the 1st never is.
+      // (dev1075) The 1st is a CLIP whenever there is one: its first frame can be
+      // up within moments even on a slow line, where a picture shows nothing
+      // until all of it has arrived (one of the pictures is a 13.8 MB GIF).
       const n = ++ctl.drawn;
-      const want = !ports.length ? null : n === 1 ? (l => !_smAltIsTrio(l)) : n === 2 ? _smAltIsTrio : null;
+      const want = n === 1 ? (l => !_smAltIsTrio(l) && isVidLink(l))
+                 : (ports.length && n === 2) ? _smAltIsTrio : null;
       const link = _smAltNext(links, want);
       const trio = _smAltIsTrio(link);
       const isVid = trio || _SM_DAY_VID.test(link.split(/[?#]/)[0]);
@@ -2335,6 +2381,8 @@ async function _showShareableMenu() {
             if (!ctl.cur && ctl.nx === s && !s.ready && s.clips.every(x => x.frame)) early(s);
           });
           v.addEventListener('error', fail);
+          // (dev1075) The loading sign follows the clips on show.
+          ['waiting', 'playing', 'pause', 'ended', 'canplay', 'seeked'].forEach(k => v.addEventListener(k, () => { if (ctl.cur === s) spin(); }));
           v.src = src;
           return c;
         });
@@ -2360,6 +2408,7 @@ async function _showShareableMenu() {
     const early = s => {
       ctl.nx = null; ctl.cur = s;
       show(s);
+      spin();                                       // (dev1075) still buffering
     };
     // Bring the readied slide in over the one on show (1.5 s crossfade), start
     // its turn, and start readying the one after it.
@@ -2376,6 +2425,7 @@ async function _showShareableMenu() {
     };
     const begin = s => {
       s.begun = true;
+      spin();
       if (!s.isVid) { ctl.left = _SM_ALT_IMG_MS; runClock(); return; }
       // t0 = where a clip's playback began this turn. A clip whose 10 s are up
       // keeps playing (and saving its place) until the next slide is ready.
@@ -2412,6 +2462,7 @@ async function _showShareableMenu() {
       if (ctl.paused) return;
       ctl.paused = true;
       bg.classList.add('paused');
+      spin();
       const s = ctl.cur;
       if (!s) return;
       if (s.isVid) s.clips.forEach(c => c.v.pause());
@@ -2421,6 +2472,7 @@ async function _showShareableMenu() {
       if (!ctl.paused) return;
       ctl.paused = false;
       bg.classList.remove('paused');
+      spin();
       const s = ctl.cur;
       if (ctl.due && ctl.nx && ctl.nx.ready) { reveal(); return; }
       if (!s) return;
@@ -2439,6 +2491,7 @@ async function _showShareableMenu() {
     };
     ctl.quit = () => {
       clearTimeout(ctl.timer);
+      clearTimeout(ctl.spinT);
       const n = ctl.nx;
       ctl.nx = null;
       if (n) clearTimeout(n.guard);
@@ -2448,6 +2501,7 @@ async function _showShareableMenu() {
       if (n) vidsOf(n.el).forEach(unload);
     };
     prep();
+    spin();
   }
   window._smAltToggle = () => {
     window._smAltOn = window._smAltOn === false;
@@ -2724,6 +2778,13 @@ async function _showShareableMenu() {
     // (dev1036) A quiet ❚❚ in the lower-left while the show is paused.
     + '.sm-alt-pz{display:none;position:absolute;left:16px;bottom:14px;z-index:2;font-size:20px;letter-spacing:-2px;color:#fff;opacity:0.8;text-shadow:0 1px 4px rgba(0,0,0,0.9);}'
     + '.sm-alt-bg.paused .sm-alt-pz{display:block;}'
+    // (dev1075) The loading sign: a turning ring, centred in the part of the
+    // screen left of the tab column, shadowed so it reads over a bright frame.
+    + '.sm-alt-ld{display:none;position:absolute;left:40.625%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;z-index:2;box-sizing:border-box;'
+    +   'border-radius:50%;border:4px solid rgba(255,255,255,0.25);border-top-color:#fff;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.9));animation:sm-alt-spin 0.9s linear infinite;}'
+    + '.sm-alt-bg.busy .sm-alt-ld{display:block;}'
+    + 'html.is-mobile .sm-alt-ld{left:calc((100% - 230px) / 2);}'
+    + '@keyframes sm-alt-spin{to{transform:rotate(360deg);}}'
     + '.sm-alt-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:center/cover no-repeat;opacity:0;transition:opacity 1.5s ease;}'
     + '.sm-alt-slide.on{opacity:1;}'
     // (dev1055) The portrait triptych: three panels side by side, each filling

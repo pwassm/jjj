@@ -8497,13 +8497,27 @@ function _detectArticleUrl(text) {
 // siblings of every ancestor up to the root (the ancestors themselves stay —
 // they may hold content from BEFORE the marker). That matches the string slice
 // boot.js was doing, minus the orphaned tags.
+// (dev1075) AN INERT PARSE HOST. A <div> made by `document` and given HTML
+// through innerHTML is detached but LIVE: every <img> in it starts downloading
+// and every <video> loads its metadata, then the div is thrown away. The menu
+// round-trips every tab's prose through such divs (cut, balance, captions), so
+// opening slam.com fired ~20 clip downloads plus a 13.8 MB GIF — on a slow line
+// all of them competing with the Welcome slideshow's first clip, which is what
+// kept Welcome black. A div owned by a document with no window fetches nothing;
+// it parses and serializes the same.
+let _salInertDoc = null;
+function _salInertDiv() {
+  if (!_salInertDoc) { try { _salInertDoc = document.implementation.createHTMLDocument(''); } catch (e) {} }
+  return (_salInertDoc || document).createElement('div');
+}
+window._salInertDiv = _salInertDiv;
 function _salIsCutLine(el) {
   return !(el.textContent || '').trim()
     && !el.querySelector('img,video,iframe,audio,svg,table,details,hr');
 }
 function _salApplyCutBelow(html) {
   if (!html || html.indexOf('te-cut') < 0) return html || '';
-  const host = document.createElement('div');
+  const host = _salInertDiv();
   host.innerHTML = html;
   let marker = null;
   for (const el of host.querySelectorAll('div.te-cut')) {
@@ -8562,7 +8576,7 @@ function _salLeadPicture(p) {
 }
 function _salFigureCaptions(html) {
   if (!html || html.indexOf('<img') < 0) return html || '';
-  const host = document.createElement('div');
+  const host = _salInertDiv();
   host.innerHTML = html;
   let touched = false;
   host.querySelectorAll('p').forEach(p => {
@@ -8584,7 +8598,7 @@ function _salFigureCaptions(html) {
     const st = (pic.getAttribute('style') || '').trim().replace(/;+$/, '');
     pic.setAttribute('style', (st ? st + ';' : '')
       + 'display:block;max-width:100%;height:auto;');
-    const cap = document.createElement('span');
+    const cap = host.ownerDocument.createElement('span');
     cap.className = 'te-imgcap';
     cap.setAttribute('style', _SAL_CAP_STYLE);
     while (pic.nextSibling) cap.appendChild(pic.nextSibling);
@@ -8803,7 +8817,7 @@ window._SAL_CITE_CSS = _SAL_CITE_CSS;
 // nodes without reordering them.
 function _salStampCheckboxes(html) {
   if (!html || html.indexOf('te-cb') < 0) return html || '';
-  const d = document.createElement('div');
+  const d = _salInertDiv();
   d.innerHTML = html;
   const list = d.querySelectorAll('.te-cb');
   if (!list.length) return html;
@@ -8817,7 +8831,7 @@ window._salStampCheckboxes = _salStampCheckboxes;
 // writing a row's ftext back on a miss would be a silent data change.
 function _salSetCbInFtext(ftext, idx, checked) {
   if (!ftext) return null;
-  const d = document.createElement('div');
+  const d = _salInertDiv();
   d.innerHTML = ftext;
   const el = d.querySelectorAll('.te-cb')[idx];
   if (!el) return null;
