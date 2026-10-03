@@ -1616,7 +1616,15 @@ async function load() {
   // (dev0853) ml.json first, then the published copy. No environment sniffing:
   // locally ml.json is on disk and served by localhost; on GitHub Pages it is
   // not committed, so the fetch 404s and ml.public.json answers instead.
-  for (const _mlF of ['ml.json', ML_PUBLIC]) {
+  // (dev1076) index.html may have it on the way already (window._salMlEarly,
+  // a bare slam.com — Welcome's first clip needs it before the scripts are
+  // in). Taken once; any later load() fetches as before.
+  const _early = window._salMlEarly;
+  if (_early && !_early.usedByLoad) {
+    _early.usedByLoad = true;
+    try { const e = await _early; if (e) { raw = JSON.parse(e.text); rawSource = 'fetch'; _mlLoadedFile = e.file; } } catch(e) {}
+  }
+  if (!raw) for (const _mlF of ['ml.json', ML_PUBLIC]) {
     try {
       const r = await fetch(_mlF + '?t=' + Date.now());
       if (r.ok) { raw = await r.json(); rawSource = 'fetch'; _mlLoadedFile = _mlF; break; }

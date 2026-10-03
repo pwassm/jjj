@@ -751,6 +751,12 @@ async function _showShareableMenu() {
   // machine ml.json is on disk (and gitignored); on GitHub Pages only
   // ml.public.json is committed, so that is what the site gets. See the
   // ML_PUBLIC block in core.js for why the file is split at all.
+  // (dev1076) The first open takes index.html's early fetch (window._salMlEarly)
+  // — the same file core.js load() just read — instead of a second download.
+  if (!ml && window._salMlEarly && !window._salMlEarly.usedByMenu) {
+    window._salMlEarly.usedByMenu = true;
+    try { const e = await window._salMlEarly; if (e) ml = JSON.parse(e.text); } catch (e) {}
+  }
   if (!ml) {
     for (const _mlF of ['ml.json', 'ml.public.json']) {
       try { const r = await fetch(_mlF + '?t=' + Date.now()); if (r.ok) { ml = await r.json(); break; } } catch (e) {}
@@ -2209,6 +2215,11 @@ async function _showShareableMenu() {
   //            the browser has stopped downloading by itself (networkState
   //            IDLE) with HAVE_ENOUGH_DATA counts as ready too.
   // A slide still not ready after 30 s is dropped for the one after it.
+  // (dev1076) A clip is ready once it can play its turn without stopping to
+  // buffer (index.html _salTurnGate, which reads the line's speed off the clip
+  // itself) — on a fast line a moment after its first frame — rather than once
+  // its whole 10 s had arrived. And the 30 s counts from the last data that
+  // came in, so a slow line that is still delivering isn't cut off.
   //
   // Everything the show does lives on bg._ctl: cur (the slide on show), nx (the
   // one being readied), due (cur's time is up), paused, and pause / resume /
@@ -2228,6 +2239,15 @@ async function _showShareableMenu() {
   };
   window.addEventListener('resize', _smBrandFit);
   try { document.fonts.ready.then(_smBrandFit); } catch (x) {}
+  // (dev1076) index.html's early clip (window._salEarly) when this show can't
+  // take it over: off Welcome, nothing to show, or not in the show's list.
+  const _smEarlyDrop = () => {
+    const E = window._salEarly;
+    if (!E) return;
+    window._salEarly = null;
+    try { E.v.pause(); E.v.removeAttribute('src'); E.v.load(); } catch (x) {}
+    E.layer.remove();
+  };
   function _smAltSync() {
     const on = window._smAltOn !== false;
     ov.classList.toggle('sm-alt', on);
@@ -2243,6 +2263,7 @@ async function _showShareableMenu() {
     let bg = ov.querySelector('.sm-alt-bg');
     const home = on && window._smCurPage === _pgOf('intro');
     if (!home) {
+      _smEarlyDrop();
       if (bg) {
         if (bg._ctl) bg._ctl.quit();
         bg.remove();
@@ -2260,13 +2281,15 @@ async function _showShareableMenu() {
     bg.innerHTML = '<div class="sm-alt-pz" aria-hidden="true">&#10074;&#10074;</div>'
                  + '<div class="sm-alt-ld" aria-label="Loading"></div>';   // (dev1075)
     ov.insertBefore(bg, ov.firstChild);
-    if (!pool.length) { try { console.warn('[alt look] no UOD row has direct media; background left black'); } catch (x) {} return; }
+    if (!pool.length) { _smEarlyDrop(); try { console.warn('[alt look] no UOD row has direct media; background left black'); } catch (x) {} return; }
     // (dev1055) Portrait clips leave the single-slide list for '#trioN' items.
     let ports = Array.from(new Set(pool.filter(portVid).map(e => String(e.row.link))));
     if (ports.length < _SM_ALT_TRIO_N) ports = [];
     const links = Array.from(new Set(pool.map(e => String(e.row.link)))).filter(l => !ports.includes(l));
     for (let k = 1; k <= Math.floor(ports.length / _SM_ALT_TRIO_N); k++) links.push('#trio' + k);
     const isVidLink = l => _SM_DAY_VID.test(l.split(/[?#]/)[0]);
+    // (dev1076) The clips index.html's early starter picks from next visit.
+    try { localStorage.setItem('sal-alt-pool', JSON.stringify(links.filter(isVidLink))); } catch (x) {}
     const ctl = bg._ctl = { cur: null, nx: null, due: false, paused: false, left: 0, at: 0, timer: null, drawn: 0, spinT: null };
     const unload = v => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (x) {} };
     const vidsOf = el => (el.tagName === 'VIDEO' ? [el] : Array.from(el.querySelectorAll('video')));
@@ -2306,9 +2329,17 @@ async function _showShareableMenu() {
       // up within moments even on a slow line, where a picture shows nothing
       // until all of it has arrived (one of the pictures is a 13.8 MB GIF).
       const n = ++ctl.drawn;
-      const want = n === 1 ? (l => !_smAltIsTrio(l) && isVidLink(l))
+      // (dev1076) …and when index.html's early starter already has one up, it
+      // is that one.
+      const E = n === 1 ? window._salEarly : null;
+      const adopt = !!(E && !E.failed && !(E.v && E.v.error) && links.includes(E.link));
+      if (n === 1 && !adopt) _smEarlyDrop();
+      const want = adopt ? (l => l === E.link)
+                 : n === 1 ? (l => !_smAltIsTrio(l) && isVidLink(l))
                  : (ports.length && n === 2) ? _smAltIsTrio : null;
       const link = _smAltNext(links, want);
+      if (adopt && link === E.link) { adoptEarly(link, E); return; }
+      if (adopt) _smEarlyDrop();
       const trio = _smAltIsTrio(link);
       const isVid = trio || _SM_DAY_VID.test(link.split(/[?#]/)[0]);
       const el = document.createElement(isVid && !trio ? 'video' : 'div');
@@ -2362,16 +2393,11 @@ async function _showShareableMenu() {
             const p = c.long() ? _smAltPos(src) : 0;
             if (p > 0 && p < v.duration - 1) { v.currentTime = p; c.from = p; }
           }, { once: true });
-          const check = () => {
-            if (c.ok) return;
-            const d = v.duration, b = v.buffered;
-            if (!(d > 0) || !isFinite(d)) return;
-            const z = Math.min(d, c.from + _SM_ALT_VID_S + 1) - 0.3;
-            let got = v.networkState === 1 && v.readyState >= 4;
-            for (let i = 0; !got && i < b.length; i++) if (b.start(i) <= c.from + 0.3 && b.end(i) >= z) got = true;
-            if (got) { c.ok = true; if (s.clips.every(x => x.ok)) ready(); }
-          };
-          ['progress', 'suspend', 'canplaythrough', 'loadeddata', 'seeked'].forEach(k => v.addEventListener(k, check));
+          v.addEventListener('progress', () => {      // (dev1076) still arriving: not stuck
+            if (s.ready || ctl.nx !== s) return;
+            clearTimeout(s.guard);
+            s.guard = setTimeout(fail, _SM_ALT_PREP_MS);
+          });
           // (dev1037) THE VERY FIRST SLIDE shows its first frame as soon as there
           // is one, rather than leaving the tabs over a black screen while it
           // buffers; it starts moving once ready. Later slides need no such thing:
@@ -2384,6 +2410,10 @@ async function _showShareableMenu() {
           // (dev1075) The loading sign follows the clips on show.
           ['waiting', 'playing', 'pause', 'ended', 'canplay', 'seeked'].forEach(k => v.addEventListener(k, () => { if (ctl.cur === s) spin(); }));
           v.src = src;
+          // (dev1076) Ready = it can play its turn without stopping to buffer.
+          const ok = () => { c.ok = true; if (s.clips.every(x => x.ok)) ready(); };
+          if (window._salTurnGate) window._salTurnGate(v, _SM_ALT_VID_S, ok);
+          else v.addEventListener('canplaythrough', ok, { once: true });
           return c;
         });
       } else {
@@ -2393,6 +2423,37 @@ async function _showShareableMenu() {
         im.src = link;
         el.style.backgroundImage = 'url("' + link.replace(/"/g, '%22') + '")';
       }
+    };
+    // (dev1076) Slide 1 may be up already: index.html's early starter asked for
+    // it before this code had loaded (window._salEarly). Its <video> moves in as
+    // slide 1 — playing, or on its first frame waiting for the line — and its
+    // turn counts from where it began playing, so nothing restarts. It stays on
+    // its first frame until _salTurnGate (already running on it) says go.
+    const adoptEarly = (link, E) => {
+      window._salEarly = null;
+      const v = E.v;
+      const s = { el: v, link: link, isVid: true, trio: false, ready: false, shownAt: Date.now() };
+      const c = { v: v, link: link, from: E.from, ok: true, frame: true, early: E };
+      c.long = () => v.duration > _SM_ALT_VID_S + 1;
+      s.clips = [c];
+      v.removeAttribute('style');
+      v.className = 'sm-alt-slide on';              // on screen already: no fade in from black
+      // moveBefore (Chrome 133+) keeps a playing clip playing; an appendChild
+      // move may pause it, and begin() below plays it again.
+      try { if (bg.moveBefore) bg.moveBefore(v, null); else bg.appendChild(v); } catch (x) { bg.appendChild(v); }
+      E.layer.remove();
+      if (window.salLockDownVideo) window.salLockDownVideo(v);
+      ['waiting', 'playing', 'pause', 'ended', 'canplay', 'seeked'].forEach(k => v.addEventListener(k, () => { if (ctl.cur === s) spin(); }));
+      v.addEventListener('error', () => {           // failed before it played: on to the next
+        if (ctl.cur !== s || s.begun) return;
+        s.ready = true; ctl.due = true;
+        if (!ctl.nx) prep();
+        spin();
+      });
+      ctl.cur = s;
+      const go = () => { if (s.ready) return; s.ready = true; if (!ctl.paused) { begin(s); prep(); } };
+      if (E.going) go(); else E.onGo = go;
+      spin();
     };
     // Put a slide on show (1.5 s fade). (dev1055) A triptych's panels come in
     // one at a time, left to right, _SM_ALT_TRIO_MS apart, on their first frames.
@@ -2435,7 +2496,7 @@ async function _showShareableMenu() {
       const through = () => { if (!done && s.clips.every(c => c.over)) { done = true; timeUp(); } };
       s.clips.forEach(c => {
         const v = c.v;
-        let t0 = null, saved = 0;
+        let t0 = (c.early && c.early.at != null) ? c.early.at : null, saved = 0;   // (dev1076)
         c.save = () => {
           if (t0 === null || !c.long()) return;
           _smAltPos(c.link, (v.ended || v.currentTime >= v.duration - 1) ? 0 : v.currentTime);

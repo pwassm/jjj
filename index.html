@@ -682,6 +682,146 @@ thead th.rn              { color: #fff !important; }
 </head>
 <body>
 <div id="rotateWrap">
+<script>
+// (dev1076) WHEN A CLIP MAY START PLAYING: as soon as it can play its turn
+// (turnS seconds from where it stands, or to its end) without stopping to
+// buffer. The line's speed is read off the clip itself — seconds of video
+// arriving per second since it was asked for — so it works in every browser
+// and costs no extra download. On a fast line a clip plays a moment after its
+// first frame; on a slow one it holds that frame only as long as it must, so
+// that once it moves it doesn't stop. The speed is discounted 25% and 1.5 s is
+// kept in hand, for a line that wobbles. Shared by the early starter below and
+// boot.js's Welcome slideshow. Calls go() once; returns { stop }.
+window._salTurnGate = function (v, turnS, go) {
+  var t0 = performance.now(), p0 = null, done = false, tm = null;
+  var evs = ['loadeddata', 'progress', 'canplay', 'canplaythrough', 'suspend', 'seeked'];
+  function stop() {
+    done = true; clearTimeout(tm);
+    evs.forEach(function (k) { v.removeEventListener(k, check); });
+  }
+  function check() {
+    if (done) return;
+    clearTimeout(tm);
+    if (!v.getAttribute('src') && !v.currentSrc) { stop(); return; }   // unloaded
+    tm = setTimeout(check, 400);   // the speed still counts while no event comes
+    var d = v.duration;
+    if (!(d > 0) || !isFinite(d) || v.readyState < 2 || v.seeking) return;
+    var t = v.currentTime, b = v.buffered, e = t;
+    for (var i = 0; i < b.length; i++) if (b.start(i) <= t + 0.3 && b.end(i) >= t) e = b.end(i);
+    if (p0 === null) p0 = t;
+    var need = Math.min(d, t + turnS) - 0.3;
+    var ok = e >= need || (v.networkState === 1 && v.readyState >= 4);   // all here, or the browser has stopped by itself with enough
+    if (!ok) {
+      var r = (e - p0) / Math.max(0.25, (performance.now() - t0) / 1000) / 1.25;
+      var ahead = e - t, left = Math.min(d, t + turnS) - e;
+      // r >= 1: the download stays ahead of playback. Slower: it must finish
+      // the turn before playback, gaining (1 - r) a second, catches it up.
+      ok = ahead >= 1.5 && (r >= 1 || (r > 0 && left / r <= ahead / (1 - r)));
+    }
+    if (ok) { stop(); go(); }
+  }
+  evs.forEach(function (k) { v.addEventListener(k, check); });
+  check();
+  return { stop: stop };
+};
+// (dev1076) WELCOME'S FIRST CLIP STARTS WITH THE PAGE. A bare slam.com opens
+// on Welcome, whose slideshow used to ask for its first clip only after every
+// script (~1.3 MB) and the data (fetched twice) were in: 4.4 s on a fast line,
+// ~15 s on a slow one. Now the clip is asked for here, at the top of the page,
+// and plays (by _salTurnGate) on a black layer under where the menu will be.
+// boot.js's slideshow then takes this same <video> over as its first slide
+// (_smAltSync → window._salEarly), so nothing restarts. Which clip: from the
+// list the slideshow saved on the last visit (sal-alt-pool), so a returning
+// viewer's starts at once; a first visit waits for the data, fetched here as
+// well (window._salMlEarly) and handed on to core.js load() and the menu
+// rather than fetched again.
+(function () {
+  try {
+    var bare = window._userModeCached === true && !location.search && !location.hash
+            && /\/(index\.html)?$/.test(location.pathname);
+    if (!bare) return;
+    var getMl = function (i) {
+      var f = ['ml.json', 'ml.public.json'][i];
+      if (!f) return Promise.resolve(null);
+      return fetch(f + '?t=' + Date.now()).then(function (r) {
+        return r.ok ? r.text().then(function (t) { return { file: f, text: t }; }) : getMl(i + 1);
+      }, function () { return getMl(i + 1); });
+    };
+    window._salMlEarly = getMl(0);
+    var VID = /\.(mp4|webm|ogv|ogg|mov|m4v)$/i;
+    var ls = function (k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (x) { return null; } };
+    // A first visit: the UOD clips, less the portraits (out for now — boot.js
+    // _SM_ALT_PORTRAITS). Mode as core.js rowMode reads it.
+    var poolOf = function (o) {
+      var rows = null, out = [];
+      try { rows = JSON.parse(o.text); } catch (x) {}
+      (Array.isArray(rows) ? rows : []).forEach(function (r) {
+        if (!r || r._salMeta) return;
+        var n = parseInt(String(r.UOD == null ? '' : r.UOD).trim(), 10), l = String(r.link || '');
+        if (!(n >= 1 && n <= 31) || !VID.test(l.split(/[?#]/)[0])) return;
+        var m = [r.Mode, r['P/S'], r.Portrait].filter(function (x) { return x != null && x !== ''; })[0];
+        m = String(m == null ? '' : m).trim().toUpperCase();
+        if (m === 'P' || m === '1') return;
+        if (out.indexOf(l) < 0) out.push(l);
+      });
+      return out;
+    };
+    // The next clip of the slideshow's own round (sal-alt-queue), else any.
+    var pick = function (pool) {
+      var q = ls('sal-alt-queue');
+      if (Array.isArray(q)) for (var i = 0; i < q.length; i++) if (pool.indexOf(q[i]) >= 0) return q[i];
+      return pool[Math.floor(Math.random() * pool.length)];
+    };
+    var mob = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+    var start = function (link) {
+      if (window._salEarly || !link) return;
+      var layer = document.createElement('div');
+      layer.style.cssText = 'position:fixed;inset:0;z-index:27000;background:#000;overflow:hidden;';
+      layer.innerHTML = '<style>@keyframes sm-alt-spin{to{transform:rotate(360deg);}}</style>'
+        + '<div style="display:none;position:absolute;left:' + (mob ? 'calc((100% - 230px) / 2)' : '40.625%') + ';top:50%;width:46px;height:46px;'
+        + 'margin:-23px 0 0 -23px;z-index:2;box-sizing:border-box;border-radius:50%;border:4px solid rgba(255,255,255,0.25);border-top-color:#fff;'
+        + 'filter:drop-shadow(0 1px 4px rgba(0,0,0,0.9));animation:sm-alt-spin 0.9s linear infinite;"></div>';
+      var ring = layer.lastChild;
+      var v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.preload = 'auto';
+      v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+      v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.6s ease;';
+      v.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+      var E = window._salEarly = { link: link, v: v, layer: layer, from: 0, at: null, going: false, failed: false, onGo: null };
+      // A long clip resumes where it stopped last time, as in the slideshow.
+      v.addEventListener('loadedmetadata', function () {
+        var p = +((ls('sal-alt-vidpos') || {})[link]) || 0;
+        if (v.duration > 11 && p > 0 && p < v.duration - 1) { v.currentTime = p; E.from = p; }
+      }, { once: true });
+      v.addEventListener('loadeddata', function () { v.style.opacity = '1'; });
+      // The loading sign: after 0.6 s of not moving, until it moves.
+      var spinT = null;
+      var still = function () { return !layer.isConnected ? false : (v.paused || v.readyState < 3); };
+      var sign = function () {
+        clearTimeout(spinT);
+        if (!still()) { ring.style.display = 'none'; return; }
+        spinT = setTimeout(function () { if (still()) ring.style.display = 'block'; }, 600);
+      };
+      ['playing', 'waiting', 'pause', 'canplay'].forEach(function (k) { v.addEventListener(k, sign); });
+      v.addEventListener('playing', function () { if (E.at === null) E.at = v.currentTime; });
+      v.addEventListener('error', function () { E.failed = true; });
+      v.src = link;
+      layer.appendChild(v);
+      (document.getElementById('rotateWrap') || document.body || document.documentElement).appendChild(layer);
+      sign();
+      window._salTurnGate(v, 10, function () {
+        E.going = true;
+        if (E.onGo) { E.onGo(); return; }          // the slideshow has it now
+        var p = v.play();
+        if (p && p.catch) p.catch(function () {});
+      });
+    };
+    var cached = ls('sal-alt-pool');
+    if (Array.isArray(cached) && cached.length) start(pick(cached));
+    else window._salMlEarly.then(function (o) { var p = o ? poolOf(o) : []; if (p.length) start(pick(p)); });
+  } catch (x) {}
+})();
+</script>
 
 <div id="toolbar">
   <button id="hmBtn" title="Menu (Ctrl+H)"><span></span><span></span><span></span></button>
@@ -1181,7 +1321,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev1075';
+  window.HELP_VERSION_STR = 'dev1076';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
