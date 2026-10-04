@@ -4268,6 +4268,7 @@ function _vpUpdateABLines() {
   const ken = (_vpCropHolding() && !_vpState.crop.imageMode) ? _vpState.crop.ken : null;
   place(kFrom, (ken && ken.on) ? ken.fromSec : null);
   place(kLand, (ken && ken.on) ? ken.atSec   : null);
+  _vpKenCardPaint();   // (dev1080) A/B moved → the Z card's strip re-times
 }
 
 function vpWireControls() {
@@ -5520,19 +5521,11 @@ function _vpKenToggle() {
   }
   if (s.paintKen) s.paintKen();
   if (s.paint) s.paint();   // ⚠ enlargement label depends on the zoom
-  if (typeof toast === 'function') {
-    if (s.imageMode) {
-      toast(s.ken.on
-        ? '🎬 zoom armed — drag the amber box to where the move should END' +
-          (armed ? ' · output is now an mp4 clip (M for gif)' : '')
-        : '🎬 zoom off — the picture is held still', s.ken.on ? 3600 : 1600);
-    } else {
-      toast(s.ken.on
-        ? '🎬 Ken Burns armed — drag the amber box to where the zoom should end, ' +
-          'parked on the frame it should get there (' + s.ken.atSec.toFixed(1) + 's). ' +
-          '⇧Z (or Alt-click the timeline) = hold still first, and start the move there.'
-        : '🎬 Ken Burns off — the crop renders static', s.ken.on ? 4200 : 1600);
-    }
+  // (dev1080) The card replaces the toast: it says on/off, the timing the
+  // render will use and the steps, and stays until its ✕ (see _vpKenCardShow).
+  _vpKenCardShow();
+  if (armed && typeof toast === 'function') {
+    toast('🎬 output is now an mp4 clip (M for gif)', 2400);
   }
 }
 
@@ -5592,6 +5585,321 @@ function _vpKenStampFrom() {
   const k = _vpState.crop.ken;
   if (k.on && k.fromSec != null) _vpKenSetFrom(null);
   else                           _vpKenSetFrom(_vpNowSec());
+}
+
+// (dev1080) ── The zoom card ─────────────────────────────────────────────────
+// Z used to answer with a toast: one long sentence for four seconds, gone
+// before the box had even been dragged. Phil asked for the whole story on Z,
+// up until HE dismisses it. So Z now opens this card, in two halves:
+//   · what the render WILL do with the box and the marks as they stand now,
+//     repainted from paintKen and _vpUpdateABLines (the two places the box
+//     label and the timeline lines are drawn), so it can't drift from them;
+//   · how to drive it, which a toast could never hold.
+// Only its ✕ takes it down, or the crop closing under it. Every Z brings it
+// back, so a dismissed card is one key away. Same look as the cheat-sheet, in
+// the zoom box's amber, and parked on the LEFT by default: the cheat-sheet
+// lives on the right.
+const VP_KEN_CARD_POS_KEY = 'vpKenCardPos';
+const VP_KEN_CARD_W = 360;
+
+function _vpKenKbd(k) {
+  return '<kbd style="display:inline-block;min-width:13px;padding:1px 5px;margin:0 1px;' +
+    'background:#3a2f10;border:1px solid #ffd24a;border-radius:3px;color:#ffe9a8;' +
+    'font:11px ui-monospace,Consolas,monospace;text-align:center;">' + k + '</kbd>';
+}
+
+function _vpKenCardHide() {
+  const el = document.getElementById('vp-ken-card');
+  if (el) el.remove();
+}
+
+function _vpKenCardShow() {
+  let el = document.getElementById('vp-ken-card');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'vp-ken-card';
+    el.style.cssText = [
+      'position:fixed', 'width:' + VP_KEN_CARD_W + 'px', 'max-width:calc(100vw - 8px)',
+      'max-height:86vh', 'overflow-y:auto',
+      'background:rgba(20,16,8,0.96)', 'border:1px solid #ffd24a', 'border-radius:9px',
+      'color:#e8e2d4', 'font:12px/1.45 ui-monospace,Consolas,monospace',
+      'box-shadow:0 8px 32px rgba(0,0,0,0.9)', 'z-index:' + (VP_CROP_HELP_Z + 1),
+      'user-select:none'
+    ].join(';') + ';';
+    el.innerHTML =
+      '<div id="vp-ken-card-bar" style="position:sticky;top:0;display:flex;align-items:center;' +
+        'gap:8px;cursor:move;padding:6px 8px;background:#3a2f10;border-radius:8px 8px 0 0;' +
+        'border-bottom:1px solid rgba(255,210,74,0.4);">' +
+        '<span style="flex:1;font-weight:bold;color:#ffd24a;">🎬 Zoom into — Ken Burns</span>' +
+        '<span id="vp-ken-card-state" style="padding:0 6px;border-radius:3px;font-weight:bold;"></span>' +
+        '<span id="vp-ken-card-close" title="Close this card — Z brings it back" ' +
+          'style="cursor:pointer;padding:0 4px;color:#ccc;">✕</span>' +
+      '</div>' +
+      '<div style="padding:8px 11px 11px;">' +
+        '<div id="vp-ken-card-now"></div>' +
+        '<div id="vp-ken-card-how"></div>' +
+      '</div>';
+    document.body.appendChild(el);
+
+    let pos = null;
+    try { pos = JSON.parse(localStorage.getItem(VP_KEN_CARD_POS_KEY) || 'null'); } catch (_) {}
+    el.style.left = ((pos && Number.isFinite(pos.x)) ? pos.x : 12) + 'px';
+    el.style.top  = ((pos && Number.isFinite(pos.y)) ? pos.y : 64) + 'px';
+
+    // Clicks must not reach #gridFullscreen's handler (which would close V).
+    el.addEventListener('click', e => e.stopPropagation());
+    el.querySelector('#vp-ken-card-close').addEventListener('click', e => {
+      e.stopPropagation();
+      _vpKenCardHide();
+    });
+    const bar = el.querySelector('#vp-ken-card-bar');
+    let drag = null;
+    bar.addEventListener('pointerdown', e => {
+      if (e.target.id === 'vp-ken-card-close') return;
+      e.preventDefault(); e.stopPropagation();
+      const b = el.getBoundingClientRect();
+      drag = { dx: e.clientX - b.left, dy: e.clientY - b.top };
+      try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    bar.addEventListener('pointermove', e => {
+      if (!drag) return;
+      el.style.left = (e.clientX - drag.dx) + 'px';
+      el.style.top  = (e.clientY - drag.dy) + 'px';
+    });
+    bar.addEventListener('pointerup', e => {
+      if (!drag) return;
+      try { bar.releasePointerCapture(e.pointerId); } catch (_) {}
+      drag = null;
+      _vpCropHelpClamp(el);
+      try {
+        localStorage.setItem(VP_KEN_CARD_POS_KEY, JSON.stringify({
+          x: parseFloat(el.style.left) || 0, y: parseFloat(el.style.top) || 0
+        }));
+      } catch (_) {}
+    });
+  }
+  el._sig = null;     // a fresh Z always repaints, even when nothing changed
+  _vpKenCardPaint();
+  _vpCropHelpClamp(el);
+}
+
+// Cheap when the card is down (one getElementById), and it skips the rebuild
+// when nothing it shows has moved — _vpUpdateABLines runs on every A/B change
+// and paintKen on every pointermove of a box drag.
+function _vpKenCardPaint() {
+  const el = document.getElementById('vp-ken-card');
+  if (!el) return;
+  const s = _vpState && _vpState.crop;
+  if (!s || !s.ken) return;
+  const k = s.ken;
+  const sig = JSON.stringify([k.on, k.frac.x, k.frac.y, k.frac.w, k.atSec, k.fromSec,
+                              _vpState.aPoint, _vpState.bPoint, !!s.imageMode,
+                              s.motion && s.motion.format, s.motion && s.motion.durSec,
+                              s.resHeight]);
+  if (el._sig === sig) return;
+  el._sig = sig;
+  const st = el.querySelector('#vp-ken-card-state');
+  st.textContent = k.on ? 'ARMED' : 'OFF';
+  st.style.background = k.on ? '#ffd24a' : '#444';
+  st.style.color      = k.on ? '#2a2000' : '#bbb';
+  el.querySelector('#vp-ken-card-now').innerHTML =
+    s.imageMode ? _vpKenCardNowImage(s) : _vpKenCardNowVideo(s);
+  // The how-to only changes with the mode, so it is not rebuilt per drag.
+  const mode = s.imageMode ? 'img' : 'vid';
+  if (el._mode !== mode) {
+    el._mode = mode;
+    el.querySelector('#vp-ken-card-how').innerHTML =
+      s.imageMode ? _vpKenCardHowImage() : _vpKenCardHowVideo();
+  }
+}
+
+function _vpKenCardRow(label, html) {
+  return '<div style="display:flex;gap:8px;margin:2px 0;">' +
+    '<span style="color:#ffd24a;min-width:46px;flex:none;">' + label + '</span>' +
+    '<span>' + html + '</span></div>';
+}
+function _vpKenCardWarn(html) {
+  return '<div style="margin:6px 0 0;padding:4px 7px;border-left:3px solid #fb3;' +
+    'background:rgba(255,180,50,0.12);color:#fd9;">⚠ ' + html + '</div>';
+}
+function _vpKenCardNote(html) {
+  return '<div style="margin:6px 0 0;padding:4px 7px;border-left:3px solid #777;' +
+    'background:rgba(255,255,255,0.05);color:#cbc4b4;">' + html + '</div>';
+}
+function _vpKenCardHead(t) {
+  return '<div style="margin:11px 0 4px;color:#ffd24a;font-weight:bold;' +
+    'border-bottom:1px solid rgba(255,210,74,0.3);">' + t + '</div>';
+}
+function _vpKenCardSteps(items) {
+  return items.map((t, i) =>
+    '<div style="display:flex;gap:7px;margin:4px 0;">' +
+      '<span style="flex:none;width:17px;height:17px;border-radius:50%;background:#ffd24a;' +
+        'color:#2a2000;font-weight:bold;text-align:center;line-height:17px;font-size:11px;">' +
+        (i + 1) + '</span>' +
+      '<span>' + t + '</span></div>').join('');
+}
+function _vpKenCardBullets(items) {
+  return items.map(t =>
+    '<div style="display:flex;gap:7px;margin:4px 0;">' +
+      '<span style="flex:none;color:#ffd24a;">•</span><span>' + t + '</span></div>').join('');
+}
+
+// Video: the move laid out over the cut exactly as _vpGoSave will send it —
+// landing clamped into [A, B], start clamped into [A, landing] — so the strip
+// shows what the render does, not what the marks literally say.
+function _vpKenCardNowVideo(s) {
+  const k = s.ken, K = _vpKenKbd;
+  const f2 = t => (+t).toFixed(2) + 's';
+  let h = _vpKenCardHead('Right now');
+  if (!k.on) {
+    return h + _vpKenCardNote('Off — the crop renders with no zoom. ' + K('Z') +
+      ' arms the amber box again (it comes back where you left it).');
+  }
+  h += _vpKenCardRow('Zoom', (1 / k.frac.w).toFixed(2) + '× — the amber box is ' +
+                     Math.round(k.frac.w * 100) + '% of the crop’s width');
+  const aRaw = _vpState.aPoint, bRaw = _vpState.bPoint;
+  if (aRaw == null || bRaw == null) {
+    h += _vpKenCardRow('Lands', f2(k.atSec) +
+                       (k.fromSec != null ? ' · starts ' + f2(k.fromSec) : ''));
+    return h + _vpKenCardWarn('No cut yet — ' + K('a') + ' marks the start, ' + K('f') +
+      ' the end (' + K('⇧A') + ' = the whole video). G needs both, and the move is ' +
+      'timed inside them.');
+  }
+  const A = Math.min(aRaw, bRaw), B = Math.max(aRaw, bRaw), len = B - A;
+  const land = Math.max(A, Math.min(B, k.atSec));
+  const from = (k.fromSec == null) ? A : Math.max(A, Math.min(land, k.fromSec));
+  const hold1 = from - A, move = land - from, hold2 = B - land;
+  h += _vpKenCardRow('Cut', 'A ' + f2(A) + ' → B ' + f2(B) + ' (' + len.toFixed(2) + 's)');
+  const pc = v => (len > 0 ? Math.max(0, v / len * 100) : 0).toFixed(2) + '%';
+  h += '<div style="display:flex;height:12px;margin:7px 0 4px;border:1px solid #665a3a;' +
+         'border-radius:3px;overflow:hidden;" title="grey = whole crop, held · fade = the move · amber = held on the box">' +
+         '<div style="width:' + pc(hold1) + ';background:#3c5068;"></div>' +
+         '<div style="width:' + pc(move)  + ';background:linear-gradient(90deg,#3c5068,#ffd24a);"></div>' +
+         '<div style="width:' + pc(hold2) + ';background:#c9a43a;"></div>' +
+       '</div>';
+  const span = (t0, t1) => f2(t0) + '–' + f2(t1);
+  if (hold1 > 0.005) {
+    h += _vpKenCardRow('Still', span(A, from) + ' whole crop, held (' + hold1.toFixed(2) + 's)');
+  }
+  if (move > 0.005) {
+    h += _vpKenCardRow('Move', span(from, land) + ' glides into the box (' + move.toFixed(2) + 's)');
+  }
+  if (hold2 > 0.005) {
+    h += _vpKenCardRow('Hold', span(land, B) + ' stays on the box (' + hold2.toFixed(2) + 's)');
+  }
+  if (k.atSec <= A + 0.01) {
+    h += _vpKenCardWarn('It lands at ' + f2(k.atSec) + ', at or before A — so there is no ' +
+      'move: the clip jumps straight to the box. Park on a frame inside the cut and nudge ' +
+      'the box (letting go re-stamps the landing).');
+  } else if (k.atSec > B + 0.01) {
+    h += _vpKenCardWarn('It lands at ' + f2(k.atSec) + ', after B — the move is squeezed to ' +
+      'finish on B’s frame and never settles on the box. Park inside the cut and nudge the box.');
+  }
+  if (k.fromSec != null && k.fromSec < A - 0.01) {
+    h += _vpKenCardWarn('The start mark (' + f2(k.fromSec) + ') is before A, so it does ' +
+      'nothing: the move starts at A.');
+  } else if (k.fromSec != null && k.fromSec > k.atSec + 0.01) {
+    h += _vpKenCardWarn('The start mark (' + f2(k.fromSec) + ') is AFTER the landing (' +
+      f2(k.atSec) + ') — the box was re-placed on an earlier frame. The render jumps at the ' +
+      'landing. ' + K('⇧Z') + ' clears the mark; set it again before the landing.');
+  }
+  if (move > 0.005 && move < 0.5) {
+    h += _vpKenCardWarn('The move takes only ' + move.toFixed(2) + 's — that reads as a jump, ' +
+      'not a zoom. A second or two looks deliberate.');
+  }
+  return h;
+}
+
+function _vpKenCardNowImage(s) {
+  const k = s.ken, K = _vpKenKbd;
+  let h = _vpKenCardHead('Right now');
+  if (!k.on) {
+    return h + _vpKenCardNote('Off — the picture is held still. ' + K('Z') +
+      ' arms the amber box again (it comes back where you left it).');
+  }
+  const zoom = 1 / k.frac.w;
+  h += _vpKenCardRow('Zoom', zoom.toFixed(2) + '× — the amber box is ' +
+                     Math.round(k.frac.w * 100) + '% of the crop’s width');
+  const fmt = s.motion && s.motion.format, dur = s.motion && s.motion.durSec;
+  if (fmt === 'still') {
+    return h + _vpKenCardWarn('The output is a still picture, so the box does nothing. ' +
+      K('M') + ' switches to an mp4 or a gif.');
+  }
+  h += _vpKenCardRow('Clip', (fmt === 'gif' ? '🎞 gif, 15fps' : '🎬 mp4, 30fps, silent') +
+                     ' · ' + dur + 's');
+  h += _vpKenCardRow('Move', 'the whole ' + dur + 's: leaves the full crop on the first ' +
+                     'frame and lands on the box on the last — no hold at either end');
+  if (s.resHeight === 'source' && zoom > 1.01) {
+    h += _vpKenCardNote('res <i>Same</i>: the clip is the crop’s own size, so its last ' +
+      'frame is the box enlarged ' + zoom.toFixed(2) + '×. The ⚠ chip does not count ' +
+      'that on a still. A smaller res makes the end sharper and the opening smaller.');
+  }
+  return h;
+}
+
+function _vpKenCardHowVideo() {
+  const K = _vpKenKbd;
+  return _vpKenCardHead('How to use it') +
+    _vpKenCardSteps([
+      '<b>Mark the cut</b> — ' + K('a') + ' start, ' + K('f') + ' end (' + K('⇧A') +
+        ' = the whole video). The move is timed inside it.',
+      '<b>Frame the opening shot</b> with the blue crop box. The zoom starts from ' +
+        'the whole crop.',
+      '<b>Park on the frame where the zoom should FINISH</b> — ' + K('s') + ' / ' +
+        K('d') + ' step one frame, Ctrl+' + K('←') + ' / ' + K('→') + ' jump keyframes.',
+      K('Z') + ' arms the amber box (' + K('Z') + ' again = off). <b>Drag it onto ' +
+        'the subject</b>: inside = move, a corner = resize. It keeps the crop’s shape, ' +
+        'up to 12.5×. Letting go stamps the frame you are parked on as the landing.',
+      '<i>Optional</i> — a still beat first: park where the move should BEGIN and ' +
+        'press ' + K('⇧Z') + ', or Alt-click the timeline there. Until then the whole ' +
+        'crop holds still. ' + K('⇧Z') + ' again clears it.',
+      'Check the strip above, then ' + K('G') + ' renders.'
+    ]) +
+    _vpKenCardHead('Good to know') +
+    _vpKenCardBullets([
+      'It always zooms <b>IN</b>: whole crop → amber box. The box is the END of the ' +
+        'move, never the start.',
+      '<b>Every time you let go of the box, the landing jumps to wherever the playhead ' +
+        'is NOW.</b> To nudge the box without moving the landing, park back on the ' +
+        'landing first — the faint amber line on the timeline.',
+      'Playback here does <b>not</b> show the move; the box sits still. Only the ' +
+        'render moves. The timeline lines say when: solid = starts, faint = lands. ' +
+        'The box label says both times too.',
+      'The move eases — slow away from the still, slow into the box.',
+      'The box is the tightest the shot gets, so it decides sharpness: a 2× zoom ' +
+        'rendered at 1080p needs a crop at least 2160 source pixels on its short ' +
+        'side. The far-left ⚠ chip says “(zoom)” when the box is what is being enlarged.',
+      'Moving A or B later is fine — the landing and the start are kept in video ' +
+        'time and re-cut at save. ' + K('Z') + ' off and on keeps the box but ' +
+        're-stamps the landing at the playhead and clears the start mark.',
+      'Captions (' + K('E') + ') stay put while the picture moves under them.'
+    ]) +
+    '<div style="margin-top:9px;color:#998f78;">Drag this card by its title bar. ' +
+      '✕ closes it; ' + K('Z') + ' brings it back. Full key list: ' + K('H') + '.</div>';
+}
+
+function _vpKenCardHowImage() {
+  const K = _vpKenKbd;
+  return _vpKenCardHead('How to use it') +
+    _vpKenCardSteps([
+      '<b>Draw the crop</b> — that is the OPENING frame of the clip.',
+      K('Z') + ' arms the amber box (' + K('Z') + ' again = off), and a still output ' +
+        'becomes an mp4. ' + K('M') + ' cycles mp4 → gif → still.',
+      '<b>Drag the amber box onto the subject</b>: inside = move, a corner = resize. ' +
+        'It keeps the crop’s shape, up to 12.5×. That is the LAST frame.',
+      '<b>Pick the length</b> on the bar: 2–10s.',
+      K('G') + ' saves it beside the picture.'
+    ]) +
+    _vpKenCardHead('Good to know') +
+    _vpKenCardBullets([
+      'It always zooms <b>IN</b>: whole crop → amber box, spread over the whole clip ' +
+        'and eased at both ends.',
+      'gif is 15fps with its own palette — keep it short and small. mp4 is 30fps, ' +
+        'h264, silent.',
+      'Captions (' + K('E') + ') stay put while the picture moves under them.'
+    ]) +
+    '<div style="margin-top:9px;color:#998f78;">Drag this card by its title bar. ' +
+      '✕ closes it; ' + K('Z') + ' brings it back. Full key list: ' + K('H') + '.</div>';
 }
 
 // (dev0724) ── Text boxes ────────────────────────────────────────────────────
@@ -7499,6 +7807,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // since the label counter-rotates to stay upright (same trick as dimLbl).
   function paintKen() {
     const k = state.ken;
+    _vpKenCardPaint();   // (dev1080) the Z card's live half, if it is up
     kenBox.style.display = k.on ? '' : 'none';
     if (!k.on) return;
     kenBox.style.left   = (k.frac.x * 100) + '%';
@@ -8434,6 +8743,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // its autopilot, and take the cheat-sheet down with the player.
     endEdit();   // (dev0724) …and drop the text box's document listener
     _vpCropHelpHide();
+    _vpKenCardHide();   // (dev1080) the Z card belongs to this crop too
     resetView();  // (dev0908) never leave a magnifying transform on the <video>
     // (dev0867) Closing V mid-grade strips the preview off the media element
     // too — same reason as _vpCropToggle's.
@@ -8696,7 +9006,9 @@ function _vpCropHelpShow() {
                              'own size — far too small to judge focus. At 3x you are ' +
                              'looking at close to real pixels.') +
         head('Zoom into') +
-        row(K('Z'),          'amber box on / off — where the zoom ENDS') +
+        row(K('Z'),          'amber box on / off — where the zoom ENDS. Each press also ' +
+                             'opens the zoom card: the timing the render will use, and ' +
+                             'the steps. It stays up until its ✕.') +
         row('drag it',       'move / resize it inside the crop box (always the same ' +
                              'shape, so the shot keeps its aspect) — and it lands on ' +
                              'the frame you are parked on when you place it: the ' +
@@ -8926,7 +9238,9 @@ function _vpCropHelpImageRows(K, row, head) {
     head('Or make it move') +
     row(K('M'),          'still → 🎬 mp4 → 🎞 gif → still (the bar chip says which)') +
     row(K('Z'),          'the amber box = where the zoom ENDS. The clip glides from ' +
-                         'the whole crop into it and holds there.') +
+                         'the whole crop into it, landing on the last frame. Each ' +
+                         'press opens the zoom card (steps + what it will do), which ' +
+                         'stays up until its ✕.') +
     row('duration',      'next to the chip: 2–10s. Without a zoom box the picture ' +
                          'is simply held for that long.') +
     row('gif vs mp4',    'gif is 15fps and carries its own palette — keep it short ' +
@@ -9086,7 +9400,7 @@ function _vpCropToggle() {
   // toggles it (see _vpCropHelpToggle), and closing the crop takes it down.
   // (dev0872) …and it says nothing about itself when it opens. H is the help
   // key on every screen in the app, so a crop announcing its own is noise.
-  if (!isOpening) _vpCropHelpHide();
+  if (!isOpening) { _vpCropHelpHide(); _vpKenCardHide(); }   // (dev1080) + the Z card
   const sc = document.getElementById('vp-swipe-catcher');
   const host = s.el.container.parentElement;
   if (isOpening) {
