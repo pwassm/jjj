@@ -176,16 +176,21 @@
   // search keyword: 'photomacro' (Photomacrography forum), 'featured' (prizewinning
   // slice of o.json), and 'ojson' (whole-page scrape of the user's saved o.json pages).
   // Paste a photomacrography.net URL to still harvest that forum on demand.
-  const X_IMG_SOURCES = ['bing', 'google', 'ddgs', 'flickr', 'wikimedia', 'openverse'];
+  // (dev1079) Image searches now run imagefinder4.py, which adds 'yandex' and 'smugmug'
+  // (a Yandex site:smugmug.com search). Both are ticked once for picks saved before them.
+  const X_IMG_SOURCES = ['bing', 'google', 'yandex', 'smugmug', 'ddgs', 'flickr', 'wikimedia', 'openverse'];
   const X_VID_SOURCES = ['youtube', 'vimeo', 'ddgs'];
-  const X_IMG_DEFAULT = ['bing', 'google', 'ddgs', 'wikimedia', 'openverse'];  // the finder's own default web set
+  const X_IMG_DEFAULT = ['bing', 'google', 'yandex', 'smugmug', 'ddgs', 'wikimedia', 'openverse'];
+  const X_IMG_ADDED_1079 = ['yandex', 'smugmug'];
   const X_VID_DEFAULT = ['youtube', 'vimeo', 'ddgs'];
   const FINDER_CFG_KEY = 'x-finder-cfg';
   function loadFinderCfg() {
     let c = {};
     try { c = JSON.parse(localStorage.getItem(FINDER_CFG_KEY) || '{}') || {}; } catch (_) { c = {}; }
     const m = parseInt(c.max, 10);
+    if (Array.isArray(c.img) && !c.img1079) c.img = c.img.concat(X_IMG_ADDED_1079.filter(s => !c.img.includes(s)));
     return {
+      img1079: true,
       img: Array.isArray(c.img) ? c.img.filter(s => X_IMG_SOURCES.includes(s)) : X_IMG_DEFAULT.slice(),
       vid: Array.isArray(c.vid) ? c.vid.filter(s => X_VID_SOURCES.includes(s)) : X_VID_DEFAULT.slice(),
       safe: c.safe !== false,
@@ -564,7 +569,7 @@
           <span class="gl">🖼 image</span>
           ${srcChips('img', X_IMG_SOURCES, finderCfg.img)}
           <label class="xchip adv" title="Don't block stock/watermark domains (alamy/pixabay etc.)"><input type="checkbox" id="xAllowStock"${finderCfg.allowStock ? ' checked' : ''}>+stock</label>
-          <button id="xRunImg" class="primary" title="Run imagefinder.py --search over the ticked image sources (hotkey: Enter in the query box repeats the last kind).">Search images</button>
+          <button id="xRunImg" class="primary" title="Run imagefinder4.py --search over the ticked image sources (smugmug = a Yandex search scoped to smugmug.com) (hotkey: Enter in the query box repeats the last kind).">Search images</button>
         </span>
         <span class="grp">
           <span class="gl">🎬 video</span>

@@ -10484,6 +10484,11 @@ function _importChannelCSV(lines) {
     const link    = _normalizeLink(rawLink);
     const yid     = _extractYTVideoId(link) || (window.getYouTubeId && window.getYouTubeId(link));
     if (!linkIndex.has(link) && yid && ytIdIndex.has(yid)) linkIndex.set(link, ytIdIndex.get(yid));
+    // (dev1079) A Vimeo user list (Lib\YTChannelList -> linkfinders\vimeolist.py) has
+    // "@Display Name" on line 1 only because this rule needs the @; Vimeo rows keep the
+    // plain name ("Casey Dunn"), as the finders write it.
+    const isVimeo = !yid && /vimeo\.com\/(?:video\/)?\d+/i.test(link);
+    const rowAuthor = isVimeo ? author.replace(/^@/, '') : author;
 
     if (linkIndex.has(link)) {
       // Update existing row
@@ -10497,7 +10502,7 @@ function _importChannelCSV(lines) {
       });
       let touched = false;
       if (title    && r.VidTitle  !== title)    { r.VidTitle  = title;    touched = true; }
-      if (author   && r.VidAuthor !== author)   { r.VidAuthor = author;   touched = true; }
+      if (rowAuthor && r.VidAuthor !== rowAuthor) { r.VidAuthor = rowAuthor; touched = true; }
       if (duration && r.vidLength !== duration) { r.vidLength = duration; touched = true; }
       if (isShort && !r[modeCol])               { r[modeCol]    = 'P';      touched = true; }
       if (touched) { r.DateModified = now; updated++; }
@@ -10507,7 +10512,7 @@ function _importChannelCSV(lines) {
         UID: nextUID(),
         link: link,
         VidTitle: title,
-        VidAuthor: author,
+        VidAuthor: rowAuthor,
         vidLength: duration,  // may be '' for Shorts
         BA: '1',
         show: '1',
@@ -10515,7 +10520,7 @@ function _importChannelCSV(lines) {
         DateModified: now,
         tags: []
       };
-      if (yid) row.Mute = '0';          // a video row, as _importBareLinks sets it
+      if (yid || isVimeo) row.Mute = '0';   // a video row, as _importBareLinks sets it
       if (isShort) row[modeCol] = 'P';
       data.push(row);
       addedRows.push(row);
