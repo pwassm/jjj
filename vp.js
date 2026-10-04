@@ -11833,13 +11833,36 @@ async function _vpProbeFps(absPath) {
     if (!st) return null;
     // r_frame_rate is the container's nominal rate; avg_frame_rate can read 0/0
     // on some captures, so prefer r_ and fall back.
-    for (const cand of [st.r_frame_rate, st.avg_frame_rate]) {
-      const m = /^(\d+)\/(\d+)$/.exec(String(cand || ''));
-      if (m && +m[1] > 0 && +m[2] > 0) return m[1] + '/' + m[2];
-      const n = parseFloat(cand);
-      if (Number.isFinite(n) && n > 0) return String(n);
+    // (dev1081) …EXCEPT when the two disagree. A Galaxy clip shot in variable
+    // frame rate says r_frame_rate=120/1 — its 120 Hz timebase, not a frame
+    // rate — while its frames really arrive every 33.3 ms (measured: 718 of 740
+    // gaps on 20261002_161056.mp4). zoompan stamps each frame at the rate it is
+    // given, so 741 frames at "120" came out a 6.2 s clip of a 24.7 s cut, 4×
+    // fast; and the ramp, counted at 120 frames a second, set its start past
+    // the last frame, so the zoom never moved at all. avg_frame_rate is the
+    // truth on such a file — frames ÷ duration. A constant-rate file gives the
+    // same two numbers, so it keeps r_'s exact rational as before.
+    const parse = cand => {
+      const s = String(cand || '');
+      const m = /^(\d+)\/(\d+)$/.exec(s);
+      if (m && +m[1] > 0 && +m[2] > 0) return { str: m[1] + '/' + m[2], val: +m[1] / +m[2] };
+      const n = parseFloat(s);
+      return (Number.isFinite(n) && n > 0) ? { str: String(n), val: n } : null;
+    };
+    const rf = parse(st.r_frame_rate), af = parse(st.avg_frame_rate);
+    if (af && (!rf || Math.abs(rf.val / af.val - 1) > 0.05)) {
+      // The average of a jittery clip is a long fraction (33345000/1111537 =
+      // 29.9988); snap it to the standard rate it is plainly meant to be. The
+      // NEAREST one — 29.9988 is inside 0.5% of 29.97 as well as of 30.
+      let best = null, bestErr = 0.005;
+      for (const std of ['24000/1001', '24/1', '25/1', '30000/1001', '30/1', '48/1',
+                         '50/1', '60000/1001', '60/1', '100/1', '120/1', '240/1']) {
+        const err = Math.abs(af.val / parse(std).val - 1);
+        if (err < bestErr) { best = std; bestErr = err; }
+      }
+      return best || af.str;
     }
-    return null;
+    return rf ? rf.str : (af ? af.str : null);
   } catch (_) { return null; }
 }
 
