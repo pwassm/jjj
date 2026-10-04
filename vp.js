@@ -3290,6 +3290,12 @@ function vpKeyHandler(e) {
   //     it first so the single-frame step is actually visible.
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault();
+    // (dev1078) Ctrl+← / Ctrl+→ = previous / next keyframe (disk video).
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+      e.stopPropagation();
+      _vpKeyframeJump(e.key === 'ArrowRight' ? 1 : -1);
+      return;
+    }
     // (dev0725) ⇧← / ⇧→ jump to the START / END of the clip — the A and B marks,
     // or the ends of the video when they aren't set yet. Crop-overlay-only, so
     // shifted arrows keep their frame-step meaning on a PM lesson page (dev0644).
@@ -4572,6 +4578,91 @@ async function _vpFrameMidAt(t, step) {
   }
   const k = Math.max(0, Math.floor(t / fd + 1e-6) + (step || 0));
   return (k + 0.5) * fd;
+}
+// (dev1078) Ctrl+← / Ctrl+→ = previous / next KEYFRAME, disk video only. A
+// stream copy can only start on one (llc.js), and on phone footage they are the
+// best-coded frames: an I-frame gets more bits than the frames after it
+// (measured 2026-10-03, Blackmagic 4K: the sharpest frames were all keyframes).
+// Same ffprobe keyframes mode as _vpFrameTable, nothing decoded, in a window
+// that widens until a keyframe turns up (GOPs: mcpro 0.5 s, Blackmagic 1 s,
+// downloads up to ~10 s). A window is contiguous from the keyframe its seek
+// lands on, so the first keyframe after the frame on screen in it IS the next
+// one, and the last before it IS the previous one. Previous is taken from the
+// frame on screen, so a press ON a keyframe goes back a whole GOP and one
+// mid-GOP goes to its start. Parks mid-frame like every mark (dev1060).
+let _vpKfBusy = false;
+async function _vpKeyframeJump(dir) {
+  const st = _vpState;
+  const abs = _vpDiskAbsPath();
+  const el = st && st.player && st.player.el;
+  if (!abs || !el) {
+    if (typeof toast === 'function') toast('Keyframes need a video opened from disk (VECT / 📁).', 2000);
+    return;
+  }
+  if (_vpKfBusy) return;
+  _vpKfBusy = true;
+  try {
+    if (_vpIsPlaying()) _vpPauseNow();
+    const t = el.currentTime || 0;
+    const dur = Number.isFinite(el.duration) ? el.duration : Infinity;
+    const read = async (fromSec, spanSec) => {
+      try {
+        const r = await fetch(PROXY_BASE + '/exec/ffprobe', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: abs, keyframes: { fromSec, spanSec } })
+        });
+        const j = await r.json();
+        const pk = j && j.result && j.result.packets;
+        if (!Array.isArray(pk)) return null;
+        const live = pk.filter(p => p && !/D/.test(String(p.flags || '')));
+        const num = p => parseFloat(p.pts_time);
+        const times = live.map(num).filter(Number.isFinite).sort((x, y) => x - y);
+        const keys = live.filter(p => /K/.test(String(p.flags || ''))).map(num)
+          .filter(Number.isFinite).sort((x, y) => x - y);
+        return times.length ? { abs, times, keys, fromTop: fromSec < 1 } : null;
+      } catch (_) { return null; }
+    };
+    const find = c => {
+      if (!c || c.abs !== abs || !c.times.length) return null;
+      const lo = c.times[0], hi = c.times[c.times.length - 1];
+      if (t < lo - 1e-6 && !c.fromTop) return null;
+      if (t > hi + 1e-6 && hi < dur - 0.5) return null;   // the frame on screen isn't in it
+      const i = _vpShownIdx(c.times, t);
+      const shown = (i >= 0) ? c.times[i] : lo;
+      if (dir > 0) {
+        const k = c.keys.find(x => x > shown + 1e-6);
+        return (k != null) ? k : null;
+      }
+      const ks = c.keys.filter(x => x < shown - 1e-6);
+      return ks.length ? ks[ks.length - 1] : null;
+    };
+    let c = st._kf, k = find(c), end = false;
+    if (k == null) {
+      for (const span of [15, 60, 240, 600]) {
+        const from = (dir > 0) ? t : Math.max(0, t - span);
+        c = await read(from, (dir > 0) ? span : Math.min(600, (t - from) + span));
+        if (!c) break;
+        k = find(c);
+        if (k != null) break;
+        if (dir > 0 ? (c.times[c.times.length - 1] >= dur - 0.5) : (from <= 0)) { end = true; break; }
+      }
+    }
+    if (st !== _vpState) return;
+    if (k == null) {
+      if (typeof toast === 'function') toast(!c ? '⚠ Keyframes unavailable — is node proxy.js running?'
+        : (dir > 0 ? 'No keyframe after this one — last GOP of the file.'
+                   : 'Already at the first keyframe.'), 2000);
+      return;
+    }
+    st._kf = c;
+    const j = c.times.indexOf(k);
+    const at = (j >= 0) ? _vpFrameMid(c.times, j, _vpFrameSec()) : k;
+    _vpSeekAbsolute(at);
+    const kn = c.keys.find(x => x > k + 1e-6);
+    if (typeof toast === 'function')
+      toast((dir > 0 ? '⏭' : '⏮') + ' keyframe · ' + k.toFixed(3) + 's' +
+            (kn != null ? ' · next in ' + (kn - k).toFixed(2) + 's' : ''), 1600);
+  } finally { _vpKfBusy = false; }
 }
 // A LosslessCut range (keeps pts ≥ start and < end) → the marks' two frames.
 async function _vpMarksFromCut(start, end) {
@@ -8658,6 +8749,10 @@ function _vpCropHelpShow() {
         row(K('s') + ' or ' + K('←') + ' / ' + K('d') + ' or ' + K('→'),
                              'step one frame back or forward (pauses first)') +
         row(K('⇧←') + K('⇧→'), 'jump to the start / end of the clip') +
+        row('Ctrl+' + K('←') + ' / Ctrl+' + K('→'),
+                             'previous / next keyframe (pauses first). Keyframes are ' +
+                             'where a lossless trim can start, and often the ' +
+                             'sharpest frames: they get the most bits') +
         row('Ctrl+click',    'set start / end straight off the timeline') +
         row(K('Space'),      'play / pause. The ◀ ▶ beside A and B pause and park on ' +
                              'the mark; then Space plays the 2 s FROM A (after an A ' +
