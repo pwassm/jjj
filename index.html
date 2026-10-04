@@ -46,6 +46,42 @@
   } catch (_) { /* default to dev on any error */ }
 })();
 
+// (dev1077) VISITOR COUNT — Cloudflare Web Analytics (free, no cookies; counts
+// visits and page views, not people). The pages come straight from GitHub, so
+// Cloudflare only sees a visit through this beacon. Live site only: localhost
+// and LAN never count, nor a private /unlock link. `?nocount` marks this
+// browser as the owner's for good (localStorage sal-nocount), `?count` undoes
+// it; either is dropped from the address bar before anything reads the query.
+// Results: dash.cloudflare.com → Observability → Analytics → Web analytics.
+(function () {
+  try {
+    var p = new URLSearchParams(location.search);
+    if (p.has('nocount') || p.has('count')) {
+      var off = p.has('nocount');
+      try { off ? localStorage.setItem('sal-nocount', '1') : localStorage.removeItem('sal-nocount'); } catch (_) {}
+      p.delete('nocount'); p.delete('count');
+      var q = p.toString();
+      history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+      var msg = off ? 'This browser is no longer counted as a visitor.'
+                    : 'This browser is counted as a visitor again.';
+      var tries = 0, tm = setInterval(function () {   // toast() is core.js's, which loads later
+        if (typeof window.toast === 'function') { clearInterval(tm); window.toast(msg, 5000); }
+        else if (++tries > 60) clearInterval(tm);
+      }, 500);
+    }
+    if (!/(^|\.)sealifeandmore\.com$/i.test(location.hostname)) return;
+    if (/\/unlock/i.test(location.search)) return;
+    var nc = null;
+    try { nc = localStorage.getItem('sal-nocount'); } catch (_) {}
+    if (nc) return;
+    var s = document.createElement('script');
+    s.type = 'module';
+    s.src = 'https://static.cloudflareinsights.com/beacon.min.js';
+    s.setAttribute('data-cf-beacon', '{"token": "45ed8b80ac75430e9815d5fb34cbbad3"}');
+    document.head.appendChild(s);
+  } catch (_) {}
+})();
+
 // (zip0173) EARLY orientation detection — runs before <body> parses so
 // the rotateWrap CSS rules below take effect on first paint without a
 // flash of unrotated layout. Replaces the old fullscreen + orientation-
