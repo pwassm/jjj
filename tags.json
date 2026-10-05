@@ -8571,5 +8571,45 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "cuttlefish",
+    "label": "Cuttlefish",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "bathynomus-vaderi",
+    "label": "Bathynomus vaderi",
+    "kind": "taxon",
+    "parents": [
+      "bathynomus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Bathynomus vaderii"
+  },
+  {
+    "id": "bathynomus-jamesi",
+    "label": "Bathynomus jamesi",
+    "kind": "taxon",
+    "parents": [
+      "bathynomus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Bathynomus jamesii"
+  },
+  {
+    "id": "darth-vader-mask",
+    "label": "Darth vader mask",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]
