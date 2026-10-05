@@ -4941,7 +4941,8 @@ async function saveFtextImages() {
     if (String(row.FTLsaved || '') === '1') continue;
     // (dev1052) '9' = a YouTube/Vimeo row whose video is downloaded (d_yt.js).
     // Not a Save Imgs state, and Save Imgs would overwrite it with 1/0/-1.
-    if (String(row.FTLsaved || '') === '9') continue;
+    // (dev1083) '8' = a segment of it is downloaded. Same reasoning.
+    if (/^[89]$/.test(String(row.FTLsaved || ''))) continue;
     targets.push({ di, row });
   }
   if (!targets.length) { alert('Save Imgs: no eligible rows.\n(Need visible rows with ftext and FTLsaved ≠ 1.)'); return; }
@@ -5325,9 +5326,10 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingRemoveSampleCards();
     } else if (act === 'resetftlsaved') {
       // (dev1052) '9' (video downloaded, d_yt.js) is not a Save Imgs state — kept.
-      const _clr = r => r.FTLsaved !== undefined && r.FTLsaved !== '' && String(r.FTLsaved) !== '9';
+      // (dev1083) …and so is '8' (a segment downloaded).
+      const _clr = r => r.FTLsaved !== undefined && r.FTLsaved !== '' && !/^[89]$/.test(String(r.FTLsaved));
       const n = data.filter(_clr).length;
-      if (!confirm('Clear FTLsaved on all ' + n + ' rows that have it set?\n(Rows will be re-processed next time Save Imgs runs. 9 = video downloaded is kept.)')) return;
+      if (!confirm('Clear FTLsaved on all ' + n + ' rows that have it set?\n(Rows will be re-processed next time Save Imgs runs. 9 = video downloaded and 8 = segment downloaded are kept.)')) return;
       data.forEach(r => { if (_clr(r)) r.FTLsaved = ''; });
       save(); render();
       toast('✓ FTLsaved cleared on ' + n + ' rows', 3000);

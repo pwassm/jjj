@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1791148364707,
+    "_salPushTime": 1791207891644,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1791148364707
+    "_salSavedAt": 1791207891644
   },
   {
     "UID": "1",
@@ -15245,13 +15245,13 @@
     "link": "https://evidentscientific.com/en/insights/the-5th-annual-image-of-the-year-award-global-winner",
     "show": "1",
     "DateAdded": "2026-05-15 04:47:11",
-    "DateModified": "2026-05-16 03:05:03",
+    "DateModified": "2026-10-05 13:42:58",
     "tags": [],
     "ltype": "w",
     "MPix": "d0.6",
     "FTLsaved": "1",
     "cell": "",
-    "ftextSize": "10972",
+    "ftextSize": "10966",
     "FtextJunk": "0",
     "VQ": "",
     "BQ": "",
@@ -22726,10 +22726,10 @@
     "link": "https://vimeo.com/34238128",
     "show": "1",
     "DateAdded": "2026-06-04 02:34:34",
-    "DateModified": "2026-06-07 14:00:04",
+    "DateModified": "2026-10-05 02:03:53",
     "tags": [],
     "Mute": "0",
-    "ftextSize": "0",
+    "ftextSize": "2264",
     "FtextJunk": "0",
     "VidTitle": "Pharaoh cuttlefish",
     "VidAuthor": "Steve De Neef",
@@ -22739,12 +22739,13 @@
     "COI": "",
     "vidLength": "1:56",
     "VidRange": "9.8 96",
-    "VidComment": "Cuttlefish",
+    "VidComment": "Pharoh cuttlefish",
     "segLength": "1:36",
     "ttxt": "",
     "Mode": "L",
     "UOD": "",
-    "DictSize": "0"
+    "DictSize": "0",
+    "ftext": ""
   },
   {
     "UID": "885",
@@ -22817,7 +22818,9 @@
     "ttxt": "",
     "Mode": "L",
     "UOD": "",
-    "DictSize": "0"
+    "DictSize": "0",
+    "linkpage": "https://www.howardhall.com/",
+    "FTLsaved": "8"
   },
   {
     "UID": "888",
@@ -54521,5 +54524,86 @@
     "ftext": "",
     "VidAuthor": "@fundacionbiodiversidad",
     "VidTitle": "Hay imagenes que recuerdan lo extraordinaria que es la naturaleza"
+  },
+  {
+    "UID": "2505",
+    "link": "https://www.montereybayaquarium.org/about-us/stories/growing-jellies",
+    "show": "1",
+    "DateAdded": "2026-10-05 02:57:50",
+    "DateModified": "2026-10-05 02:57:54",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "20953",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
+  },
+  {
+    "UID": "2506",
+    "show": "1",
+    "link": "https://www.youtube.com/watch?v=aDCkVpYo8oE",
+    "VidTitle": "Neural Fusion: How Comb Jellies Merge Nervous Systems to Survive",
+    "VidAuthor": "g Fun Facts online",
+    "vidLength": "8:34",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-04 21:07:07",
+    "DateModified": "2026-10-05 04:10:06",
+    "tags": [
+      "mnemiopsis-leidyi"
+    ],
+    "Mute": "0",
+    "ftext": "",
+    "ftextSize": "702",
+    "FtextJunk": "11",
+    "DictSize": "417"
+  },
+  {
+    "UID": "2507",
+    "link": "https://www.instagram.com/explore/",
+    "show": "1",
+    "DateAdded": "2026-10-05 04:15:16",
+    "DateModified": "2026-10-05 04:15:16",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "1902",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "ftext": ""
+  },
+  {
+    "UID": "2508",
+    "link": "https://www.quantamagazine.org/surprisingly-complex-waves-reveal-the-brains-inner-workings-20260930/",
+    "show": "1",
+    "DateAdded": "2026-10-05 13:30:33",
+    "DateModified": "2026-10-05 13:30:36",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "15116",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
+  },
+  {
+    "UID": "2509",
+    "link": "https://vimeo.com/51591391",
+    "show": "1",
+    "DateAdded": "2026-10-05 13:32:27",
+    "DateModified": "2026-10-05 13:38:07",
+    "tags": [
+      "ascarosepion-pfefferi"
+    ],
+    "Mute": "0",
+    "ftextSize": "264",
+    "FtextJunk": "29",
+    "DictSize": "250",
+    "VidTitle": "Flamboyant cuttlefish, Metasepia pfefferi",
+    "VidAuthor": "Steve De Neef",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "2:42",
+    "VidRange": "29.443 123.374",
+    "VidComment": "Flamboyant cuttlefish",
+    "FTLsaved": "8"
   }
 ]
