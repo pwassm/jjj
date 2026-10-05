@@ -3508,6 +3508,16 @@ function vpKeyHandler(e) {
     return;
   }
 
+  // (dev1084) O / ⇧O = turn a VECT-from-disk clip a quarter clockwise / back by
+  // its rotation flag (_vpVideoTurn). A still's turn is R, but here R is the
+  // track, so the clip's turn is O for Orientation.
+  if ((e.key === 'o' || e.key === 'O') && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    if (!_vpCropHolding() || (_vpState && _vpState.imageMode)) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpVideoTurn(e.shiftKey ? -90 : 90);
+    return;
+  }
+
   // (dev0777) Q = let the rect grow past the edge of the picture · ⇧Q = grow it
   // until the source's short axis is fully inside.
   if (e.key === 'q') {
@@ -7163,6 +7173,28 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       'padding:3px 8px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;">✕</button>';
   c.appendChild(bar);   // (dev0318) bar lives on the container, not the (tiltable) rect
 
+  // (dev1084) The stills' ⟳ chip, on a clip opened in VECT from disk. Here it
+  // reads and turns the FILE's rotation flag (_vpVideoTurn), not a turn kept
+  // in this browser — so it shows what every other player will do too.
+  if (!imageMode && _vpVideoTurnPath(row)) {
+    const turnChip = bar.querySelector('#vp-crop-turn');
+    if (turnChip) {
+      turnChip.style.display = '';
+      turnChip.textContent = '⟳ …';
+      turnChip.title = 'Turn the clip a quarter (O clockwise · ⇧O anti-clockwise · click / ⇧click / right-click). ' +
+        'LOSSLESS: rewrites the rotation flag inside the file, so no pixel is re-encoded. The file date is kept.';
+      turnChip.addEventListener('click', e => {
+        e.preventDefault(); e.stopPropagation();
+        _vpVideoTurn(e.shiftKey ? -90 : 90);
+      });
+      turnChip.addEventListener('contextmenu', e => {
+        e.preventDefault(); e.stopPropagation();
+        _vpVideoTurn(-90);
+      });
+      _vpVideoTurnPaint(turnChip, _vpVideoTurnPath(row));
+    }
+  }
+
   // (dev0744) A still has no bitrate, no encoder preset and no soundtrack, so
   // those controls come off the bar rather than sit there meaning nothing. The
   // engine chip takes their place.
@@ -8961,6 +8993,14 @@ function _vpCropHelpShow() {
                              '(' + K('T') + ' goes back to a locked rect)') +
         row(K('1') + K('2'), 'tilt ∓0.5° to straighten a horizon') +
         row('knob / ⟲',      'drag to tilt · wheel ±0.1° · double-click = level') +
+        // (dev1084)
+        row(K('O'),          'a clip playing sideways: turn it a quarter clockwise ' +
+                             '(⇧O the other way; the ⟳ chip clicks too). LOSSLESS — ' +
+                             'it rewrites the file’s own rotation flag on disk, so ' +
+                             'no pixel is re-encoded and every player, G and the ' +
+                             'renders see it the new way. The clip reopens with A/B ' +
+                             'kept; the crop box starts over. Files opened from disk ' +
+                             'into VECT only') +
         head('Follow a subject') +
         row(K('R'),          'stamp the box where it is NOW. Put the subject in the ' +
                              'box at the start and press ' + K('R') + ', scrub to the ' +
@@ -12864,7 +12904,7 @@ window.vectOpenLocalFile = function (absPath) {
 
 // Video → the ordinary V player on a synthesized disk-video row, which brings
 // its crop overlay (C) with it. Same preconditions T's own V hotkey sets up.
-function _vectOpenVideo(absPath) {
+function _vectOpenVideo(absPath, keep) {
   if (typeof gridOpenFullscreen !== 'function') return false;
   const gOvl = document.getElementById('gridOverlay');
   if (gOvl && gOvl.style.display !== 'flex') {
@@ -12876,13 +12916,108 @@ function _vectOpenVideo(absPath) {
   // gridOpenFullscreen, so the flag is read there; it is one-shot, so V opened
   // any other way still starts clean with the picture unobstructed.
   window._vectAutoCrop = true;
-  gridOpenFullscreen(_vectRowFor(absPath, true));
+  const vrow = _vectRowFor(absPath, true);
+  // (dev1084) After a turn the same URL would name different bytes; a fresh one
+  // keeps Chrome's media cache from handing back the old header.
+  if (keep) vrow.link += '&turn=' + Date.now();
+  gridOpenFullscreen(vrow);
   // The mount is on a 50ms timeout inside there, so the flag can't be cleared
   // here — vpMountDirectVideo consumes it. This is the safety net for a row
   // that somehow never reaches that mount, so the next V open isn't surprised.
   setTimeout(() => { window._vectAutoCrop = false; }, 3000);
-  _vectApplyLlc(absPath);   // (dev1059)
+  // (dev1084) A reopen after a lossless turn brings back the marks the clip
+  // had a moment ago, rather than the .llc's.
+  if (keep) _vectRestoreMarks(absPath, keep);
+  else _vectApplyLlc(absPath);   // (dev1059)
   return true;
+}
+
+// (dev1084) ── lossless quarter turn of a VIDEO ──────────────────────────────
+// Which way up a clip plays is a flag in the file (the video track's tkhd
+// matrix), not its pixels — Blackmagic Camera stamps it from the phone's
+// attitude at record start, so a landscape clip can arrive flagged to play
+// portrait. Proxy /vect/rotate rewrites those 36 bytes in place (no render, no
+// copy, file date kept) and the clip reopens, because its width and height
+// have swapped under the crop box. VECT-from-disk only (a /localfile row): a
+// slideshow clip is a File the show goes on reading, and a write under it
+// makes that File unreadable.
+function _vpVideoTurnPath(row) {
+  if (!row || !row._directVideoFile || !/\/localfile\?/.test(String(row.link || ''))) return '';
+  const p = String(row.comment || '');
+  return /^([A-Za-z]:[\\/]|[\\/]{2}[^\\/])/.test(p) && /\.(mp4|m4v|mov)$/i.test(p) ? p : '';
+}
+
+async function _vpVideoTurnPaint(chip, absPath) {
+  let j = null;
+  try {
+    if (await _vpProxyHasFeature('vectrotate')) {
+      const r = await fetch(PROXY_BASE + '/vect/rotate?p=' + encodeURIComponent(absPath), { cache: 'no-store' });
+      j = await r.json();
+    }
+  } catch (_) {}
+  if (!chip.isConnected) return;
+  if (!j || !j.ok) {
+    chip.textContent = '⟳ ?';
+    if (j && j.error) chip.title = 'Cannot turn this clip: ' + j.error;
+    return;
+  }
+  chip.textContent = '⟳ ' + j.rot + '°';
+  chip.style.background = j.rot ? '#2a5d9a' : '#234';
+  chip.style.color      = j.rot ? '#fff' : '#dfe6f0';
+}
+
+let _vpTurnBusy = false;
+async function _vpVideoTurn(delta) {
+  const abs = _vpVideoTurnPath(window._vpCurrentRow);
+  if (!abs) {
+    if (typeof toast === 'function') toast('A lossless turn works on an MP4 / MOV opened from disk into VECT (RButton & a)', 3600);
+    return;
+  }
+  if (_vpTurnBusy) return;
+  if (!(await _vpProxyHasFeature('vectrotate'))) {
+    toast('A lossless turn needs the new proxy: restart "node proxy.js" (dev1084) and retry', 5000);
+    return;
+  }
+  _vpTurnBusy = true;
+  try {
+    const st = _vpState, el = st && st.player && st.player.el;
+    const keep = { a: st ? st.aPoint : null, b: st ? st.bPoint : null,
+                   t: el ? (el.currentTime || 0) : 0, playing: _vpIsPlaying() };
+    let j;
+    try {
+      const r = await fetch(PROXY_BASE + '/vect/rotate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p: abs, turn: delta })
+      });
+      j = await r.json();
+    } catch (_) { j = { ok: false, error: 'the proxy did not answer' }; }
+    if (!j || !j.ok) {
+      toast('Turn failed: ' + ((j && j.error) || 'unknown error') + '. The file is unchanged.', 5000);
+      return;
+    }
+    vpClose();
+    _vectOpenVideo(abs, keep);
+    toast('⟳ ' + j.was + '° → ' + j.rot + '° clockwise, written into the file (lossless). ' +
+          (delta > 0 ? '⇧O' : 'O') + ' turns it back.', 3600);
+  } finally {
+    _vpTurnBusy = false;
+  }
+}
+
+function _vectRestoreMarks(absPath, keep) {
+  let tries = 0;
+  (function whenReady() {
+    const row = window._vpCurrentRow;
+    const el = _vpState && _vpState.player && _vpState.player.el;
+    const ready = row && row.comment === absPath && el && el.readyState >= 1
+      && document.getElementById('vp-a') && document.getElementById('vp-b');
+    if (!ready) { if (tries++ < 150) setTimeout(whenReady, 100); return; }
+    _vpState.aPoint = keep.a;
+    _vpState.bPoint = keep.b;
+    vpUpdateABStyle();
+    _vpSeekAbsolute(keep.t || 0);
+    if (!keep.playing) _vpPauseNow();
+  })();
 }
 
 // (dev1059) A LosslessCut project beside the video (<stem>-proj.llc, or the
