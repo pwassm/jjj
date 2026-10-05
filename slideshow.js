@@ -425,6 +425,8 @@ async function _slideshowFolderSlides(dirHandle, opts) {
       const url  = URL.createObjectURL(file);
       const path = (rootName ? rootName + '/' : '') + f.relPath;
       if (f.kind === 'video') {
+        // (dev1082) V can then hide a damaged soundtrack (see _vpRetryWithoutAudio).
+        if (window._vpNoteBlobFile) window._vpNoteBlobFile(url, file);
         // (dev0285) Disk videos play through the full V player (like web direct
         // videos). gridOpenFullscreen needs a row with a `.link`; a blob: URL
         // has no file extension, so we flag the synthesized row with
@@ -524,6 +526,7 @@ async function slideshowOpenFromPaths(paths, mode) {
       if (IMG_RE.test(name)) {
         slides.push({ url, row: null, kind: 'image', name, path, relPath, parentDir: cur });
       } else if (VID_RE.test(name)) {
+        if (window._vpNoteBlobFile) window._vpNoteBlobFile(url, file);   // (dev1082)
         slides.push({
           url, kind: 'video',
           row: { link: url, _directVideoFile: true, VidTitle: name, comment: path, Mute: '' },

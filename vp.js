@@ -11981,10 +11981,99 @@ async function _vpCropRun(payload, btn, totalMs, route) {
   return { exitCode, stderr, lastProgress };
 }
 
+// (dev1082) ── A damaged soundtrack blacks out the picture ──────────────────
+// One corrupt AAC packet and Chrome fails the WHOLE pipeline: MEDIA_ERR_DECODE,
+// "Failed to send audio packet for decoding", the WxH label over black. Half the
+// Blackmagic Camera clips of 2026-09/10 have them (ffmpeg only logs "Input
+// buffer exhausted before END element found"). Not the HEVC stall, which leaves
+// video.error null. V and VECT are for the picture, so the clip is reopened
+// ONCE with every sound track's `trak` box renamed `free` (same size, so no
+// offset moves, and every demuxer skips a `free` box):
+//   /localfile (VECT from disk) → the proxy patches in flight (&noaudio=1)
+//   blob: (slideshow disk video) → a Blob stitched from slices of the File
+// Nothing on disk changes.
+const _vpBlobFiles = new Map();   // blob: URL → File, noted by slideshow.js
+window._vpNoteBlobFile = (url, file) => { if (url && file) _vpBlobFiles.set(url, file); };
+
+// The same walk as proxy.js mp4SoundTrakOffsets, over a File: byte offsets of
+// each sound trak's 4-byte type field. [] when there is none or it isn't MP4.
+async function _vpMp4SoundTrakOffsets(blob) {
+  const offs = [];
+  try {
+    const tag = (dv, at) => String.fromCharCode(dv.getUint8(at), dv.getUint8(at + 1), dv.getUint8(at + 2), dv.getUint8(at + 3));
+    let pos = 0, moov = null;
+    while (pos + 8 <= blob.size) {
+      const h = new DataView(await blob.slice(pos, pos + 16).arrayBuffer());
+      let len = h.getUint32(0), hdr = 8;
+      if (len === 1) { if (h.byteLength < 16) break; len = Number(h.getBigUint64(8)); hdr = 16; }
+      else if (len === 0) len = blob.size - pos;
+      if (len < hdr) break;
+      if (tag(h, 4) === 'moov') { moov = { pos, len, hdr }; break; }
+      pos += len;
+    }
+    if (!moov || moov.len > 64 * 1024 * 1024) return offs;
+    const b = new DataView(await blob.slice(moov.pos, moov.pos + moov.len).arrayBuffer());
+    const kids = (s, e) => {
+      const out = [];
+      let q = s;
+      while (q + 8 <= e) {
+        let n = b.getUint32(q), hd = 8;
+        if (n === 1) { if (q + 16 > e) break; n = Number(b.getBigUint64(q + 8)); hd = 16; }
+        else if (n === 0) n = e - q;
+        if (n < hd || q + n > e) break;
+        out.push({ type: tag(b, q + 4), s: q, d: q + hd, e: q + n });
+        q += n;
+      }
+      return out;
+    };
+    for (const trak of kids(moov.hdr, b.byteLength).filter(x => x.type === 'trak')) {
+      const mdia = kids(trak.d, trak.e).find(x => x.type === 'mdia');
+      const hdlr = mdia && kids(mdia.d, mdia.e).find(x => x.type === 'hdlr');
+      if (hdlr && hdlr.d + 12 <= hdlr.e && tag(b, hdlr.d + 8) === 'soun') offs.push(moov.pos + trak.s + 4);
+    }
+  } catch (_) {}
+  return offs;
+}
+
+async function _vpBlobWithoutAudio(file) {
+  const offs = (await _vpMp4SoundTrakOffsets(file)).sort((a, b) => a - b);
+  if (!offs.length) return '';
+  const parts = [];
+  let at = 0;
+  for (const off of offs) { parts.push(file.slice(at, off), 'free'); at = off + 4; }
+  parts.push(file.slice(at));
+  return URL.createObjectURL(new Blob(parts, { type: file.type || 'video/mp4' }));
+}
+
+async function _vpRetryWithoutAudio(vid) {
+  const err = vid.error;
+  if (!err || err.code !== 3 || !/audio/i.test(err.message || '') || vid._vpNoAudio) return;
+  vid._vpNoAudio = true;
+  const src = vid.currentSrc || vid.src || '';
+  let next = '';
+  if (/\/localfile\?/.test(src)) {
+    if (!(await _vpProxyHasFeature('localnoaudio'))) {
+      toast('This clip\'s audio track is damaged, so Chrome shows black.\nRestart node proxy.js (dev1082) and reopen it to see the picture.', 6000);
+      return;
+    }
+    next = src + '&noaudio=1';
+  } else if (/^blob:/.test(src) && _vpBlobFiles.has(src)) {
+    next = await _vpBlobWithoutAudio(_vpBlobFiles.get(src));
+    vid._vpPatchedUrl = next;
+  }
+  if (!next) { toast('This clip\'s audio track is damaged, so Chrome shows black.', 4000); return; }
+  if (!vid.isConnected) { if (vid._vpPatchedUrl) URL.revokeObjectURL(vid._vpPatchedUrl); return; }
+  const t = vid.currentTime || 0;
+  if (t) vid.addEventListener('loadedmetadata', () => { vid.currentTime = t; }, { once: true });
+  vid.src = next;
+  toast('Damaged audio track: showing the picture without sound', 2500);
+}
+
 function vpMountDirectVideo(host, link, seg, muted) {
   host.innerHTML = '';
   const vid = document.createElement('video');
   vid.src = link;
+  vid.addEventListener('error', () => { _vpRetryWithoutAudio(vid); });   // (dev1082)
   // (dev0949) Under slim chrome the native control bar is exactly what the Vss
   // dressing exists to remove — the thin strip replaces it.
   vid.controls = !_vpSlimActive;
@@ -12034,7 +12123,10 @@ function vpMountDirectVideo(host, link, seg, muted) {
   _vpState.player = {
     isDirectVideo: true,
     el: vid,
-    destroy: () => { vid.pause(); vid.src = ''; },
+    destroy: () => {
+      vid.pause(); vid.src = '';
+      if (vid._vpPatchedUrl) { URL.revokeObjectURL(vid._vpPatchedUrl); vid._vpPatchedUrl = ''; }   // (dev1082)
+    },
     // Vimeo-shape
     play:    () => vid.play().catch(() => {}),
     pause:   () => { vid.pause(); return Promise.resolve(); },
