@@ -8722,5 +8722,40 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "kathetostoma-averruncus",
+    "label": "Kathetostoma averruncus",
+    "kind": "taxon",
+    "parents": [
+      "kathetostoma"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "smooth stargazer",
+    "extinct": false
+  },
+  {
+    "id": "kathetostoma",
+    "label": "Kathetostoma",
+    "kind": "taxon",
+    "parents": [
+      "uranoscopidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "uranoscopus-sulphureus",
+    "label": "Uranoscopus sulphureus",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "whitemargin stargazer",
+    "extinct": false
   }
 ]

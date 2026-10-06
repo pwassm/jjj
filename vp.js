@@ -3155,6 +3155,14 @@ function vpKeyHandler(e) {
     _vpTextNudgeSize(e.key === 'ArrowUp' ? 1 : -1);
     return;
   }
+  // (dev1086) …and a selected ARROW takes them as thicker / thinner, the keys a
+  // caption sizes its type with. Above the menu guard for the stopwatch's
+  // reason: the menu is where the arrow was just restyled.
+  if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && _vpArrowSelected()) {
+    e.preventDefault(); e.stopImmediatePropagation();
+    _vpArrowNudge(e.key === 'ArrowUp' ? 1 : -1);
+    return;
+  }
 
   // (dev0749) A text box's own menu, or the saved-text list, owns the keyboard
   // while it is up: its letters are answers to the question on screen. Both
@@ -3171,6 +3179,21 @@ function vpKeyHandler(e) {
   // document-capture, so it is the one that has to stand down — the panel's own
   // listener then gets the key.
   if (e.target && e.target.closest && e.target.closest('#vp-color-panel')) return;
+
+  // (dev1086) A selected arrow: Delete / Backspace remove it, and Esc lets go
+  // of it — rather than closing the whole player under a half-placed arrow.
+  if (_vpArrowSelected()) {
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault(); e.stopImmediatePropagation();
+      _vpArrowDeleteSelected();
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault(); e.stopImmediatePropagation();
+      _vpArrowDeselect();
+      return;
+    }
+  }
 
   // (dev0344) Esc closes V / Ie back to T (re-enabled — was removed in zip0186).
   // vpClose() handles teardown and silently refuses in locked-share mode, so no
@@ -3429,6 +3452,16 @@ function vpKeyHandler(e) {
     if (!_vpCropHolding()) return;
     e.preventDefault(); e.stopPropagation();
     _vpCropHelpToggleWidth();
+    return;
+  }
+
+  // (dev1086) ⇧E drops an ARROW — the shape twin of E's text box. core.js bails
+  // whole while the crop is open, so the capital reaches here untouched. Above
+  // the E test below, which would otherwise take either case.
+  if (e.key === 'E' && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    if (!_vpCropHolding()) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpArrowAdd();
     return;
   }
 
@@ -6102,8 +6135,11 @@ function _vpTextSetFont(t, id) {
                (raw.indexOf(VP_TEXT_ARROW_DN) >= 0 || raw.indexOf(VP_TEXT_ARROW_UP) >= 0);
   if (typeof toast === 'function') {
     toast(lost
-      ? ('🅰 ' + f.name + ' — but it has no ⬇ ⬆ glyph. The arrow in this box looks ' +
-         'right here and renders as an empty box; Segoe UI Symbol is the one that has them.')
+      // (dev1086) …and the box goes back to Segoe UI Symbol when you click out
+      // of it (_vpTextFixArrowFace), so say that rather than let it look like
+      // the choice didn't take.
+      ? ('🅰 ' + f.name + ' — but it has no ⬇ ⬆, so this box goes back to Segoe UI ' +
+         'Symbol when you click out. Take the arrows out first, or use ⇧E for a real arrow.')
       : ('🅰 ' + f.name), lost ? 5600 : 1600);
   }
 }
@@ -6233,6 +6269,7 @@ function _vpTextMenuClose() {
   const el = document.getElementById(VP_TEXT_MENU_ID);
   if (el) el.remove();
   document.removeEventListener('keydown', _vpTextMenuKey, true);
+  document.removeEventListener('keydown', _vpArrowMenuKey, true);   // (dev1086) the arrow's menu
 }
 
 function _vpTextMenuKey(e) {
@@ -6930,6 +6967,524 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
   return { texts: out, pauses: pauses.map(p => ({ at: p.at, hold: p.hold })) };
 }
 
+// (dev1086) ── Arrows ─────────────────────────────────────────────────────────
+// An arrow is a SHAPE, not a character. The ⬇ ⬆ a text box can hold are glyphs:
+// they point two ways, come in one style, size with the type, and exist only in
+// Segoe UI Symbol — in any other face the browser borrows the glyph from a
+// fallback font while drawtext, which has one font file, burns in an empty box.
+// That box is what started this.
+//
+// One geometry, two painters. _vpArrowGeom turns an arrow into SVG path strings
+// for a frame W×H pixels big; the overlay hands those to <path d>, and the
+// render hands the SAME strings to canvas Path2D at the output size. The canvas
+// becomes a PNG that the proxy lays over the clip with ffmpeg's overlay — so the
+// preview and the burned-in arrow are one drawing at two scales, not two
+// drawings that have to be kept in step.
+//
+// Geometry is in fractions of the crop rect, like a caption's, so it survives a
+// resize, an aspect swap and a change of output size:
+//   x1,y1 → x2,y2   tail → tip. For a ring, two opposite corners of the box
+//                   the ellipse sits in.
+//   k               weight: a multiplier on the style's own base thickness,
+//                   which is a fraction of the crop HEIGHT (a caption's size is too)
+//   bend            ±1, the side a curved arrow bows to
+//   color / alpha   ids and strength, as on a caption
+//   atStart / atEnd absolute seconds, as on a caption; null = the whole clip
+const VP_ARROW_MAX = 12;
+const VP_ARROW_STYLES = [
+  { id: 'block', key: '1', name: 'block arrow',  glyph: '⬇', base: 0.045 },
+  { id: 'line',  key: '2', name: 'line arrow',   glyph: '↓', base: 0.012 },
+  { id: 'curve', key: '3', name: 'curved arrow', glyph: '⤵', base: 0.012 },
+  { id: 'ring',  key: '4', name: 'ring',         glyph: '◯', base: 0.010 }
+];
+// `edge` is the outline an opaque arrow gets, chosen to oppose the fill — the
+// same job a caption's outline does over a moving picture. A faded arrow has
+// none, again as a caption doesn't.
+const VP_ARROW_COLORS = [
+  { id: 'white',  key: '1', name: 'white',  css: '#ffffff', edge: '#000000' },
+  { id: 'yellow', key: '2', name: 'yellow', css: '#ffd400', edge: '#000000' },
+  { id: 'red',    key: '3', name: 'red',    css: '#ff3030', edge: '#000000' },
+  { id: 'black',  key: '4', name: 'black',  css: '#000000', edge: '#ffffff' },
+  { id: 'grey',   key: '5', name: 'grey',   css: '#808080', edge: '#000000' }
+];
+const VP_ARROW_STYLE_KEY = 'salCropArrowStyle';
+const VP_ARROW_COLOR_KEY = 'salCropArrowColor';
+const VP_ARROW_K_MIN = 0.3, VP_ARROW_K_MAX = 4, VP_ARROW_K_STEP = 1.15;
+
+function _vpArrowStyle(id) { return VP_ARROW_STYLES.find(x => x.id === id) || VP_ARROW_STYLES[0]; }
+function _vpArrowColor(id) { return VP_ARROW_COLORS.find(x => x.id === id) || VP_ARROW_COLORS[0]; }
+
+// The last style and colour picked are what the next arrow starts as — the
+// font's rule, for the font's reason.
+function _vpArrowPref(key, list, def) {
+  try {
+    const v = localStorage.getItem(key);
+    if (v && list.some(x => x.id === v)) return v;
+  } catch (_) {}
+  return def;
+}
+function _vpArrowRememberPref(key, v) { try { localStorage.setItem(key, v); } catch (_) {} }
+
+// The arrow as paths, in a frame W×H pixels big.
+//   strokes  stroked w wide, round caps — the shafts, and the ring
+//   fills    filled — the block outline and the heads
+//   hit      the centre line (or the ring), for the overlay to grab by
+//   o        outline width, 0 on a faded arrow
+//   bbox     every point the drawing can reach, before the widths
+function _vpArrowGeom(a, W, H) {
+  const st = _vpArrowStyle(a.style);
+  const w = Math.max(0.5, st.base * (a.k || 1) * H);
+  const faded = a.alpha != null && a.alpha < 1;
+  const o = faded ? 0 : Math.max(1, w * (st.id === 'block' ? 0.10 : 0.18));
+  const X1 = a.x1 * W, Y1 = a.y1 * H;
+  let X2 = a.x2 * W, Y2 = a.y2 * H;
+  const f = n => Math.round(n * 100) / 100;          // keeps the strings short
+  const P = (x, y) => f(x) + ' ' + f(y);
+  const poly = pts => 'M ' + pts.map(p => P(p[0], p[1])).join(' L ') + ' Z';
+  const fills = [], strokes = [], pts = [];
+  let hit;
+  if (st.id === 'ring') {
+    const cx = (X1 + X2) / 2, cy = (Y1 + Y2) / 2;
+    const rx = Math.max(1, Math.abs(X2 - X1) / 2), ry = Math.max(1, Math.abs(Y2 - Y1) / 2);
+    hit = 'M ' + P(cx - rx, cy) +
+          ' A ' + f(rx) + ' ' + f(ry) + ' 0 1 0 ' + P(cx + rx, cy) +
+          ' A ' + f(rx) + ' ' + f(ry) + ' 0 1 0 ' + P(cx - rx, cy) + ' Z';
+    strokes.push(hit);
+    pts.push([cx - rx, cy - ry], [cx + rx, cy + ry]);
+  } else {
+    let dx = X2 - X1, dy = Y2 - Y1;
+    let L = Math.hypot(dx, dy);
+    if (L < 1) { X2 = X1; Y2 = Y1 + 1; dx = 0; dy = 1; L = 1; }   // a dot still points somewhere
+    const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    if (st.id === 'block') {
+      // The ⬇ glyph's proportions: the head a little over twice the shaft wide.
+      const sh = w / 2, hw = w * 1.3, hl = Math.min(w * 1.5, L * 0.6);
+      const bx = X2 - ux * hl, by = Y2 - uy * hl;
+      const outline = [
+        [X1 + nx * sh, Y1 + ny * sh], [bx + nx * sh, by + ny * sh], [bx + nx * hw, by + ny * hw],
+        [X2, Y2],
+        [bx - nx * hw, by - ny * hw], [bx - nx * sh, by - ny * sh], [X1 - nx * sh, Y1 - ny * sh]
+      ];
+      fills.push(poly(outline));
+      pts.push(...outline);
+      hit = 'M ' + P(X1, Y1) + ' L ' + P(X2, Y2);
+    } else {
+      // Line and curve: a stroked shaft under a filled triangular head. The
+      // curve is a quadratic bowed off the chord; its head follows the tangent
+      // at the tip, which for a quadratic is the line from the control point.
+      const hl = Math.min(w * 4.5, L * 0.5), hw = w * 2;
+      let hx = ux, hy = uy, cx = 0, cy = 0;
+      const curved = (st.id === 'curve');
+      if (curved) {
+        const b = (a.bend === -1) ? -1 : 1;
+        cx = (X1 + X2) / 2 + nx * b * 0.35 * L;
+        cy = (Y1 + Y2) / 2 + ny * b * 0.35 * L;
+        const tl = Math.hypot(X2 - cx, Y2 - cy) || 1;
+        hx = (X2 - cx) / tl; hy = (Y2 - cy) / tl;
+      }
+      const bx = X2 - hx * hl, by = Y2 - hy * hl;
+      // The shaft runs a little way INTO the head, so no seam shows at the
+      // join. On the curve that end point lies on the control→tip line, so
+      // the shaft arrives on the head's own heading — no kink.
+      const ex = bx + hx * hl * 0.4, ey = by + hy * hl * 0.4;
+      const head = [[X2, Y2], [bx - hy * hw, by + hx * hw], [bx + hy * hw, by - hx * hw]];
+      fills.push(poly(head));
+      strokes.push(curved ? ('M ' + P(X1, Y1) + ' Q ' + P(cx, cy) + ' ' + P(ex, ey))
+                          : ('M ' + P(X1, Y1) + ' L ' + P(ex, ey)));
+      hit = curved ? ('M ' + P(X1, Y1) + ' Q ' + P(cx, cy) + ' ' + P(X2, Y2))
+                   : ('M ' + P(X1, Y1) + ' L ' + P(X2, Y2));
+      pts.push([X1, Y1], ...head);
+      if (curved) pts.push([cx, cy]);   // a quadratic stays inside its control hull
+    }
+  }
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  return { fills, strokes, hit, w, o,
+           bbox: { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) } };
+}
+
+// The overlay's painter: SVG markup for one arrow group. Outline pass first,
+// all of it, then the colour on top — so a shaft's outline can never show
+// across the head it runs into.
+function _vpArrowSvgMarkup(G, col) {
+  const lineAttrs = ' fill="none" stroke-linecap="round" stroke-linejoin="round"';
+  let h = '';
+  if (G.o > 0) {
+    G.strokes.forEach(d => {
+      h += '<path d="' + d + '"' + lineAttrs + ' stroke="' + col.edge + '" stroke-width="' + (G.w + 2 * G.o) + '"/>';
+    });
+    G.fills.forEach(d => {
+      h += '<path d="' + d + '" fill="' + col.edge + '" stroke="' + col.edge +
+           '" stroke-width="' + (2 * G.o) + '" stroke-linejoin="round"/>';
+    });
+  }
+  G.strokes.forEach(d => {
+    h += '<path d="' + d + '"' + lineAttrs + ' stroke="' + col.css + '" stroke-width="' + G.w + '"/>';
+  });
+  G.fills.forEach(d => { h += '<path d="' + d + '" fill="' + col.css + '"/>'; });
+  // A fat invisible copy of the centre line to grab, so a thin arrow is not a
+  // two-pixel target.
+  h += '<path d="' + G.hit + '" fill="none" stroke="transparent" stroke-width="' +
+       Math.max(16, G.w + 10) + '" pointer-events="stroke"/>';
+  return h;
+}
+
+// The render's painter: the same paths on a canvas at OUTPUT size, cut to the
+// arrow's own box (and to the frame), as a PNG. `x`/`y` are where that box sits
+// in the output frame, which is what overlay= takes. `frame` is the size it was
+// drawn for — the proxy refuses an arrow drawn for a frame it is not rendering,
+// rather than burning one in at the wrong size.
+async function _vpArrowRaster(a, ow, oh) {
+  const G = _vpArrowGeom(a, ow, oh);
+  const col = _vpArrowColor(a.color);
+  const m = G.w / 2 + G.o + 2;
+  const X0 = Math.max(0, Math.floor(G.bbox.x0 - m)), Y0 = Math.max(0, Math.floor(G.bbox.y0 - m));
+  const X1 = Math.min(ow, Math.ceil(G.bbox.x1 + m)), Y1 = Math.min(oh, Math.ceil(G.bbox.y1 + m));
+  if (X1 - X0 < 1 || Y1 - Y0 < 1) return null;      // wholly off the frame
+  const mkCanvas = () => {
+    const cv = document.createElement('canvas');
+    cv.width = X1 - X0; cv.height = Y1 - Y0;
+    return cv;
+  };
+  const draw = ctx => {
+    ctx.translate(-X0, -Y0);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    if (G.o > 0) {
+      ctx.strokeStyle = col.edge; ctx.fillStyle = col.edge;
+      ctx.lineWidth = G.w + 2 * G.o;
+      G.strokes.forEach(d => ctx.stroke(new Path2D(d)));
+      ctx.lineWidth = 2 * G.o;
+      G.fills.forEach(d => { const p = new Path2D(d); ctx.stroke(p); ctx.fill(p); });
+    }
+    ctx.strokeStyle = col.css; ctx.fillStyle = col.css;
+    ctx.lineWidth = G.w;
+    G.strokes.forEach(d => ctx.stroke(new Path2D(d)));
+    G.fills.forEach(d => ctx.fill(new Path2D(d)));
+  };
+  const cv = mkCanvas();
+  const ctx = cv.getContext('2d');
+  if (!ctx) return null;
+  if (a.alpha != null && a.alpha < 1) {
+    // Faded as ONE thing, the way the overlay's group opacity fades it — drawn
+    // whole first, then laid down at strength, so the shaft doesn't show darker
+    // where it runs under the head.
+    const off = mkCanvas();
+    const octx = off.getContext('2d');
+    if (!octx) return null;
+    draw(octx);
+    ctx.globalAlpha = a.alpha;
+    ctx.drawImage(off, 0, 0);
+  } else {
+    draw(ctx);
+  }
+  const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+  if (!blob) return null;
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return { png: btoa(bin), x: X0, y: Y0, frame: { w: ow, h: oh } };
+}
+
+// Output seconds for a clip-relative time, given the freezes a caption's pause
+// adds — the same shift _vpTextRenderList applies to its own marks.
+function _vpPauseMap(pauses) {
+  const ps = (pauses || []).slice();
+  return x => { let out = x; ps.forEach(p => { if (p.at < x) out += p.hold; }); return out; };
+}
+
+// The `arrows` payload: one PNG per arrow at the output size, plus its window.
+// Marks become clip-relative, then pause-shifted, exactly as a caption's do.
+// opts.untimed — a still or a single frame, where there is no clock for a
+// window to be read against.
+async function _vpArrowRenderList(arrows, ow, oh, startSec, endSec, pauses, opts) {
+  const out = [];
+  if (!Array.isArray(arrows) || !arrows.length) return out;
+  const untimed = !!(opts && opts.untimed);
+  const dur = Math.max(0, (+endSec || 0) - (+startSec || 0));
+  const rel = v => Math.max(0, Math.min(dur, v - startSec));
+  const map = _vpPauseMap(pauses);
+  const outDur = map(dur);
+  for (const a of arrows) {
+    let from = null, to = null;
+    if (!untimed) {
+      from = (a.atStart == null) ? null : map(rel(a.atStart));
+      to   = (a.atEnd   == null) ? null : map(rel(a.atEnd));
+      if (from != null && to != null && to < from) { const s0 = from; from = to; to = s0; }
+      if (from != null && to != null && to - from < 0.001) continue;   // never on screen
+    }
+    const r = await _vpArrowRaster(a, ow, oh);
+    if (!r) continue;
+    if (from != null && from > 0)      r.from = +from.toFixed(3);
+    if (to   != null && to   < outDur) r.to   = +to.toFixed(3);
+    out.push(r);
+  }
+  return out;
+}
+
+// A bled rect renders only its intersection with the frame (`ef`), so arrows —
+// fractions of the DRAWN rect — are re-expressed against it, on shallow clones
+// so the live ones keep their coordinates. Same remap the captions get.
+function _vpArrowsInRect(s, ef) {
+  const list = (s && s.arrows) || [];
+  if (!ef || !s.bleed || (ef.x === s.frac.x && ef.y === s.frac.y &&
+                          ef.w === s.frac.w && ef.h === s.frac.h)) return list;
+  const fx = v => (s.frac.x + v * s.frac.w - ef.x) / ef.w;
+  const fy = v => (s.frac.y + v * s.frac.h - ef.y) / ef.h;
+  return list.map(a => Object.assign(Object.create(a), {
+    x1: fx(a.x1), y1: fy(a.y1), x2: fx(a.x2), y2: fy(a.y2),
+    k: (a.k || 1) * s.frac.h / ef.h          // weight is a share of the crop's height
+  }));
+}
+
+function _vpArrowAdd()      { const s = _vpState && _vpState.crop; if (s && s.addArrow) s.addArrow(); }
+function _vpArrowSelected() {
+  const s = _vpState && _vpState.crop;
+  return !!(s && s.selectedArrow && s.selectedArrow());
+}
+function _vpArrowNudge(dir, a) { const s = _vpState && _vpState.crop; if (s && s.nudgeArrow) s.nudgeArrow(dir, a); }
+function _vpArrowDeselect()    { const s = _vpState && _vpState.crop; if (s && s.selectArrow) s.selectArrow(null); }
+function _vpArrowDeleteSelected() {
+  const s = _vpState && _vpState.crop;
+  const a = s && s.selectedArrow ? s.selectedArrow() : null;
+  if (a && s.removeArrow) s.removeArrow(a);
+}
+
+function _vpArrowSetStyle(a, id) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !a || !s.arrowRestyle) return;
+  const st = _vpArrowStyle(id);
+  s.arrowRestyle(a, st.id);
+  _vpArrowRememberPref(VP_ARROW_STYLE_KEY, st.id);
+  if (typeof toast === 'function') {
+    toast(st.glyph + ' ' + st.name + (st.id === 'ring'
+      ? ' — its two round grips are opposite corners · hold ⇧ for a circle' : ''), 2000);
+  }
+}
+function _vpArrowFlip(a) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !a) return;
+  a.bend = (a.bend === -1) ? 1 : -1;
+  if (s.paintArrows) s.paintArrows();
+}
+function _vpArrowSetColor(a, id) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !a) return;
+  const c = _vpArrowColor(id);
+  a.color = c.id;
+  _vpArrowRememberPref(VP_ARROW_COLOR_KEY, c.id);
+  if (s.paintArrows) s.paintArrows();
+  if (typeof toast === 'function') toast('🎨 ' + c.name + ' arrow', 1400);
+}
+function _vpArrowSetAlpha(a, v) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !a) return;
+  a.alpha = (v >= 1) ? null : v;
+  if (s.paintArrows) s.paintArrows();
+  if (typeof toast === 'function') {
+    toast(a.alpha == null ? '◼ arrow at full strength'
+                          : ('◻ arrow at ' + Math.round(v * 100) + '% — no outline, as on faded text'), 1800);
+  }
+}
+function _vpArrowSetMark(a, which) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !a) return;
+  const now = _vpNowSec();
+  if (which === 'start') a.atStart = now; else a.atEnd = now;
+  if (s.paintArrows) s.paintArrows();
+  if (typeof toast === 'function') {
+    toast('⏱ arrow ' + (which === 'start' ? 'starts' : 'ends') + ' at ' + now.toFixed(2) + 's', 1600);
+  }
+}
+function _vpArrowClearMarks(a) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !a) return;
+  a.atStart = null; a.atEnd = null;
+  if (s.paintArrows) s.paintArrows();
+  if (typeof toast === 'function') toast('⏱ cleared — this arrow is on for the whole clip', 1600);
+}
+
+// ── The arrow's right-click menu ───────────────────────────────────────────
+// It borrows the text menu's element id, so everything that already stands
+// down for that menu — both key handlers, a caption's click-away — stands down
+// for this one too. Its own key handler; _vpTextMenuClose takes both off.
+function _vpArrowMenuFill(el, a) {
+  const s = _vpState && _vpState.crop;
+  el._vpAsking = null;
+  el.innerHTML = '';
+  const mk = (html, title) => {
+    const d = document.createElement('div');
+    d.innerHTML = html;
+    if (title) d.title = title;
+    d.style.cssText = 'padding:5px 8px;border-radius:5px;cursor:pointer;white-space:nowrap;';
+    d.onmouseenter = () => { d.style.background = '#12325c'; };
+    d.onmouseleave = () => { d.style.background = ''; };
+    el.appendChild(d);
+    return d;
+  };
+  const sep = () => {
+    const h = document.createElement('div');
+    h.style.cssText = 'height:1px;margin:4px 2px;background:rgba(102,170,255,0.35);';
+    el.appendChild(h);
+  };
+  VP_ARROW_STYLES.forEach(st => {
+    mk('<u>' + st.key + '</u> &nbsp;<span style="display:inline-block;width:20px;text-align:center;font-size:16px;">' +
+       st.glyph + '</span> ' + st.name +
+       (a.style === st.id ? ' <span style="color:#8ef;">·  now</span>' : ''))
+      .onclick = () => { _vpTextMenuClose(); _vpArrowSetStyle(a, st.id); };
+  });
+  if (a.style === 'curve') {
+    mk('↶ &nbsp;<u>b</u>end the other way').onclick = () => { _vpTextMenuClose(); _vpArrowFlip(a); };
+  }
+  sep();
+  const refill = () => { _vpArrowMenuFill(el, a); _vpTextMenuPlace(el); };
+  mk('<u>+</u> thicker <span style="opacity:0.6;">· now ×' + (a.k || 1).toFixed(2) + '</span>',
+     'Also ↑ / ↓, or the mouse wheel over the arrow')
+    .onclick = () => { _vpArrowNudge(1, a); refill(); };
+  mk('<u>−</u> thinner').onclick = () => { _vpArrowNudge(-1, a); refill(); };
+  mk('◻ strength' + (a.alpha == null ? '' :
+       ' <span style="opacity:0.6;">· now ' + Math.round(a.alpha * 100) + '%</span>'),
+     'Fade the whole arrow — it loses its outline, as faded text does')
+    .onclick = () => _vpArrowAsk(el, a, 'alpha');
+  mk('<span style="display:inline-block;width:13px;height:13px;vertical-align:-2px;' +
+     'border:1px solid #789;background:' + _vpArrowColor(a.color).css + ';"></span>' +
+     ' &nbsp;colour <span style="opacity:0.6;">· ' + _vpEscHtml(_vpArrowColor(a.color).name) + '</span>')
+    .onclick = () => _vpArrowAsk(el, a, 'color');
+  if (s && !s.imageMode) {
+    sep();
+    const now = _vpNowSec();
+    mk('<u>s</u>tarts here <span style="opacity:0.6;">· ' + now.toFixed(2) + 's</span>',
+       'This arrow appears from the playhead onward')
+      .onclick = () => { _vpTextMenuClose(); _vpArrowSetMark(a, 'start'); };
+    mk('<u>e</u>nds here <span style="opacity:0.6;">· ' + now.toFixed(2) + 's</span>',
+       'This arrow is gone after the playhead')
+      .onclick = () => { _vpTextMenuClose(); _vpArrowSetMark(a, 'end'); };
+    if (a.atStart != null || a.atEnd != null) {
+      mk('<span style="opacity:0.75;">✕ clear — on for the whole clip</span>')
+        .onclick = () => { _vpTextMenuClose(); _vpArrowClearMarks(a); };
+    }
+  }
+  sep();
+  mk('<u>x</u> &nbsp;delete this arrow <span style="opacity:0.6;">(or Delete)</span>')
+    .onclick = () => { _vpTextMenuClose(); if (s && s.removeArrow) s.removeArrow(a); };
+}
+
+// Second level, in place — the text menu's trick, for the same reason.
+function _vpArrowAsk(el, a, kind) {
+  el._vpAsking = kind;
+  el.innerHTML = '';
+  const head = document.createElement('div');
+  head.textContent = (kind === 'alpha') ? 'How strong?  (1-6)' : 'Which colour?  (1-5)';
+  head.style.cssText = 'padding:4px 8px 6px;color:#8ef;font-weight:bold;white-space:nowrap;';
+  el.appendChild(head);
+  const row = (html, fn) => {
+    const d = document.createElement('div');
+    d.innerHTML = html;
+    d.style.cssText = 'padding:5px 8px;border-radius:5px;cursor:pointer;white-space:nowrap;';
+    d.onmouseenter = () => { d.style.background = '#12325c'; };
+    d.onmouseleave = () => { d.style.background = ''; };
+    d.onclick = () => { _vpTextMenuClose(); fn(); };
+    el.appendChild(d);
+  };
+  if (kind === 'alpha') {
+    const cur = (a.alpha == null) ? 1 : a.alpha;
+    VP_TEXT_ALPHAS.forEach((v, i) => {
+      row('<u>' + (i + 1) + '</u> &nbsp;' + Math.round(v * 100) + '%' +
+          (v === 1 ? ' <span style="opacity:0.55;">(solid, outlined)</span>' : '') +
+          (Math.abs(cur - v) < 0.001 ? ' <span style="color:#8ef;">·  now</span>' : ''),
+          () => _vpArrowSetAlpha(a, v));
+    });
+  } else {
+    const cur = _vpArrowColor(a.color).id;
+    VP_ARROW_COLORS.forEach(c => {
+      row('<u>' + c.key + '</u> &nbsp;<span style="display:inline-block;width:13px;height:13px;' +
+          'vertical-align:-2px;border:1px solid #789;background:' + c.css + ';"></span>&nbsp; ' +
+          _vpEscHtml(c.name) + (c.id === cur ? ' <span style="color:#8ef;">·  now</span>' : ''),
+          () => _vpArrowSetColor(a, c.id));
+    });
+  }
+  _vpTextMenuPlace(el);
+}
+
+function _vpArrowCtxMenu(ev, a) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !a) return;
+  _vpTextMenuClose();
+  if (s.selectArrow) s.selectArrow(a);
+  const el = document.createElement('div');
+  el.id = VP_TEXT_MENU_ID;
+  el._vpArrow = a;
+  el.style.cssText =
+    'position:fixed;z-index:42600;min-width:210px;background:#000;border:2px solid #06f;' +
+    'border-radius:9px;padding:5px;box-shadow:0 4px 18px rgba(0,0,0,0.75);' +
+    'font:13px ui-monospace,Consolas,monospace;color:#dfe6f0;user-select:none;';
+  _vpArrowMenuFill(el, a);
+  document.body.appendChild(el);
+  _vpTextMenuPlace(el, ev.clientX, ev.clientY);
+  const away = e2 => {
+    if (el.contains(e2.target)) return;
+    document.removeEventListener('pointerdown', away, true);
+    _vpTextMenuClose();
+  };
+  setTimeout(() => document.addEventListener('pointerdown', away, true), 0);
+  document.addEventListener('keydown', _vpArrowMenuKey, true);
+}
+
+function _vpArrowMenuKey(e) {
+  const el = document.getElementById(VP_TEXT_MENU_ID);
+  if (!el || !el._vpArrow) { document.removeEventListener('keydown', _vpArrowMenuKey, true); return; }
+  const a = el._vpArrow;
+  const k = (e.key || '').toLowerCase();
+  const take = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+  if (k === 'escape') { take(); _vpTextMenuClose(); return; }
+  if (el._vpAsking === 'alpha') {
+    const i = '123456'.indexOf(k);
+    if (i >= 0 && VP_TEXT_ALPHAS[i] != null) { take(); _vpTextMenuClose(); _vpArrowSetAlpha(a, VP_TEXT_ALPHAS[i]); }
+    return;
+  }
+  if (el._vpAsking === 'color') {
+    const c = VP_ARROW_COLORS.find(x => x.key === k);
+    if (c) { take(); _vpTextMenuClose(); _vpArrowSetColor(a, c.id); }
+    return;
+  }
+  const st = VP_ARROW_STYLES.find(x => x.key === k);
+  if (st) { take(); _vpTextMenuClose(); _vpArrowSetStyle(a, st.id); return; }
+  if (k === 'b' && a.style === 'curve') { take(); _vpTextMenuClose(); _vpArrowFlip(a); return; }
+  if (k === '+' || k === '=' || k === '-' || k === '_') {
+    take();
+    _vpArrowNudge((k === '+' || k === '=') ? 1 : -1, a);
+    _vpArrowMenuFill(el, a); _vpTextMenuPlace(el);
+    return;
+  }
+  const imgMode = !!(_vpState && _vpState.crop && _vpState.crop.imageMode);
+  if (!imgMode && (k === 's' || k === 'e')) {
+    take(); _vpTextMenuClose(); _vpArrowSetMark(a, k === 's' ? 'start' : 'end');
+    return;
+  }
+  if (k === 'x' || k === 'delete') {
+    take(); _vpTextMenuClose();
+    const s = _vpState && _vpState.crop;
+    if (s && s.removeArrow) s.removeArrow(a);
+  }
+}
+
+// (dev1086) The quick fix for the empty square. A box holding ⬇ / ⬆ is moved
+// onto Segoe UI Symbol — the one stock face that has them — whenever text lands
+// in it (the menu insert, a saved line, finishing a typed or pasted entry).
+// Only THIS box changes: the face remembered for new boxes is left alone.
+function _vpTextFixArrowFace(t) {
+  if (!t || _vpTextFont(t.font).arrows) return false;
+  const raw = (t.ta ? t.ta.value : t.text) || '';
+  if (raw.indexOf(VP_TEXT_ARROW_DN) < 0 && raw.indexOf(VP_TEXT_ARROW_UP) < 0) return false;
+  const was = _vpTextFont(t.font).name;
+  t.font = VP_TEXT_FONT_DEF;
+  if (typeof toast === 'function') {
+    toast('Aa this box is now Segoe UI Symbol — ' + was + ' has no ⬇ ⬆ and would have ' +
+          'rendered an empty square. (⇧E makes a real arrow.)', 5200);
+  }
+  return true;
+}
+
 // (dev0744) `opts.image` mounts the SAME overlay over a slideshow still. Only
 // three things differ, and none of them are geometry: the source of the pixel
 // dimensions (an adapter over the <img> — see _vpImgAdapter), the controls that
@@ -7052,6 +7607,9 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // and right-click is what keeps an entry (see _vpTextPickMenu).
     '<span id="vp-crop-textpick" title="Text you have used before — click to pick one · right-click an entry to keep it (E types a fresh one)" ' +
       'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">▾ saved text</span>' +
+    // (dev1086) ⇧E's button. One glyph wide, because the bar is one line (dev0871).
+    '<span id="vp-crop-arrow" title="Add an arrow (⇧E) — drag its round ends to aim it · right-click it for block / line / curved / ring, colour and timing" ' +
+      'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">➘</span>' +
     // (dev0745) Image mode only: still, or a Ken Burns clip out as mp4 / gif.
     '<span id="vp-crop-motion" title="Still picture · or a moving clip from the zoom box (M)" ' +
       'style="display:none;cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">🖼 still</span>' +
@@ -7388,6 +7946,20 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   textLayer.style.cssText = 'position:absolute;inset:0;pointer-events:none;';
   rect.appendChild(textLayer);
 
+  // (dev1086) ── Arrow layer ───────────────────────────────────────────────
+  // Over the captions — the render lays arrows over them too, and an arrow
+  // pointing at a caption must still be grabbable — and, like them, a child of
+  // `rect`, so it tilts with the crop. The SVG draws; the HTML layer above it
+  // carries the round end grips, the ✕ and the ⏱ badge.
+  const arrowSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  arrowSvg.setAttribute('preserveAspectRatio', 'none');
+  arrowSvg.style.cssText =
+    'position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none;';
+  rect.appendChild(arrowSvg);
+  const arrowUi = document.createElement('div');
+  arrowUi.style.cssText = 'position:absolute;inset:0;pointer-events:none;';
+  rect.appendChild(arrowUi);
+
   // (dev0777) ── Track ghosts ─────────────────────────────────────────────────
   // Where the window sits at each stamped keyframe, plus the path its centre
   // takes. A child of the CONTAINER, not of `rect` — these are positions in the
@@ -7461,6 +8033,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     vcodec: 'h264',                   // (dev0871) h264 | h265
     loop: 'off',                      // (dev0871) off | fwd | boom
     texts: [],                        // (dev0724) burned-in captions, see addText
+    arrows: [],                       // (dev1086) burned-in arrows, see addArrow
     // (dev0720) `on` = armed; frac is inside the CROP rect (fw === fh, since a
     // same-aspect box inside a box has equal fractions on both axes); atSec is
     // the playhead when the box was last placed — where the zoom finishes.
@@ -7730,6 +8303,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     paintKen();
     paintTrack();      // (dev0777) ghosts sit in frame coords — repaint on resize
     paintTexts();
+    paintArrows();     // (dev1086) drawn in screen px, so a resize redraws them
   }
 
   // (dev0957) On a still, "1080p / 720p" is the wrong language. Those rungs
@@ -8062,6 +8636,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
                && (t.atEnd   == null || t0 <= t.atEnd   + 0.001));
       t.el.style.visibility = on ? '' : 'hidden';
     });
+    syncArrowWindow(t0);   // (dev1086) the arrows keep the same clock
   }
 
   function textBoxFor(el) {
@@ -8076,6 +8651,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     const j = (typeof ta.selectionEnd   === 'number') ? ta.selectionEnd   : i;
     ta.value = ta.value.slice(0, i) + str + ta.value.slice(j);
     t.text = ta.value;
+    if (_vpTextFixArrowFace(t)) paintTexts();   // (dev1086) no empty square in the render
     growText(t);
     try { ta.focus({ preventScroll: true }); } catch (_) {}
     const caret = i + str.length;
@@ -8252,6 +8828,9 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     if (t.clock) { syncTextWindow(); paintEngine(); return; }
     if (!t.text.trim()) removeText(t);   // an empty box is an abandoned one
     else {
+      // (dev1086) A typed or pasted ⬇ / ⬆ needs the face that has it — see
+      // _vpTextFixArrowFace.
+      if (_vpTextFixArrowFace(t)) paintTexts();
       syncTextWindow();                  // (dev0726) …and it hides again if off-window
       // (dev0745) Finishing a caption is what banks it. Typing is the only way
       // text gets here, so the list can only ever hold things the user wrote.
@@ -8294,6 +8873,215 @@ function _vpMountCropOverlay(host, vid, row, opts) {
              kh: Math.max(1, state.frac.h * r.rh), r };
     try { capEl.setPointerCapture(e.pointerId); } catch (_) {}
   }
+
+  // (dev1086) ── Arrows ──────────────────────────────────────────────────────
+  // One arrow = one SVG group here and one PNG overlay at render (see the note
+  // on _vpArrowGeom). The selected arrow shows its two round grips — green at
+  // the tail, red at the tip, the track's start/end colours — and its ✕; the
+  // rest show only themselves, so they can be judged as they will look.
+  // Declared above ensureMeta(): paint() reaches paintArrows() the moment the
+  // source can be measured, and `selArrow` must exist by then.
+  let selArrow = null;
+
+  // The rect's inner size in screen px — the frame the overlay draws in.
+  // clientWidth/Height ignore the tilt transform, which is what is wanted:
+  // the drawing is in the rect's own axes and the CSS rotation does the rest.
+  function arrowWH() {
+    const W = rect.clientWidth, H = rect.clientHeight;
+    if (W > 0 && H > 0) return { W, H };
+    const r = viewRect();
+    return { W: Math.max(1, state.frac.w * r.rw), H: Math.max(1, state.frac.h * r.rh) };
+  }
+
+  function addArrow() {
+    if (state.arrows.length >= VP_ARROW_MAX) {
+      if (typeof toast === 'function') toast(VP_ARROW_MAX + ' arrows is the limit', 1800);
+      return null;
+    }
+    if (editing) endEdit();
+    const n = state.arrows.length;
+    const { W, H } = arrowWH();
+    const style = _vpArrowPref(VP_ARROW_STYLE_KEY, VP_ARROW_STYLES, 'block');
+    // Each new one a step down and right of the last, so they never stack.
+    const cx = Math.min(0.85, 0.5 + 0.06 * n), cy = Math.min(0.75, 0.42 + 0.05 * n);
+    const a = { style, k: 1, bend: 1, alpha: null, atStart: null, atEnd: null,
+                color: _vpArrowPref(VP_ARROW_COLOR_KEY, VP_ARROW_COLORS, 'white') };
+    if (style === 'ring') {
+      const hx = 0.14 * H / W;               // a circle, not a crop-shaped oval
+      a.x1 = cx - hx; a.x2 = cx + hx; a.y1 = cy - 0.14; a.y2 = cy + 0.14;
+    } else {
+      a.x1 = a.x2 = cx; a.y1 = cy - 0.16; a.y2 = cy + 0.12;   // pointing down, like ⬇
+    }
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.style.pointerEvents = 'visiblePainted';
+    g.style.cursor = 'move';
+    arrowSvg.appendChild(g);
+    g.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;                       // right-click is the menu's
+      arrowStart('amove', 0, e, g, a);
+    });
+    g.addEventListener('contextmenu', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (window._vpFSB) {                              // V's step panel stands down
+        try { window._vpFSB.cleanup(); } catch (_) {}
+        window._vpFSB = null;
+      }
+      _vpArrowCtxMenu(e, a);
+    });
+    g.addEventListener('wheel', e => {
+      e.preventDefault(); e.stopPropagation();
+      selectArrow(a);
+      nudgeArrow(e.deltaY < 0 ? 1 : -1, a);
+    }, { passive: false });
+
+    const grip = which => {
+      const h = document.createElement('div');
+      h.title = (which === 1 ? 'Tail' : 'Tip') + ' — drag to aim and size · hold ⇧ to snap to 15°';
+      h.style.cssText =
+        'position:absolute;width:13px;height:13px;margin:-7px 0 0 -7px;border-radius:50%;' +
+        'box-sizing:border-box;border:2px solid #000;pointer-events:auto;cursor:crosshair;display:none;' +
+        'background:' + (which === 1 ? '#7fffa8' : '#ff8a8a') + ';';
+      h.addEventListener('pointerdown', e => {
+        if (e.button !== 0) return;
+        arrowStart('aend', which, e, h, a);
+      });
+      arrowUi.appendChild(h);
+      return h;
+    };
+    const del = document.createElement('div');
+    del.textContent = '✕';
+    del.title = 'Remove this arrow (Delete)';
+    del.style.cssText =
+      'position:absolute;margin:-28px 0 0 -28px;width:18px;height:18px;border-radius:50%;' +
+      'background:#1a1a2e;color:#f9c;border:1px solid #a67;text-align:center;display:none;' +
+      'font:11px/16px ui-monospace,Consolas,monospace;cursor:pointer;pointer-events:auto;';
+    del.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); });
+    del.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); removeArrow(a); });
+    arrowUi.appendChild(del);
+    // The ⏱ badge, only when the arrow is windowed — the caption's badge, by
+    // the tail grip.
+    const tlbl = document.createElement('div');
+    tlbl.style.cssText =
+      'position:absolute;margin:12px 0 0 8px;background:rgba(0,0,0,0.62);color:#ffd24a;' +
+      'padding:0 5px;border-radius:3px;font:10px ui-monospace,Consolas,monospace;' +
+      'pointer-events:none;white-space:nowrap;display:none;';
+    arrowUi.appendChild(tlbl);
+
+    a.g = g; a.h1 = grip(1); a.h2 = grip(2); a.del = del; a.tlbl = tlbl;
+    state.arrows.push(a);
+    selArrow = a;
+    paintArrows();
+    paintEngine();   // an arrow is new pixels — a still can no longer save lossless
+    if (typeof toast === 'function') {
+      toast('➘ arrow · drag it to move · drag the round ends to aim it · ↑ ↓ or wheel = ' +
+            'thicker / thinner · right-click for style, colour and timing', 3600);
+    }
+    return a;
+  }
+
+  function removeArrow(a) {
+    const i = state.arrows.indexOf(a);
+    if (i >= 0) state.arrows.splice(i, 1);
+    [a.g, a.h1, a.h2, a.del, a.tlbl].forEach(el => { if (el && el.parentNode) el.parentNode.removeChild(el); });
+    if (selArrow === a) selArrow = null;
+    paintEngine();   // the last arrow leaving can restore lossless
+  }
+
+  function selectArrow(a) {
+    if (selArrow === a) return;
+    selArrow = a || null;
+    paintArrows();
+  }
+
+  function nudgeArrow(dir, a) {
+    a = a || selArrow || state.arrows[state.arrows.length - 1];
+    if (!a) return;
+    const k = (a.k || 1) * (dir > 0 ? VP_ARROW_K_STEP : 1 / VP_ARROW_K_STEP);
+    a.k = Math.max(VP_ARROW_K_MIN, Math.min(VP_ARROW_K_MAX, +k.toFixed(3)));
+    paintArrows();
+  }
+
+  // A style change keeps the two points. Arrow → ring turns them into the
+  // corners of the ring's box, which for a straight up-and-down arrow is a box
+  // with no width — so a box that thin becomes a circle round the arrow's middle.
+  function arrowRestyle(a, id) {
+    if (id === 'ring' && a.style !== 'ring') {
+      const { W, H } = arrowWH();
+      const bw = Math.abs(a.x2 - a.x1) * W, bh = Math.abs(a.y2 - a.y1) * H;
+      if (Math.min(bw, bh) < 0.3 * Math.max(bw, bh)) {
+        const mx = (a.x1 + a.x2) / 2, my = (a.y1 + a.y2) / 2;
+        const rr = Math.max(bw, bh, 20) / 2;
+        const c01 = v => Math.max(0, Math.min(1, v));
+        a.x1 = c01(mx - rr / W); a.x2 = c01(mx + rr / W);
+        a.y1 = c01(my - rr / H); a.y2 = c01(my + rr / H);
+      }
+    }
+    a.style = id;
+    paintArrows();
+  }
+
+  function paintArrows() {
+    const { W, H } = arrowWH();
+    arrowSvg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    state.arrows.forEach(a => {
+      a.g.innerHTML = _vpArrowSvgMarkup(_vpArrowGeom(a, W, H), _vpArrowColor(a.color));
+      a.g.setAttribute('opacity', (a.alpha == null) ? '1' : String(a.alpha));
+      const sel = (a === selArrow);
+      a.h1.style.left = (a.x1 * 100) + '%'; a.h1.style.top = (a.y1 * 100) + '%';
+      a.h2.style.left = (a.x2 * 100) + '%'; a.h2.style.top = (a.y2 * 100) + '%';
+      a.del.style.left = a.h1.style.left;   a.del.style.top = a.h1.style.top;
+      a.tlbl.style.left = a.h1.style.left;  a.tlbl.style.top = a.h1.style.top;
+      a.h1.style.display = a.h2.style.display = a.del.style.display = sel ? '' : 'none';
+      if (a.atStart == null && a.atEnd == null) a.tlbl.style.display = 'none';
+      else {
+        a.tlbl.style.display = '';
+        a.tlbl.textContent = '⏱ ' + (a.atStart == null ? 'clip start' : a.atStart.toFixed(2) + 's') +
+                             ' → ' + (a.atEnd == null ? 'clip end' : a.atEnd.toFixed(2) + 's');
+      }
+    });
+    syncArrowWindow();
+  }
+
+  // An arrow's window, shown here as in the file — the caption rule
+  // (syncTextWindow). The selected one always shows: you cannot place what
+  // you cannot see. A still has no clock, so everything shows.
+  function syncArrowWindow(now) {
+    const t0 = imageMode ? 0 : ((now == null) ? _vpNowSec() : now);
+    state.arrows.forEach(a => {
+      const on = imageMode || (a === selArrow)
+              || ((a.atStart == null || t0 >= a.atStart - 0.001)
+               && (a.atEnd   == null || t0 <= a.atEnd   + 0.001));
+      const v = on ? '' : 'hidden';
+      a.g.style.visibility = v;
+      a.h1.style.visibility = a.h2.style.visibility = a.del.style.visibility = a.tlbl.style.visibility = v;
+    });
+  }
+
+  function arrowStart(kind, which, e, capEl, a) {
+    e.preventDefault(); e.stopPropagation();
+    if (editing) endEdit();
+    selectArrow(a);
+    const r = viewRect();
+    drag = { kind, pos: which, el: capEl, a, moved: false,
+             sx: e.clientX, sy: e.clientY,
+             of: { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2 },
+             kw: Math.max(1, state.frac.w * r.rw),
+             kh: Math.max(1, state.frac.h * r.rh), r };
+    try { capEl.setPointerCapture(e.pointerId); } catch (_) {}
+  }
+
+  // A press anywhere that isn't an arrow, its grips or its menu lets the
+  // selection go. Not swallowed — it carries on to whatever it landed on.
+  function onArrowAway(e) {
+    if (!selArrow) return;
+    const t = e.target;
+    if (t && t.closest && t.closest('#' + VP_TEXT_MENU_ID)) return;
+    if (state.arrows.some(a => a.g.contains(t) || t === a.h1 || t === a.h2 || t === a.del)) return;
+    selArrow = null;
+    paintArrows();
+  }
+  document.addEventListener('pointerdown', onArrowAway, true);
 
   // (dev0960) The still's default is not derived from the video dimensions, so
   // it must not be recomputed from them either — this fires once the moment the
@@ -8516,6 +9304,41 @@ function _vpMountCropOverlay(host, vid, row, opts) {
         t.w = of.x + of.w - nx;
       }
       paintTexts();
+    } else if (drag.kind === 'amove') {
+      // (dev1086) Slide a whole arrow. Clamped as a pair, so it stops at the
+      // crop's edge instead of being squashed against it.
+      const d = kenLocal(e), a = drag.a, of = drag.of;
+      if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 3) drag.moved = true;
+      const dx = Math.max(-Math.min(of.x1, of.x2), Math.min(1 - Math.max(of.x1, of.x2), d.dxF));
+      const dy = Math.max(-Math.min(of.y1, of.y2), Math.min(1 - Math.max(of.y1, of.y2), d.dyF));
+      a.x1 = of.x1 + dx; a.x2 = of.x2 + dx;
+      a.y1 = of.y1 + dy; a.y2 = of.y2 + dy;
+      paintArrows();
+    } else if (drag.kind === 'aend') {
+      // (dev1086) Drag one end; the other stays put. ⇧ snaps the arrow to the
+      // nearest 15° — or, on a ring, makes the box square, i.e. a circle.
+      // Worked in screen px (kw × kh is the crop on screen), since an angle in
+      // crop FRACTIONS would be squashed by the crop's own shape.
+      const d = kenLocal(e), a = drag.a, of = drag.of;
+      drag.moved = true;
+      const c01 = v => Math.max(0, Math.min(1, v));
+      const tip = (drag.pos === 2);
+      const ox = tip ? of.x1 : of.x2, oy = tip ? of.y1 : of.y2;
+      let nx = c01((tip ? of.x2 : of.x1) + d.dxF), ny = c01((tip ? of.y2 : of.y1) + d.dyF);
+      if (e.shiftKey) {
+        let vx = (nx - ox) * drag.kw, vy = (ny - oy) * drag.kh;
+        if (a.style === 'ring') {
+          const side = Math.max(Math.abs(vx), Math.abs(vy));
+          vx = (vx < 0 ? -1 : 1) * side; vy = (vy < 0 ? -1 : 1) * side;
+        } else {
+          const len = Math.hypot(vx, vy);
+          const ang = Math.round(Math.atan2(vy, vx) / (Math.PI / 12)) * (Math.PI / 12);
+          vx = Math.cos(ang) * len; vy = Math.sin(ang) * len;
+        }
+        nx = c01(ox + vx / drag.kw); ny = c01(oy + vy / drag.kh);
+      }
+      if (tip) { a.x2 = nx; a.y2 = ny; } else { a.x1 = nx; a.y1 = ny; }
+      paintArrows();
     }
   }
   function onUp(e) {
@@ -8677,6 +9500,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     const t = addText({ silent: true });
     if (!t) return;
     t.text = s; t.ta.value = s;
+    _vpTextFixArrowFace(t);   // (dev1086) a saved line can carry an arrow
     growText(t); paintTexts();
     beginEdit(t);
   }
@@ -8686,6 +9510,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       e.preventDefault(); e.stopPropagation();
       _vpTextPickMenu(e.clientX, e.clientY, dropSavedText, paintTextPick);
     });
+  }
+  // (dev1086) …and the arrow chip beside it.
+  const arrowChip = bar.querySelector('#vp-crop-arrow');
+  if (arrowChip) {
+    arrowChip.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); addArrow(); });
   }
 
   // (dev0745) ── Motion (image mode) ────────────────────────────────────────
@@ -8800,6 +9629,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     if (_gridTimer) clearTimeout(_gridTimer);
     document.removeEventListener('pointermove', onMove, true);
     document.removeEventListener('pointerup',   onUp,   true);
+    document.removeEventListener('pointerdown', onArrowAway, true);   // (dev1086)
   };
   // (dev0318) Exposed for the Z/X keyboard nudges and aspect-swap repaint.
   state.paint = paint;
@@ -8828,6 +9658,14 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   state.textInsertAt = textInsertAt;
   state.textBeginEdit = beginEdit;
   state.paintTextMarks = paintTextMarks;
+  // (dev1086) The arrows — ⇧E, the menu and the key handlers drive them.
+  state.addArrow      = addArrow;
+  state.removeArrow   = removeArrow;
+  state.paintArrows   = paintArrows;
+  state.selectArrow   = selectArrow;
+  state.selectedArrow = () => selArrow;
+  state.nudgeArrow    = nudgeArrow;
+  state.arrowRestyle  = arrowRestyle;
 
   if (_vpState) _vpState.crop = state;
 }
@@ -9072,7 +9910,8 @@ function _vpCropHelpShow() {
                              'the picture shows through') +
         row('Aa font',       '(same menu) ten stock faces, each row set in the font it ' +
                              'offers. Per box, and the last one picked is what the next ' +
-                             'box opens in. Only Segoe UI Symbol draws the ⬇ ⬆ arrows.') +
+                             'box opens in. A box holding ⬇ ⬆ is kept in Segoe UI Symbol, ' +
+                             'the only face that has them.') +
         row('▾ saved text',  'every caption you finish is remembered; pick one off the ' +
                              'bar to drop it on this clip') +
         row('right-click it', 'drop a ⬇ or ⬆ arrow at the cursor (it sizes with the ' +
@@ -9089,6 +9928,18 @@ function _vpCropHelpShow() {
         row('⏱ windowed',    'a windowed box VANISHES here whenever the playhead is ' +
                              'outside its window — same as in the file. It is not ' +
                              'deleted: scrub back inside the window to see or edit it.') +
+        // (dev1086)
+        head('Arrows') +
+        row(K('⇧E') + ' / ➘', 'new arrow — a shape, not a letter, so it points any way, ' +
+                             'in any font, and burns in exactly as drawn') +
+        row('drag it',       'move it. Drag its round ends to aim and size it (green = ' +
+                             'tail, red = tip); hold ' + K('⇧') + ' to snap to 15°') +
+        row(K('↑') + K('↓') + ' / wheel', 'thicker / thinner · ' + K('Del') + ' or ✕ removes it · ' +
+                             K('Esc') + ' lets go of it') +
+        row('right-click it', K('1') + '–' + K('4') + ' block / line / curved / ring (a ' +
+                             'ring\'s two ends are opposite corners of its box — ' + K('⇧') +
+                             ' makes it a circle) · <u>b</u>end · colour · ◻ strength · ' +
+                             '<u>s</u>tarts / <u>e</u>nds at the playhead, like a caption') +
         head('The clip') +
         // (dev0749) One row of left-hand keys: the two marks on the outside,
         // the frame-step between them. ⇧A / ⇧B no longer mark anything.
@@ -9270,11 +10121,22 @@ function _vpCropHelpImageRows(K, row, head) {
                          'caption; 35% or 20% is a watermark you can see through.') +
     row('Aa font',       'on that same menu — ten stock faces, each row set in the ' +
                          'font it offers, so you pick by eye. It is per box, and the ' +
-                         'last one picked is what the next box opens in. Only Segoe UI ' +
-                         'Symbol has the ⬇ ⬆ arrows; the others render them blank.') +
+                         'last one picked is what the next box opens in. A box holding ' +
+                         '⬇ ⬆ is kept in Segoe UI Symbol, the only face that has them.') +
     row('▾ saved text',  'every caption you finish is remembered. Pick one off the ' +
                          'bar to drop it on this picture — type your credit line ' +
                          'once and it is there for every photograph after.') +
+    // (dev1086)
+    head('Arrows') +
+    row(K('⇧E') + ' / ➘', 'new arrow — a shape, not a letter, so it points any way and ' +
+                         'saves exactly as drawn') +
+    row('drag it',       'move it. Drag its round ends to aim and size it (green = tail, ' +
+                         'red = tip); hold ' + K('⇧') + ' to snap to 15°') +
+    row(K('↑') + K('↓') + ' / wheel', 'thicker / thinner · ' + K('Del') + ' or ✕ removes it · ' +
+                         K('Esc') + ' lets go of it') +
+    row('right-click it', K('1') + '–' + K('4') + ' block / line / curved / ring (a ring\'s ' +
+                         'two ends are opposite corners of its box — ' + K('⇧') + ' makes it a ' +
+                         'circle) · <u>b</u>end · colour · ◻ strength') +
     head('Or make it move') +
     row(K('M'),          'still → 🎬 mp4 → 🎞 gif → still (the bar chip says which)') +
     row(K('Z'),          'the amber box = where the zoom ENDS. The clip glides from ' +
@@ -10340,6 +11202,8 @@ function _vpImgLossless(state, row) {
                                        return { ok: false, why: 'a clip' };
   if (state.texts && state.texts.some(t => ((t.ta ? t.ta.value : t.text) || '').trim()))
                                        return { ok: false, why: 'text on it' };
+  if (state.arrows && state.arrows.length)   // (dev1086) an arrow is new pixels too
+                                       return { ok: false, why: 'arrows on it' };
   // (dev0867) A colour grade is new pixels by the same argument — jpegtran
   // copies JPEG blocks across untouched and cannot change one of them.
   if (typeof window.vpColorActive === 'function' && window.vpColorActive())
@@ -10520,6 +11384,11 @@ function _vpImgKey(e) {
   const ae = document.activeElement, tag = ae && ae.tagName;
   if (ae && (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || ae.isContentEditable)) return;
   if (e.ctrlKey || e.altKey || e.metaKey) return;
+  // (dev1086) A selected arrow takes ↑ / ↓ (thicker / thinner) — above the menu
+  // guard, as in vpKeyHandler.
+  if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && _vpArrowSelected()) {
+    take(); _vpArrowNudge(e.key === 'ArrowUp' ? 1 : -1); return;
+  }
   // (dev0749) …and stand down for the two menus, same as vpKeyHandler does —
   // both register after this handler, so their letters would be acted on here
   // first. Escape especially: it should shut the menu, not the whole session.
@@ -10549,6 +11418,12 @@ function _vpImgKey(e) {
     if (typeof toast === 'function') toast(on ? '🎨 grade ON' : '🎨 grade OFF', 1200);
     return;
   }
+  // (dev1086) …Delete / Backspace remove it, and Esc lets go of it before Esc
+  // is allowed to close the crop.
+  if (_vpArrowSelected()) {
+    if (e.key === 'Delete' || e.key === 'Backspace') { take(); _vpArrowDeleteSelected(); return; }
+    if (e.key === 'Escape') { take(); _vpArrowDeselect(); return; }
+  }
   if (e.key === 'Escape') { take(); window._vpImageCropClose(); return; }
   // (dev0790) ⇧T frees / re-locks the ratio here too — a photograph is if
   // anything the likelier place to want a shape that isn't one of the two.
@@ -10564,6 +11439,7 @@ function _vpImgKey(e) {
   // (dev0745) E text · Z zoom box · M still/mp4/gif — the three the still half
   // of this tool gained. M is free here because the audio switch it drives on
   // video has nothing to say about a photograph.
+  if (e.key === 'E' && e.shiftKey)    { take(); _vpArrowAdd();  return; }   // (dev1086)
   if (e.key === 'e' || e.key === 'E') { take(); _vpTextAdd();   return; }
   if (e.key === 'z' || e.key === 'Z') { take(); _vpKenToggle(); return; }
   if (e.key === 'm' || e.key === 'M') { take(); _vpMotionCycle(); return; }
@@ -10690,6 +11566,14 @@ async function _vpImageSave(opts) {
   if (wantsMotion && !(await _vpProxyHasFeature('imagemotion'))) {
     if (typeof toast === 'function') {
       toast('Clips from a picture need an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
+  // (dev1086) Arrows are a new payload key, and an old proxy drops one without
+  // a word — a clean picture with no arrow on it, which reads as success.
+  if ((s.arrows || []).length && !(await _vpProxyHasFeature('arrows'))) {
+    if (typeof toast === 'function') {
+      toast('Arrows need an updated proxy — restart "node proxy.js" and retry', 4400);
     }
     return;
   }
@@ -10830,6 +11714,13 @@ async function _vpImageSave(opts) {
       // is the difference between a file you can publish and one you can't.
       if (tr.texts.some(t => t.alpha != null)) toks.push('wm');
     }
+    // (dev1086) Arrows, as PNGs at the size this render will be. The frame is
+    // worked out from the aspect and resolution the PAYLOAD carries, because
+    // those two are what the proxy derives its own frame from — and it refuses
+    // an arrow drawn for any other.
+    const aDims = _vpOutputDims({ resHeight: s.resHeight }, sw, sh, effAspect);
+    const arrows = await _vpArrowRenderList(s.arrows, aDims.ow, aDims.oh, 0, 0, [], { untimed: true });
+    if (arrows.length) { payload.arrows = arrows; toks.push('arw' + arrows.length); }
     // (dev0745) …and the clip, if one was asked for. The zoom box comes along
     // when it is armed; without it the picture is simply held for the duration.
     if (s.motion && s.motion.format !== 'still') {
@@ -11256,6 +12147,14 @@ async function _vpGoSave(opts) {
     const tr    = _vpTextRenderList(tsrc, dims.ow, dims.oh, startSec, endSec);
     const texts = tr.texts, pauses = tr.pauses;
     if (texts.length)  detailParts.push('tx' + texts.length);
+    // (dev1086) Arrows, as PNGs at the output size, windowed on the same
+    // pause-shifted clock as the captions. Sized from `resHeight` — the one this
+    // render actually uses (a GIF caps it) — since the proxy refuses an arrow
+    // drawn for a frame it isn't rendering.
+    const aDims  = _vpOutputDims({ resHeight }, sw, sh, effAspect);
+    const arrows = await _vpArrowRenderList(_vpArrowsInRect(s, ef), aDims.ow, aDims.oh,
+                                            startSec, endSec, pauses);
+    if (arrows.length) detailParts.push('arw' + arrows.length);
     if (pauses.length) detailParts.push('pz' + pauses.length);
     if (s.deshake && s.deshake !== 'off') detailParts.push('ds-' + s.deshake);  // (dev0789)
     if (s.descreen && s.descreen !== 'off') detailParts.push('dscr-' + s.descreen);  // (dev1033)
@@ -11304,6 +12203,7 @@ async function _vpGoSave(opts) {
     if (trackPayload) payload.track = trackPayload;   // (dev0777)
     if (kenPayload) payload.ken = kenPayload;   // (dev0720)
     if (texts.length) payload.texts = texts;    // (dev0724)
+    if (arrows.length) payload.arrows = arrows; // (dev1086)
     // (dev0871) A boomerang plays its own soundtrack backwards halfway through,
     // which is never what is wanted — the render is silent, and saying so here
     // beats discovering it at the end of an encode.
@@ -11447,6 +12347,13 @@ async function _vpGoSave(opts) {
   if ((payload.texts || []).some(t => t.font) && !(await _vpProxyHasFeature('textfont'))) {
     if (typeof toast === 'function') {
       toast('Choosing the font needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
+  // (dev1086) …and the arrows, which an old proxy would drop the same way.
+  if (payload.arrows && !(await _vpProxyHasFeature('arrows'))) {
+    if (typeof toast === 'function') {
+      toast('Arrows need an updated proxy — restart "node proxy.js" and retry', 4400);
     }
     return;
   }
@@ -11683,6 +12590,13 @@ async function _vpFrameSave(opts) {
     }
     return;
   }
+  // (dev1086) Same question for the arrows, before the name prompt.
+  if ((s.arrows || []).length && !(await _vpProxyHasFeature('arrows'))) {
+    if (typeof toast === 'function') {
+      toast('Arrows need an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
 
   const atSec = Math.max(0, +(vid.currentTime || 0));
   const id = prompt('Name this frame — it becomes\n\n    <name>_' +
@@ -11760,6 +12674,15 @@ async function _vpFrameSave(opts) {
     const tr = _vpTextRenderList(tsrc, dims.ow, dims.oh, 0, 0);
     if (tr.texts.length) payload.texts = tr.texts;
   }
+  // (dev1086) …and the arrows up at this instant, untimed for the same reason.
+  const shownArrows = _vpArrowsInRect(s, ef).filter(a =>
+    (a.atStart == null || a.atStart <= atSec + 0.001) &&
+    (a.atEnd   == null || a.atEnd   >= atSec - 0.001));
+  if (shownArrows.length) {
+    const aDims = _vpOutputDims({ resHeight: s.resHeight }, sw, sh, effAspect);
+    const arrows = await _vpArrowRenderList(shownArrows, aDims.ow, aDims.oh, 0, 0, [], { untimed: true });
+    if (arrows.length) payload.arrows = arrows;
+  }
 
   // (dev0863) The sidecar's description — what the filename used to spell out.
   // The timestamp is in it because that is the one fact about a frame grab that
@@ -11768,6 +12691,7 @@ async function _vpFrameSave(opts) {
                   (s.freeRatio ? ('ar' + _vpAspectLabel(sw, sh).replace(':', '_')) : ''),
                   'at ' + atSec.toFixed(2) + 's',
                   (payload.texts ? ('tx' + payload.texts.length) : ''),
+                  (payload.arrows ? ('arw' + payload.arrows.length) : ''),   // (dev1086)
                   _vpColorToken()].filter(Boolean).join(' · ');
 
   const free = await _vpCropFreePath(
