@@ -8445,14 +8445,6 @@
     "def": ""
   },
   {
-    "id": "stargazer",
-    "label": "Stargazer",
-    "kind": "topic",
-    "parents": [],
-    "aliases": [],
-    "def": ""
-  },
-  {
     "id": "bobbit-worm",
     "label": "Bobbit worm",
     "kind": "taxon",
@@ -8611,5 +8603,124 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "astroscopus-zephyreus",
+    "label": "Astroscopus zephyreus",
+    "kind": "taxon",
+    "parents": [
+      "astroscopus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Pacific stargazer"
+  },
+  {
+    "id": "uranoscopidae",
+    "label": "Uranoscopidae",
+    "kind": "taxon",
+    "parents": [
+      "perciformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family",
+    "common": "Stargazer",
+    "extinct": false
+  },
+  {
+    "id": "astroscopus",
+    "label": "Astroscopus",
+    "kind": "taxon",
+    "parents": [
+      "uranoscopidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "earleria-purpurea",
+    "label": "Earleria purpurea",
+    "kind": "taxon",
+    "parents": [
+      "earleria"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "purple-lipped jelly",
+    "extinct": false
+  },
+  {
+    "id": "leptothecata",
+    "label": "Leptothecata",
+    "kind": "taxon",
+    "parents": [
+      "hydrozoa"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "mitrocomidae",
+    "label": "Mitrocomidae",
+    "kind": "taxon",
+    "parents": [
+      "leptothecata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "earleria",
+    "label": "Earleria",
+    "kind": "taxon",
+    "parents": [
+      "mitrocomidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "grimothea-planipes",
+    "label": "Grimothea planipes",
+    "kind": "taxon",
+    "parents": [
+      "grimothea"
+    ],
+    "aliases": [
+      "Pleuroncodes planipes"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "pelagic red crab",
+    "extinct": false
+  },
+  {
+    "id": "munididae",
+    "label": "Munididae",
+    "kind": "taxon",
+    "parents": [
+      "decapoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "grimothea",
+    "label": "Grimothea",
+    "kind": "taxon",
+    "parents": [
+      "munididae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]

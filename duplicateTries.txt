@@ -62,3 +62,4 @@
 2026-10-05T02:01:37.543Z	bare-links paste	884	https://vimeo.com/34238128	Pharaoh cuttlefish
 2026-10-05T13:44:34.040Z	bare-links paste	886	https://vimeo.com/17280832	Cuttlefish Love
 2026-10-05T13:49:19.251Z	bare-links paste	890_4	https://vimeo.com/254923920	The Wild Life of a Female Flamboyant Cuttlefish
+2026-10-06T15:58:13.203Z	bare-links paste	2419	https://youtu.be/s47F3BwFnvE	What Exactly is: Stargazer | The Gaping Gaze

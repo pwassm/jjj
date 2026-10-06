@@ -3365,7 +3365,11 @@ function rowMatchesFilter(row) {
         if (!found && window.tagsLib && row.tags) {
           for (const tid of row.tags) {
             const t = window.tagsLib.get(tid);
-            if (t && (fold(t.label||'').includes(fq) || fold(t.common||'').includes(fq))) {
+            // (dev1085) ...and its aliases, where older binomials live (Pleuroncodes
+            // planipes on Grimothea planipes). The tag picker and menu Search already
+            // read aliases; Anywhere was the one search that didn't.
+            if (t && (fold(t.label||'').includes(fq) || fold(t.common||'').includes(fq)
+                      || (t.aliases || []).some(a => fold(a).includes(fq)))) {
               found = true; break;
             }
           }
