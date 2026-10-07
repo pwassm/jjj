@@ -871,14 +871,28 @@ function _slideshowStart(allOrdered, opts) {
       if (zoomDelay) { clearTimeout(zoomDelay);   zoomDelay = null; }
       if (zoomTimer) { clearInterval(zoomTimer);  zoomTimer = null; }
     }
+    // (dev1087) Pointer coords in the same frame as the layer's translate.
+    function _rxy(e) {
+      return (typeof window.rotateXY === 'function')
+        ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+    }
     function _startZoom() {
       zoomStarted = true; // (dev0268) so mouseup can suppress click-resume
       const mz = _ensureMZ();
       zoomStep = 0.015; // 0.015 × 20Hz ≈ 0.3 scale/sec (slow start)
       zoomTimer = setInterval(() => {
-        if (!_slideshowState) { _stopZoom(); return; }
+        if (!_slideshowState || !down) { _stopZoom(); return; }
         if (mz.scale >= MAX_SCALE) { _stopZoom(); return; }
-        mz.scale = Math.min(MAX_SCALE, mz.scale + zoomStep);
+        const s2 = Math.min(MAX_SCALE, mz.scale + zoomStep);
+        // (dev1087) Grow from the mouse, not the middle — same arithmetic as
+        // vp.js _vpZoomAt. The layer fills the overlay (inset:0) and scales
+        // about its centre, so the overlay's centre is the layer's.
+        const r = _slideshowState.overlay.getBoundingClientRect();
+        const c = _rxy({ clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 });
+        const k = s2 / mz.scale, dx = down.at.x - c.x, dy = down.at.y - c.y;
+        mz.tx = dx - k * (dx - mz.tx);
+        mz.ty = dy - k * (dy - mz.ty);
+        mz.scale = s2;
         zoomStep = Math.min(0.12, zoomStep + 0.003); // → ~2.4 scale/sec
         _applyMZ();
       }, 50);
@@ -896,7 +910,8 @@ function _slideshowStart(allOrdered, opts) {
       if (_slideshowState._touchActive) return;
       e.preventDefault();
       down = { x0: e.clientX, y0: e.clientY, t0: Date.now(), dragging: false, panBase: null,
-               ctrl: e.ctrlKey, shift: e.shiftKey };   // (dev0703) ⇧ = slide nav
+               ctrl: e.ctrlKey, shift: e.shiftKey,   // (dev0703) ⇧ = slide nav
+               at: _rxy(e) };                        // (dev1087) the zoom's fixed point
       zoomStarted = false; // (dev0268) reset per press
       zoomDelay = setTimeout(_startZoom, HOLD_MS);
     });
@@ -905,6 +920,7 @@ function _slideshowStart(allOrdered, opts) {
       // (dev0863) A press that was in flight when the crop opened is abandoned,
       // not resumed — half of it belongs to a screen that no longer exists.
       if (_ssCropOwnsPointer()) { _stopZoom(); down = null; return; }
+      if (!down.dragging) down.at = _rxy(e);
       const dx = e.clientX - down.x0, dy = e.clientY - down.y0;
       if (!down.dragging && Math.hypot(dx, dy) > 8) {
         // Movement → cancel any pending/running zoom, enter drag mode

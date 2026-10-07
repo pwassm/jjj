@@ -1106,6 +1106,7 @@ function gridOpenFullscreen(row, contained) {
     (function wireMouseV() {
       let mDown = false, mDragging = false;
       let mStart = null, mPanBase = null;
+      let mAt = null;   // (dev1087) where the pointer is now — the zoom's fixed point
       let vzDelay = null, vzTimer = null, vzStep = 0;
 
       function vzStop() {
@@ -1120,6 +1121,7 @@ function gridOpenFullscreen(row, contained) {
         const p = _vpxy(e);
         mDown = true; mDragging = false;
         mStart = { x: p.x, y: p.y, t: Date.now() };
+        mAt = p;
         mPanBase = null;
         // 180 ms settle — quick clicks don't zoom
         vzStep = 0.015;
@@ -1127,7 +1129,11 @@ function gridOpenFullscreen(row, contained) {
           vzDelay = null;
           vzTimer = setInterval(() => {
             if (_vScale >= 8) { vzStop(); return; }
-            _vScale   = Math.min(8, _vScale + vzStep);
+            const s2 = Math.min(8, _vScale + vzStep);
+            // (dev1087) host's own rect centre is C + t (scale is about its centre)
+            const hc = _vpCenterOf(host);
+            const t  = _vpZoomAt({ x: hc.x - _vTx, y: hc.y - _vTy }, mAt, _vScale, _vTx, _vTy, s2);
+            _vScale   = s2; _vTx = t.tx; _vTy = t.ty;
             vzStep    = Math.min(0.12, vzStep + 0.003);
             _vApply();
           }, 50);
@@ -1137,6 +1143,7 @@ function gridOpenFullscreen(row, contained) {
       swipeCatcher.addEventListener('pointermove', e => {
         if (e.pointerType !== 'mouse' || !mDown) return;
         const p = _vpxy(e);
+        if (!mDragging) mAt = p;
         if (!mDragging && Math.hypot(p.x - mStart.x, p.y - mStart.y) > 8) {
           mDragging = true;
           vzStop();
@@ -2910,6 +2917,7 @@ function gridOpenFullscreen(row, contained) {
     let _mDown = false, _mDragging = false;
     let _mStart = null;    // { x,y,t } at pointerdown
     let _mPanBase = null;  // { tx,ty,px,py } when drag starts
+    let _mAt = null;       // (dev1087) where the pointer is now — the zoom's fixed point
     let _zoomDelay = null, _zoomTimer = null, _zoomStep = 0;
 
     function _mStopZoom() {
@@ -2920,7 +2928,10 @@ function gridOpenFullscreen(row, contained) {
       _zoomStep = 0.015;  // initial: 0.015 × 20 Hz ≈ 0.3 scale/sec (slow)
       _zoomTimer = setInterval(() => {
         if (_iScale >= MAX_SCALE) { _mStopZoom(); return; }
-        _iScale    = Math.min(MAX_SCALE, _iScale + _zoomStep);
+        const s2 = Math.min(MAX_SCALE, _iScale + _zoomStep);
+        // (dev1087) the img is flex-centred in ivWrap, so ivWrap's centre is C
+        const t  = _vpZoomAt(_vpCenterOf(ivWrap), _mAt, _iScale, _iTx, _iTy, s2);
+        _iScale    = s2; _iTx = t.tx; _iTy = t.ty;
         _zoomStep  = Math.min(0.12, _zoomStep + 0.003); // accelerates → 2.4/sec
         _iApply();
         ivWrap.style.cursor = 'zoom-in'; // keep cursor during zoom
@@ -2934,6 +2945,7 @@ function gridOpenFullscreen(row, contained) {
       const p = _pxy(e);
       _mDown = true; _mDragging = false;
       _mStart   = { x: p.x, y: p.y, t: Date.now() };
+      _mAt      = p;
       _mPanBase = null;
       // 180 ms settle delay — quick clicks don't trigger zoom
       _zoomDelay = setTimeout(_mStartZoom, 180);
@@ -2942,6 +2954,7 @@ function gridOpenFullscreen(row, contained) {
     ivWrap.addEventListener('pointermove', e => {
       if (e.pointerType !== 'mouse' || !_mDown) return;
       const p = _pxy(e);
+      if (!_mDragging) _mAt = p;
       if (!_mDragging && Math.hypot(p.x - _mStart.x, p.y - _mStart.y) > 8) {
         // User started dragging — cancel zoom, enter drag mode
         _mDragging = true;
@@ -3863,6 +3876,23 @@ function _vpZoomStopPlayback() {
   try {
     if (typeof window._slideshowZoomPause === 'function') window._slideshowZoomPause();
   } catch (_) {}
+}
+
+// (dev1087) ── HOLD-ZOOM GROWS FROM THE MOUSE ────────────────────────────────
+// Both V branches draw a zoom as translate(t) scale(s) about the element's own
+// centre C, so the picture point under the pointer m sits at (m − C − t) / s.
+// Growing s → s2 with only s changing slides that point outward, away from the
+// mouse. Keeping it put needs t2 = (m − C) − (s2 / s)·(m − C − t).
+// `c` and `m` must be in the same frame: _vpCenterOf maps a rect's centre
+// through rotateXY, the same mapping the pointer goes through.
+function _vpZoomAt(c, m, s, tx, ty, s2) {
+  const k = s2 / s, dx = m.x - c.x, dy = m.y - c.y;
+  return { tx: dx - k * (dx - tx), ty: dy - k * (dy - ty) };
+}
+function _vpCenterOf(el) {
+  const r = el.getBoundingClientRect();
+  const p = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+  return window.rotateXY ? window.rotateXY(p) : { x: p.clientX, y: p.clientY };
 }
 
 function vpTogglePlay() {
