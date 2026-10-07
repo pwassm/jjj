@@ -1144,17 +1144,8 @@ function gridOpenFullscreen(row, contained) {
       }, true);
 
       swipeCatcher.addEventListener('pointermove', e => {
-        if (e.pointerType !== 'mouse') return;
+        if (e.pointerType !== 'mouse' || !mDown) return;
         const p = _vpxy(e);
-        // (dev1089) While _vpHoldZoom carries the pointer to the middle, its moves
-        // are the carry, not a drag — even after the button is let go. The spot
-        // rides along, and the press point moves with it.
-        if (hz && hz.carrying()) {
-          hz.move(p); mAt = p;
-          if (mStart) { mStart.x = p.x; mStart.y = p.y; }
-          return;
-        }
-        if (!mDown) return;
         if (!mDragging) { mAt = p; if (hz) hz.move(p); }
         if (!mDragging && Math.hypot(p.x - mStart.x, p.y - mStart.y) > 8) {
           mDragging = true;
@@ -2974,15 +2965,8 @@ function gridOpenFullscreen(row, contained) {
     }, true);
 
     ivWrap.addEventListener('pointermove', e => {
-      if (e.pointerType !== 'mouse') return;
+      if (e.pointerType !== 'mouse' || !_mDown) return;
       const p = _pxy(e);
-      // (dev1089) the carry, not a drag — see the video branch / _vpHoldZoom
-      if (_hz && _hz.carrying()) {
-        _hz.move(p); _mAt = p;
-        if (_mStart) { _mStart.x = p.x; _mStart.y = p.y; }
-        return;
-      }
-      if (!_mDown) return;
       if (!_mDragging) { _mAt = p; if (_hz) _hz.move(p); }
       if (!_mDragging && Math.hypot(p.x - _mStart.x, p.y - _mStart.y) > 8) {
         // User started dragging — cancel zoom, enter drag mode
@@ -3947,48 +3931,16 @@ function _vpCenterOf(el) {
 //      glide lands.
 //   m  the pointer when the zoom starts.
 // Same ramp as before: 0.015/tick rising by 0.003 to 0.12, 20 ticks a second.
-//
-// (dev1089) The glide takes 1.5 s, and the MOUSE POINTER goes along with it. A
-// page cannot move the pointer, so on localhost the proxy does it
-// (/cursor/glide → AHK\cursorGlide.ahk). While the pointer is being carried
-// the spot is pinned under the pointer itself, not to a clock. That way the
-// two cannot drift apart, however late AHK starts. Without the proxy (the
-// public site, an old proxy, or a failed request) the glide falls back to the
-// clock and only the picture moves. Callers feed every pointer move to
-// move() while carrying() — those moves are the carry, not a drag.
-const VP_HZ_GLIDE_MS = 1500;
-function _vpCanCarryPointer() {
-  return !window._salRotated &&
-         typeof window._salIsLocalHost === 'function' && window._salIsLocalHost();
-}
-// dx, dy in CSS px; the proxy wants device px. Resolves true once AHK is running.
-function _vpCursorGlide(dx, dy, ms) {
-  const k = window.devicePixelRatio || 1;
-  return fetch(PROXY_BASE + '/cursor/glide?dx=' + Math.round(dx * k) +
-               '&dy=' + Math.round(dy * k) + '&ms=' + Math.round(ms))
-    .then(r => r.ok).catch(() => false);
-}
+const VP_HZ_GLIDE_MS = 1500;   // (dev1090) was 500
 function _vpHoldZoom(o) {
   const z0 = o.get();
   // The picture point under the pointer: screen = c + t + s·q.
   const q = { x: (o.m.x - o.c.x - z0.tx) / z0.s, y: (o.m.y - o.c.y - z0.ty) / z0.s };
   const glide = o.mode === 'ctrl' || o.mode === 'shift';
   const toMax = o.mode === 'shift';
-  let t0 = performance.now(), from = o.m;   // the clock glide: from → c
+  const t0 = performance.now();
   let m = o.m, held = true, step = 0.015, u = glide ? 0 : 1, id = null;
-  let carryUntil = 0;   // (dev1089) the pointer is being carried until then (0 = not)
-  const carrying = () => carryUntil > performance.now();
-  const settled  = () => !glide || (carryUntil ? !carrying() : u >= 1);
-  function uncarry() {  // the pointer won't move: glide by the clock from here
-    if (!carryUntil) return;
-    carryUntil = 0; from = { x: m.x, y: m.y }; t0 = performance.now(); u = 0;
-  }
-  function stop() {
-    if (!id) return;
-    clearInterval(id); id = null;
-    // stopped mid-carry (a new press, a double-click, V closed): halt the pointer too
-    if (carrying()) _vpCursorGlide(0, 0, 0);
-  }
+  function stop() { if (id) { clearInterval(id); id = null; } }
   function tick() {
     if (o.alive && !o.alive()) { stop(); return; }
     const z = o.get();
@@ -3997,13 +3949,10 @@ function _vpHoldZoom(o) {
     if (growing) step = Math.min(0.12, step + 0.003);
     let tx, ty;
     if (glide) {
-      let px = m.x, py = m.y;                           // carried: q rides under the pointer
-      if (!carryUntil) {
-        u = Math.min(1, (performance.now() - t0) / VP_HZ_GLIDE_MS);
-        const e = u * u * (3 - 2 * u);                  // eases in and out
-        px = from.x + (o.c.x - from.x) * e;             // where q belongs now
-        py = from.y + (o.c.y - from.y) * e;
-      }
+      u = Math.min(1, (performance.now() - t0) / VP_HZ_GLIDE_MS);
+      const e = u * u * (3 - 2 * u);                  // eases in and out
+      const px = o.m.x + (o.c.x - o.m.x) * e;          // where q belongs now
+      const py = o.m.y + (o.c.y - o.m.y) * e;
       tx = px - o.c.x - s2 * q.x;
       ty = py - o.c.y - s2 * q.y;
     } else {
@@ -4011,24 +3960,12 @@ function _vpHoldZoom(o) {
       tx = t.tx; ty = t.ty;
     }
     o.set(s2, tx, ty);
-    if (!growing && settled()) stop();
+    if (!growing && u >= 1) stop();
   }
   id = setInterval(tick, 50);
-  // (dev1089) Carry the pointer to the middle with the spot. Until the proxy
-  // answers, the spot simply stays under the pointer; the window then becomes
-  // the glide's length from the moment AHK is running, plus a little.
-  if (glide && _vpCanCarryPointer() && Math.hypot(o.c.x - o.m.x, o.c.y - o.m.y) >= 3) {
-    carryUntil = t0 + VP_HZ_GLIDE_MS + 1500;
-    _vpCursorGlide(o.c.x - o.m.x, o.c.y - o.m.y, VP_HZ_GLIDE_MS).then(ok => {
-      if (!id) return;
-      if (ok) carryUntil = performance.now() + VP_HZ_GLIDE_MS + 150;
-      else uncarry();
-    });
-  }
   return {
-    move(p) { m = p; },
-    release() { held = false; if (!toMax && settled()) stop(); },
-    carrying: () => id !== null && carrying(),
+    move(p) { m = p; },                                // plain mode follows the pointer
+    release() { held = false; if (!toMax && u >= 1) stop(); },
     running: () => id !== null,
     stop
   };

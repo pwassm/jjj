@@ -927,14 +927,6 @@ function _slideshowStart(allOrdered, opts) {
       zoomDelay = setTimeout(_startZoom, HOLD_MS);
     });
     overlay.addEventListener('mousemove', e => {
-      // (dev1089) While vp.js _vpHoldZoom carries the pointer to the middle, its
-      // moves are the carry, not a drag — even after the button is let go.
-      if (hz && hz.carrying()) {
-        const p = _rxy(e);
-        hz.move(p);
-        if (down) { down.at = p; down.x0 = e.clientX; down.y0 = e.clientY; }
-        return;
-      }
       if (!down) return;
       // (dev0863) A press that was in flight when the crop opened is abandoned,
       // not resumed — half of it belongs to a screen that no longer exists.

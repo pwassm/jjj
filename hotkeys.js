@@ -707,11 +707,11 @@ window.HOTKEYS = [
     desc: 'Zoom in, growing from the spot under the mouse: that spot stays under the mouse. Drag to pan; double-click resets. A playing video pauses.' },
 
   { label: 'Ctrl+hold LMB', group: 'Gestures', scope: 'V/Ie/SS', dev: false, helpSection: 'Gestures',
-    impl: 'vp.js _vpHoldZoom mode ctrl (dev1088); the pointer is carried by proxy /cursor/glide + AHK/cursorGlide.ahk, localhost only (dev1089)',
-    desc: 'Zoom in AND glide the spot under the mouse to the middle of the screen over 1.5 seconds, the mouse pointer riding along with it. Letting go stops the zoom; the glide still finishes.' },
+    impl: 'vp.js _vpHoldZoom mode ctrl (dev1088)',
+    desc: 'Zoom in AND glide the spot under the mouse to the middle of the screen over 1.5 seconds. Letting go stops the zoom; the glide still finishes.' },
 
   { label: '⇧+hold LMB', group: 'Gestures', scope: 'V/Ie/SS', dev: false, helpSection: 'Gestures',
-    impl: 'vp.js _vpHoldZoom mode shift (dev1088); pointer carry as Ctrl+hold (dev1089)',
+    impl: 'vp.js _vpHoldZoom mode shift (dev1088)',
     desc: 'The same glide to the middle, then keeps zooming all the way to the maximum (8×) by itself, even after you let go. Click to stop it; double-click resets.' },
 
   { label: 'Shift-hold LMB / RMB', group: 'Gestures', scope: 'G', dev: true, helpSection: 'Gestures',
