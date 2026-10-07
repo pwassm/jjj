@@ -629,7 +629,7 @@ var HP_EXTRA = {
       { k: 'Esc',     d: 'Close the slideshow' },
       { k: 'Tap a slide',  d: 'Resume a paused show (otherwise aims the Ken Burns pan)', kind: 'gesture' },
       { k: 'Double-tap',   d: 'Close the slideshow', kind: 'gesture' },
-      { k: 'Hold LMB',     d: 'Zoom in (pauses the show); drag to pan; double-click resets', kind: 'gesture' },
+      { k: 'Hold LMB',     d: 'Zoom in from the spot under the mouse (pauses the show); drag to pan; double-click resets', kind: 'gesture' },
       { k: 'Swipe ↑ / ↓',  d: 'On a PAUSED unzoomed slide: switch between the original set and the row’s ftext images', kind: 'gesture' }
     ] },
   // (dev0767) "greeting" was the tab-less splash page 1 used to be. It is the

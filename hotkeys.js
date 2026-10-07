@@ -700,6 +700,20 @@ window.HOTKEYS = [
     impl: 'vp.js _vpHorizSwipe + slideshow.js _slideshowHorizSwipe (dev0703)',
     desc: 'PREVIOUS / NEXT slide, inside a slideshow (SS) or a presentation deck (PM). Holding Shift is what says “move within this show” rather than “leave it”. Plain swipe → is the same as ⇧ swipe → (next slide), so a phone — which has no Shift key — can still page forward.' },
 
+  // (dev1088) V's three hold-zooms — one engine, vp.js _vpHoldZoom, which the
+  // slideshow's stills share (its own help row says the same).
+  { label: 'Hold LMB', group: 'Gestures', scope: 'V/Ie', dev: false, helpSection: 'Gestures',
+    impl: 'vp.js _vpHoldZoom (dev1087)',
+    desc: 'Zoom in, growing from the spot under the mouse: that spot stays under the mouse. Drag to pan; double-click resets. A playing video pauses.' },
+
+  { label: 'Ctrl+hold LMB', group: 'Gestures', scope: 'V/Ie/SS', dev: false, helpSection: 'Gestures',
+    impl: 'vp.js _vpHoldZoom mode ctrl (dev1088)',
+    desc: 'Zoom in AND glide the spot under the mouse to the middle of the screen over half a second. Letting go stops the zoom; the glide still finishes.' },
+
+  { label: '⇧+hold LMB', group: 'Gestures', scope: 'V/Ie/SS', dev: false, helpSection: 'Gestures',
+    impl: 'vp.js _vpHoldZoom mode shift (dev1088)',
+    desc: 'The same glide to the middle, then keeps zooming all the way to the maximum (8×) by itself, even after you let go. Click to stop it; double-click resets.' },
+
   { label: 'Shift-hold LMB / RMB', group: 'Gestures', scope: 'G', dev: true, helpSection: 'Gestures',
     impl: 'grid.js wireMouseV (dev0364)',
     desc: 'Zoom the hovered cell in (left) / out (right); Ctrl+Shift+LMB also zooms out (Firefox-safe)' },

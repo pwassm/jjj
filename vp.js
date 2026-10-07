@@ -1107,43 +1107,46 @@ function gridOpenFullscreen(row, contained) {
       let mDown = false, mDragging = false;
       let mStart = null, mPanBase = null;
       let mAt = null;   // (dev1087) where the pointer is now — the zoom's fixed point
-      let vzDelay = null, vzTimer = null, vzStep = 0;
+      let vzDelay = null;
+      let hz = null;    // (dev1088) the running _vpHoldZoom, if any
 
       function vzStop() {
-        if (vzDelay) { clearTimeout(vzDelay);  vzDelay = null; }
-        if (vzTimer) { clearInterval(vzTimer); vzTimer = null; }
+        if (vzDelay) { clearTimeout(vzDelay); vzDelay = null; }
+        if (hz) { hz.stop(); hz = null; }
       }
 
       swipeCatcher.addEventListener('pointerdown', e => {
         if (e.pointerType !== 'mouse' || e.button !== 0) return;
         e.preventDefault();
+        vzStop();   // (dev1088) a press stops a ⇧ zoom still running on its own
         swipeCatcher.setPointerCapture(e.pointerId);
         const p = _vpxy(e);
         mDown = true; mDragging = false;
         mStart = { x: p.x, y: p.y, t: Date.now() };
         mAt = p;
         mPanBase = null;
+        // (dev1088) ⇧ = glide to the middle and grow to 8× by itself; Ctrl = glide
+        // to the middle while held; plain = grow from the mouse. See _vpHoldZoom.
+        const mode = e.shiftKey ? 'shift' : e.ctrlKey ? 'ctrl' : 'plain';
         // 180 ms settle — quick clicks don't zoom
-        vzStep = 0.015;
         vzDelay = setTimeout(() => {
           vzDelay = null;
-          vzTimer = setInterval(() => {
-            if (_vScale >= 8) { vzStop(); return; }
-            const s2 = Math.min(8, _vScale + vzStep);
-            // (dev1087) host's own rect centre is C + t (scale is about its centre)
-            const hc = _vpCenterOf(host);
-            const t  = _vpZoomAt({ x: hc.x - _vTx, y: hc.y - _vTy }, mAt, _vScale, _vTx, _vTy, s2);
-            _vScale   = s2; _vTx = t.tx; _vTy = t.ty;
-            vzStep    = Math.min(0.12, vzStep + 0.003);
-            _vApply();
-          }, 50);
+          // host's own rect centre is C + t (the scale is about its centre)
+          const hc = _vpCenterOf(host);
+          hz = _vpHoldZoom({
+            mode, m: mAt, max: 8,
+            c: { x: hc.x - _vTx, y: hc.y - _vTy },
+            get: () => ({ s: _vScale, tx: _vTx, ty: _vTy }),
+            set: (s, tx, ty) => { _vScale = s; _vTx = tx; _vTy = ty; _vApply(); },
+            alive: () => host.isConnected
+          });
         }, 180);
       }, true);
 
       swipeCatcher.addEventListener('pointermove', e => {
         if (e.pointerType !== 'mouse' || !mDown) return;
         const p = _vpxy(e);
-        if (!mDragging) mAt = p;
+        if (!mDragging) { mAt = p; if (hz) hz.move(p); }
         if (!mDragging && Math.hypot(p.x - mStart.x, p.y - mStart.y) > 8) {
           mDragging = true;
           vzStop();
@@ -1159,7 +1162,10 @@ function gridOpenFullscreen(row, contained) {
 
       swipeCatcher.addEventListener('pointerup', e => {
         if (e.pointerType !== 'mouse' || e.button !== 0) return;
-        vzStop();
+        // (dev1088) Letting go ends the growing; a Ctrl glide still finishes
+        // and a ⇧ zoom carries on to 8× (_vpHoldZoom's release).
+        if (vzDelay) { clearTimeout(vzDelay); vzDelay = null; }
+        if (hz) hz.release();
         const p = _vpxy(e);
         const wasDragging = mDragging;
         mDown = false; mDragging = false;
@@ -2918,43 +2924,50 @@ function gridOpenFullscreen(row, contained) {
     let _mStart = null;    // { x,y,t } at pointerdown
     let _mPanBase = null;  // { tx,ty,px,py } when drag starts
     let _mAt = null;       // (dev1087) where the pointer is now — the zoom's fixed point
-    let _zoomDelay = null, _zoomTimer = null, _zoomStep = 0;
+    let _zoomDelay = null;
+    let _hz = null;        // (dev1088) the running _vpHoldZoom, if any
 
     function _mStopZoom() {
-      if (_zoomDelay) { clearTimeout(_zoomDelay);  _zoomDelay = null; }
-      if (_zoomTimer) { clearInterval(_zoomTimer); _zoomTimer = null; }
+      if (_zoomDelay) { clearTimeout(_zoomDelay); _zoomDelay = null; }
+      if (_hz) { _hz.stop(); _hz = null; }
     }
-    function _mStartZoom() {
-      _zoomStep = 0.015;  // initial: 0.015 × 20 Hz ≈ 0.3 scale/sec (slow)
-      _zoomTimer = setInterval(() => {
-        if (_iScale >= MAX_SCALE) { _mStopZoom(); return; }
-        const s2 = Math.min(MAX_SCALE, _iScale + _zoomStep);
-        // (dev1087) the img is flex-centred in ivWrap, so ivWrap's centre is C
-        const t  = _vpZoomAt(_vpCenterOf(ivWrap), _mAt, _iScale, _iTx, _iTy, s2);
-        _iScale    = s2; _iTx = t.tx; _iTy = t.ty;
-        _zoomStep  = Math.min(0.12, _zoomStep + 0.003); // accelerates → 2.4/sec
-        _iApply();
-        ivWrap.style.cursor = 'zoom-in'; // keep cursor during zoom
-      }, 50);
+    // (dev1088) The ramp itself lives in _vpHoldZoom, shared with the video
+    // branch and the slideshow. The img is flex-centred in ivWrap, so ivWrap's
+    // centre is the img's untransformed centre.
+    function _mStartZoom(mode) {
+      _zoomDelay = null;
+      _hz = _vpHoldZoom({
+        mode, m: _mAt, max: MAX_SCALE,
+        c: _vpCenterOf(ivWrap),
+        get: () => ({ s: _iScale, tx: _iTx, ty: _iTy }),
+        set: (s, tx, ty) => {
+          _iScale = s; _iTx = tx; _iTy = ty; _iApply();
+          if (_mDown) ivWrap.style.cursor = 'zoom-in'; // keep cursor during zoom
+        },
+        alive: () => img.isConnected
+      });
     }
 
     ivWrap.addEventListener('pointerdown', e => {
       if (e.pointerType !== 'mouse' || e.button !== 0) return;
       e.preventDefault();
+      _mStopZoom();   // (dev1088) a press stops a ⇧ zoom still running on its own
       ivWrap.setPointerCapture(e.pointerId);
       const p = _pxy(e);
       _mDown = true; _mDragging = false;
       _mStart   = { x: p.x, y: p.y, t: Date.now() };
       _mAt      = p;
       _mPanBase = null;
+      // (dev1088) ⇧ / Ctrl / plain — see _vpHoldZoom
+      const mode = e.shiftKey ? 'shift' : e.ctrlKey ? 'ctrl' : 'plain';
       // 180 ms settle delay — quick clicks don't trigger zoom
-      _zoomDelay = setTimeout(_mStartZoom, 180);
+      _zoomDelay = setTimeout(() => _mStartZoom(mode), 180);
     }, true);
 
     ivWrap.addEventListener('pointermove', e => {
       if (e.pointerType !== 'mouse' || !_mDown) return;
       const p = _pxy(e);
-      if (!_mDragging) _mAt = p;
+      if (!_mDragging) { _mAt = p; if (_hz) _hz.move(p); }
       if (!_mDragging && Math.hypot(p.x - _mStart.x, p.y - _mStart.y) > 8) {
         // User started dragging — cancel zoom, enter drag mode
         _mDragging = true;
@@ -2976,7 +2989,10 @@ function gridOpenFullscreen(row, contained) {
     ivWrap.addEventListener('pointerup', e => {
       if (e.pointerType !== 'mouse' || e.button !== 0) return;
       e.preventDefault();
-      _mStopZoom();
+      // (dev1088) Letting go ends the growing; a Ctrl glide still finishes and
+      // a ⇧ zoom carries on to the maximum (_vpHoldZoom's release).
+      if (_zoomDelay) { clearTimeout(_zoomDelay); _zoomDelay = null; }
+      if (_hz) _hz.release();
       const p   = _pxy(e);
       const wasDragging = _mDragging;
       _mDown = false; _mDragging = false;
@@ -3894,6 +3910,68 @@ function _vpCenterOf(el) {
   const p = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
   return window.rotateXY ? window.rotateXY(p) : { x: p.clientX, y: p.clientY };
 }
+
+// (dev1088) ── ONE HOLD-ZOOM, THREE PRESSES ──────────────────────────────────
+// The engine behind every desktop hold-to-enlarge: V video (host), V picture
+// (img) and slideshow stills (slideshow.js). The press picks the mode:
+//   plain  hold LMB        grows from the mouse (dev1087); stops on release
+//   ctrl   Ctrl+hold LMB   the spot under the mouse glides to the middle over
+//                          VP_HZ_GLIDE_MS while it grows. Letting go stops the
+//                          growing; the glide always finishes.
+//   shift  Shift+hold LMB  the same glide, and it carries on growing to the
+//                          maximum by itself after you let go. Any new press or
+//                          a double-click stops it.
+// Space+hold was asked for first and can't work as a held modifier: Space is
+// play/pause on key-DOWN and auto-repeats, and Phil's AHK script turns
+// `LButton & Space` into Backspace.
+//
+// o = { mode, c, m, max, get() → {s,tx,ty}, set(s,tx,ty), alive() }
+//   c  the zoomed element's untransformed centre, in the pointer's frame. In all
+//      three places that is also the middle of the view, which is where the
+//      glide lands.
+//   m  the pointer when the zoom starts.
+// Same ramp as before: 0.015/tick rising by 0.003 to 0.12, 20 ticks a second.
+const VP_HZ_GLIDE_MS = 500;
+function _vpHoldZoom(o) {
+  const z0 = o.get();
+  // The picture point under the pointer: screen = c + t + s·q.
+  const q = { x: (o.m.x - o.c.x - z0.tx) / z0.s, y: (o.m.y - o.c.y - z0.ty) / z0.s };
+  const glide = o.mode === 'ctrl' || o.mode === 'shift';
+  const toMax = o.mode === 'shift';
+  const t0 = performance.now();
+  let m = o.m, held = true, step = 0.015, u = glide ? 0 : 1, id = null;
+  function stop() { if (id) { clearInterval(id); id = null; } }
+  function tick() {
+    if (o.alive && !o.alive()) { stop(); return; }
+    const z = o.get();
+    const growing = (held || toMax) && z.s < o.max;
+    const s2 = growing ? Math.min(o.max, z.s + step) : z.s;
+    if (growing) step = Math.min(0.12, step + 0.003);
+    let tx, ty;
+    if (glide) {
+      u = Math.min(1, (performance.now() - t0) / VP_HZ_GLIDE_MS);
+      const e = u * u * (3 - 2 * u);                  // eases in and out
+      const px = o.m.x + (o.c.x - o.m.x) * e;          // where q belongs now
+      const py = o.m.y + (o.c.y - o.m.y) * e;
+      tx = px - o.c.x - s2 * q.x;
+      ty = py - o.c.y - s2 * q.y;
+    } else {
+      const t = _vpZoomAt(o.c, m, z.s, z.tx, z.ty, s2);
+      tx = t.tx; ty = t.ty;
+    }
+    o.set(s2, tx, ty);
+    if (!growing && u >= 1) stop();
+  }
+  id = setInterval(tick, 50);
+  return {
+    move(p) { m = p; },                                // plain mode follows the pointer
+    release() { held = false; if (!toMax && u >= 1) stop(); },
+    running: () => id !== null,
+    stop
+  };
+}
+window._vpHoldZoom = _vpHoldZoom;
+window._vpCenterOf = _vpCenterOf;
 
 function vpTogglePlay() {
   if (!_vpState || !_vpState.player) return;

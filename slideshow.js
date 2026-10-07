@@ -865,37 +865,43 @@ function _slideshowStart(allOrdered, opts) {
     }
 
     let down = null;       // { x0, y0, t0, dragging, panBase }
-    let zoomDelay = null, zoomTimer = null, zoomStep = 0;
+    let zoomDelay = null;
+    let hz = null;           // (dev1088) the running vp.js _vpHoldZoom, if any
     let zoomStarted = false; // (dev0268) hold-zoom actually ran during this press
     function _stopZoom() {
-      if (zoomDelay) { clearTimeout(zoomDelay);   zoomDelay = null; }
-      if (zoomTimer) { clearInterval(zoomTimer);  zoomTimer = null; }
+      if (zoomDelay) { clearTimeout(zoomDelay); zoomDelay = null; }
+      if (hz) { hz.stop(); hz = null; }
+    }
+    // (dev1088) Letting go ends the growing; a Ctrl glide still finishes and a
+    // ⇧ zoom carries on to the maximum by itself.
+    function _releaseZoom() {
+      if (zoomDelay) { clearTimeout(zoomDelay); zoomDelay = null; }
+      if (hz) hz.release();
     }
     // (dev1087) Pointer coords in the same frame as the layer's translate.
     function _rxy(e) {
       return (typeof window.rotateXY === 'function')
         ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
     }
+    // (dev1088) The ramp is vp.js _vpHoldZoom, shared with V's video and
+    // picture: plain grows from the mouse (dev1087), Ctrl glides that spot to
+    // the middle while held, ⇧ glides it and grows to the maximum by itself.
+    // The layer fills the overlay (inset:0) and scales about its centre, so
+    // the overlay's centre is the layer's.
     function _startZoom() {
+      zoomDelay = null;
+      const st = _slideshowState;
+      if (!st || !down || typeof window._vpHoldZoom !== 'function') return;
       zoomStarted = true; // (dev0268) so mouseup can suppress click-resume
       const mz = _ensureMZ();
-      zoomStep = 0.015; // 0.015 × 20Hz ≈ 0.3 scale/sec (slow start)
-      zoomTimer = setInterval(() => {
-        if (!_slideshowState || !down) { _stopZoom(); return; }
-        if (mz.scale >= MAX_SCALE) { _stopZoom(); return; }
-        const s2 = Math.min(MAX_SCALE, mz.scale + zoomStep);
-        // (dev1087) Grow from the mouse, not the middle — same arithmetic as
-        // vp.js _vpZoomAt. The layer fills the overlay (inset:0) and scales
-        // about its centre, so the overlay's centre is the layer's.
-        const r = _slideshowState.overlay.getBoundingClientRect();
-        const c = _rxy({ clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 });
-        const k = s2 / mz.scale, dx = down.at.x - c.x, dy = down.at.y - c.y;
-        mz.tx = dx - k * (dx - mz.tx);
-        mz.ty = dy - k * (dy - mz.ty);
-        mz.scale = s2;
-        zoomStep = Math.min(0.12, zoomStep + 0.003); // → ~2.4 scale/sec
-        _applyMZ();
-      }, 50);
+      hz = window._vpHoldZoom({
+        mode: down.mode, m: down.at, max: MAX_SCALE,
+        c: window._vpCenterOf(st.overlay),
+        get: () => ({ s: mz.scale, tx: mz.tx, ty: mz.ty }),
+        set: (s, tx, ty) => { mz.scale = s; mz.tx = tx; mz.ty = ty; _applyMZ(); },
+        // a new slide brings a fresh _mouseZoom; a crop takes the pointer
+        alive: () => !!_slideshowState && _slideshowState._mouseZoom === mz && !_ssCropOwnsPointer()
+      });
     }
 
     overlay.addEventListener('mousedown', e => {
@@ -909,10 +915,15 @@ function _slideshowStart(allOrdered, opts) {
       if (e.target.closest('#slideshowReviewVid')) return;
       if (_slideshowState._touchActive) return;
       e.preventDefault();
+      // (dev1088) A press stops a ⇧ zoom still running on its own — and that
+      // press is a zoom press, not the click that resumes a paused show.
+      const stoppedRun = !!(hz && hz.running());
+      _stopZoom();
       down = { x0: e.clientX, y0: e.clientY, t0: Date.now(), dragging: false, panBase: null,
                ctrl: e.ctrlKey, shift: e.shiftKey,   // (dev0703) ⇧ = slide nav
-               at: _rxy(e) };                        // (dev1087) the zoom's fixed point
-      zoomStarted = false; // (dev0268) reset per press
+               at: _rxy(e),                          // (dev1087) the zoom's fixed point
+               mode: e.shiftKey ? 'shift' : e.ctrlKey ? 'ctrl' : 'plain' };   // (dev1088)
+      zoomStarted = stoppedRun; // (dev0268) reset per press
       zoomDelay = setTimeout(_startZoom, HOLD_MS);
     });
     overlay.addEventListener('mousemove', e => {
@@ -920,7 +931,7 @@ function _slideshowStart(allOrdered, opts) {
       // (dev0863) A press that was in flight when the crop opened is abandoned,
       // not resumed — half of it belongs to a screen that no longer exists.
       if (_ssCropOwnsPointer()) { _stopZoom(); down = null; return; }
-      if (!down.dragging) down.at = _rxy(e);
+      if (!down.dragging) { down.at = _rxy(e); if (hz) hz.move(down.at); }
       const dx = e.clientX - down.x0, dy = e.clientY - down.y0;
       if (!down.dragging && Math.hypot(dx, dy) > 8) {
         // Movement → cancel any pending/running zoom, enter drag mode
@@ -941,8 +952,8 @@ function _slideshowStart(allOrdered, opts) {
     });
     overlay.addEventListener('mouseup', e => {
       if (!down) return;
-      _stopZoom();
-      if (_ssCropOwnsPointer()) { down = null; return; }   // (dev0863)
+      if (_ssCropOwnsPointer()) { _stopZoom(); down = null; return; }   // (dev0863)
+      _releaseZoom();   // (dev1088) not _stopZoom: a ⇧ zoom runs on to the maximum
       const wasDragging = down.dragging;
       const dx = e.clientX - down.x0, dy = e.clientY - down.y0;
       const ms = Date.now() - down.t0;
@@ -974,7 +985,7 @@ function _slideshowStart(allOrdered, opts) {
     });
     overlay.addEventListener('mouseleave', () => {
       if (!down) return;
-      _stopZoom();
+      _releaseZoom();   // (dev1088) leaving = letting go
       down = null;
     });
     // Double-click → reset zoom & pan to 1× / center, restore auto Ken Burns.
