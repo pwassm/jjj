@@ -316,6 +316,10 @@ _uid*.html
 # completed harvest. A local record of what we did, not harvested data.
 ig-checked.json
 ig-checked.json.tmp-*
+# (dev1096) Per-author record of how each harvest walk ended (stop reason, post
+# count, rows held), written by proxy.js on every /ig/add. Local only.
+ig-harvests.json
+ig-harvests.json.tmp-*
 
 # (dev0961) YouTube transcript + local-Ollama summary output, written by proxy
 # /ytt/run from a T row: <uid>~<videoId>~<title>.{transcript,summary}.txt. DEV-ONLY
