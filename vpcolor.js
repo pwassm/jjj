@@ -122,6 +122,9 @@
   const CLARITY_FRAC = 0.015;
   const SHARPEN_FRAC = 0.001;
   const DETAIL_MAX   = 2;
+  // (dev1093) The Clarity/Sharpen box's soft edge: a gaussian sigma of this
+  // fraction of the short side. MUST equal DETAIL_AREA_FEATHER_FRAC in proxy.js.
+  const AREA_FEATHER_FRAC = 0.02;
 
   // (dev1092) clarityR = Clarity's radius in PERCENT of the short side. It is a
   // setting, not a grade: it changes nothing while Clarity is 0, so it takes no
@@ -385,6 +388,32 @@
     };
     pass(grade.clarity, grade.clarityR / 100, 'vpdCl');   // (dev1092) user's radius
     pass(grade.sharpen, SHARPEN_FRAC, 'vpdSh');
+
+    // (dev1093) Confined to the drawn box: out = D·m + A·(1−m), m a feathered
+    // rectangle. feFlood limited to the box (a primitive subregion), blurred by
+    // the same sigma the proxy feathers with — the blur gets the WHOLE element
+    // as its subregion, or it would inherit the box's and never fade outward.
+    // "in" and "out" read the mask's alpha; their sum has alpha m + (1−m) = 1.
+    const ar = (last !== 'vpGraded' && typeof window._vpDetailAreaCss === 'function')
+      ? window._vpDetailAreaCss() : null;
+    if (!ar) return;
+    const mk = (tag, attrs) => {
+      const n = document.createElementNS(SVG_NS, tag);
+      n.setAttribute('data-vpd', '1');
+      Object.keys(attrs).forEach(k => n.setAttribute(k, String(attrs[k])));
+      f.appendChild(n);
+    };
+    const whole = { x: 0, y: 0, width: ar.cw.toFixed(2), height: ar.ch.toFixed(2) };
+    mk('feFlood', { 'flood-color': '#ffffff', 'flood-opacity': 1,
+                    x: ar.x.toFixed(2), y: ar.y.toFixed(2),
+                    width: Math.max(1, ar.w).toFixed(2), height: Math.max(1, ar.h).toFixed(2),
+                    result: 'vpdMk0' });
+    mk('feGaussianBlur', Object.assign({ in: 'vpdMk0', result: 'vpdMk',
+      stdDeviation: Math.max(0.05, AREA_FEATHER_FRAC * short).toFixed(3) }, whole));
+    mk('feComposite', Object.assign({ in: last, in2: 'vpdMk', operator: 'in', result: 'vpdDm' }, whole));
+    mk('feComposite', Object.assign({ in: 'vpGraded', in2: 'vpdMk', operator: 'out', result: 'vpdAm' }, whole));
+    mk('feComposite', Object.assign({ in: 'vpdDm', in2: 'vpdAm', operator: 'arithmetic',
+      k1: 0, k2: 1, k3: 1, k4: 0, result: 'vpdOut' }, whole));
   }
 
   function applyPreview() {
@@ -464,9 +493,14 @@
       // (dev1091) A rule above the first detail slider: these act on edges,
       // not on colour, and run after everything above them.
       if (sl.key === 'clarity') {
-        html += '<div title="Detail runs after the colour above it — on a B&amp;W grade, on the B&amp;W" ' +
-          'style="border-top:1px solid rgba(102,170,255,0.25);margin:6px 0 2px;padding-top:3px;' +
-          'opacity:0.6;font-size:11px;">Detail</div>';
+        // (dev1093) …with the ▭ chip that confines it to a drawn box.
+        html += '<div style="display:flex;align-items:center;border-top:1px solid rgba(102,170,255,0.25);' +
+            'margin:6px 0 2px;padding-top:3px;font-size:11px;">' +
+          '<span title="Detail runs after the colour above it — on a B&amp;W grade, on the B&amp;W" ' +
+            'style="opacity:0.6;">Detail</span>' +
+          '<span id="vp-color-area" title="Confine Clarity/Sharpen to a box you draw on the picture (drag it, drag its corners; ✕ on the box removes it). The edge fades over a short distance." ' +
+            'style="margin-left:auto;cursor:pointer;padding:1px 6px;background:#234;border-radius:3px;">▭ whole picture</span>' +
+          '</div>';
       }
       html +=
         '<div style="display:flex;align-items:center;gap:5px;margin:3px 0;">' +
@@ -533,6 +567,17 @@
       if (typeof toast === 'function') toast('↺ colour back to neutral', 1400);
     });
     el.querySelector('#vp-color-auto').addEventListener('click', autoBalance);
+    // (dev1093) ▭ — draw the Clarity/Sharpen box, or go back to the whole picture.
+    const areaChip = el.querySelector('#vp-color-area');
+    if (areaChip) {
+      areaChip.addEventListener('click', () => {
+        if (typeof window._vpDetailAreaToggle !== 'function') return;
+        const on = window._vpDetailAreaToggle();   // vp.js repaints, then calls vpColorAreaChanged
+        if (on && detailNeutral(grade) && typeof toast === 'function') {
+          toast('▭ box drawn — it confines Clarity/Sharpen, so turn one of them up to see it work', 3200);
+        }
+      });
+    }
     el.querySelector('#vp-color-presets').addEventListener('click', presetMenu);
     el.querySelector('#vp-color-save').addEventListener('click', savePreset);
 
@@ -560,7 +605,18 @@
     repaintCrop();
   }
 
+  // (dev1093) The ▭ chip says where Clarity/Sharpen apply.
+  function paintAreaChip() {
+    const chip = document.getElementById('vp-color-area');
+    if (!chip) return;
+    const on = (typeof window._vpDetailAreaOn === 'function') && window._vpDetailAreaOn();
+    chip.textContent = on ? '▭ inside the box' : '▭ whole picture';
+    chip.style.background = on ? '#124a5c' : '#234';
+    chip.style.color = on ? '#5cf' : '';
+  }
+
   function paintPanel() {
+    paintAreaChip();
     const el = document.getElementById(PANEL_ID);
     if (!el) return;
     SLIDERS.forEach(sl => {
@@ -827,6 +883,9 @@
       if (!near(grade.clarity, 0) && !near(grade.clarityR, CLARITY_R_DEFAULT)) {
         out.detail.clarityFrac = +(grade.clarityR / 100).toFixed(5);
       }
+      // (dev1093) The drawn box, in fractions of the rendered frame.
+      const area = (typeof window._vpDetailArea === 'function') ? window._vpDetailArea() : null;
+      if (area) out.detail.area = area;
       if (!near(grade.sharpen, 0)) out.detail.sharpen = +grade.sharpen.toFixed(4);
     }
     return (out.lut || out.mix || out.detail) ? out : null;
@@ -840,11 +899,23 @@
     if (!mediaEl || bypass || gradeOff() || detailNeutral(grade)) return;
     const svg = document.getElementById(SVG_ID);
     if (!svg) return;
+    // (dev1093) A Clarity/Sharpen box is placed in element pixels, so it moves
+    // with the crop: rebuild the detail stage outright (a dozen nodes).
+    if (typeof window._vpDetailAreaOn === 'function' && window._vpDetailAreaOn()) {
+      paintDetail(svg);
+      return;
+    }
     const short = previewShort();
     svg.querySelectorAll('feGaussianBlur[data-vpd]').forEach(b => {
       const v = Math.max(0.05, (+b.getAttribute('data-frac') || 0) * short).toFixed(3);
       if (b.getAttribute('stdDeviation') !== v) b.setAttribute('stdDeviation', v);
     });
+  };
+
+  // (dev1093) The box was drawn, moved, resized or removed (vp.js).
+  window.vpColorAreaChanged = function () {
+    paintAreaChip();
+    applyPreview();
   };
 
   // One compact token for the sidecar description, naming only what was moved.
@@ -863,6 +934,9 @@
       bits.push('clr' + grade.clarityR.toFixed(2) + '%');                      // (dev1092)
     }
     if (!near(grade.sharpen, 0))  bits.push('sh' + grade.sharpen.toFixed(2));
+    if (!detailNeutral(grade) && typeof window._vpDetailArea === 'function' && window._vpDetailArea()) {
+      bits.push('area');                                                        // (dev1093)
+    }
     return 'col ' + bits.join(' ');
   };
 })();
