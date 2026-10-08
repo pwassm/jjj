@@ -5452,6 +5452,24 @@ const VP_BLEED_MAX = 4;      // rect may reach 4× the frame on either axis
 
 // What actually renders: the rect clipped to the frame. Identity for any rect
 // that fits, so every non-bled path is unchanged.
+// (dev1092) The CRF slider shows the number ffmpeg is given, on the scale of
+// the encoder that is chosen. x265's scale runs about 5 above x264's for the
+// same picture, so H.265 gets 5 more travel; switching the encoder moves the
+// value by 5 (see the encoder select) rather than the payload adding it unseen.
+const VP_CRF_MAX_H264 = 28;
+const VP_CRF_MAX_H265 = 33;
+function _vpCrfPaint(state, bar) {
+  if (!state || !bar) return;
+  const sl  = bar.querySelector('#vp-crop-crf');
+  const val = bar.querySelector('#vp-crop-crf-val');
+  // A GIF keeps whichever scale the number was on (it has no CRF of its own).
+  const onH265 = (state.vcodec === 'h265') || (state.vcodec === 'gif' && state._crfScale === 'h265');
+  const max = onH265 ? VP_CRF_MAX_H265 : VP_CRF_MAX_H264;
+  state.crf = Math.max(0, Math.min(max, Math.round(+state.crf || 0)));
+  if (sl)  { sl.max = String(max); sl.value = String(state.crf); }
+  if (val) val.textContent = String(state.crf);
+}
+
 function _vpEffFrac(state) {
   const f = state.frac;
   if (!state.bleed) return { x: f.x, y: f.y, w: f.w, h: f.h };
@@ -7676,7 +7694,12 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     '<span id="vp-crop-aspect" title="Locked ratio — the corners scale it. Drag a SIDE (or ⇧T) for any shape." ' +
       'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">16:9</span>' +
     '<span id="vp-crop-crf-lbl" style="opacity:0.7;">CRF</span>' +
-    '<input id="vp-crop-crf" type="range" min="0" max="28" value="26" style="width:64px;vertical-align:middle;flex:0 0 auto;">' +
+    // (dev1092) The number shown IS the number ffmpeg gets. H.265's scale runs
+    // about 5 above H.264's for the same picture, so switching the encoder
+    // moves this slider by 5 — visibly — instead of adding 5 behind your back.
+    '<input id="vp-crop-crf" type="range" min="0" max="28" value="26" ' +
+      'title="Quality: lower = better and bigger. Typical: H.264 18–24, H.265 23–29. Switching the encoder moves this by 5, so the picture quality stays the same." ' +
+      'style="width:64px;vertical-align:middle;flex:0 0 auto;">' +
     '<span id="vp-crop-crf-val" style="min-width:18px;text-align:right;">26</span>' +
     '<select id="vp-crop-res" title="Output short side. The ⚠ chip at the far left of this bar lights up when the crop — or the zoom box inside it — is smaller than this, because ffmpeg would then enlarge pixels rather than add detail." ' +
       'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;">' +
@@ -9479,6 +9502,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     state.crf = +crfSlider.value;
     crfVal.textContent = state.crf;
   });
+  _vpCrfPaint(state, bar);   // (dev1092) the encoder's own range
   const slowBox = bar.querySelector('#vp-crop-slow');
   slowBox.addEventListener('change', () => { state.slow = !!slowBox.checked; });
   const resSel = bar.querySelector('#vp-crop-res');
@@ -9572,13 +9596,28 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   if (encSel) {
     encSel.value = state.vcodec;
     encSel.addEventListener('change', () => {
+      const was = state.vcodec;
       state.vcodec = (encSel.value === 'h265' || encSel.value === 'gif') ? encSel.value : 'h264';
+      // (dev1092) Carry the picture quality across, in the open: x265 reaches
+      // the same picture at a CRF about 5 higher than x264. GIF has no CRF, so
+      // the H.264/H.265 number is left where it was.
+      // Which scale the number is on survives a detour through GIF:
+      // H.264 → GIF → H.265 still adds the 5.
+      let crfNote = '';
+      const from = state.crf;
+      const fromScale = (was === 'gif') ? (state._crfScale || 'h264') : was;
+      const toScale = (state.vcodec === 'gif') ? fromScale : state.vcodec;
+      if (fromScale === 'h264' && toScale === 'h265') state.crf = Math.min(VP_CRF_MAX_H265, from + 5);
+      if (fromScale === 'h265' && toScale === 'h264') state.crf = Math.max(0, Math.min(VP_CRF_MAX_H264, from - 5));
+      state._crfScale = toScale;
+      _vpCrfPaint(state, bar);
+      if (state.crf !== from) crfNote = ' · CRF ' + from + ' → ' + state.crf + ' (same picture quality)';
       if (typeof toast === 'function') {
-        toast(state.vcodec === 'h265'
+        toast((state.vcodec === 'h265'
           ? 'H.265 — about half the size, slower to encode, and older players will refuse it'
           : state.vcodec === 'gif'
             ? 'GIF — silent, 256 colours, 30fps at most, 720 at most on the short side. Keep it to a few seconds.'
-            : 'H.264 — plays everywhere', 3200);
+            : 'H.264 — plays everywhere') + crfNote, crfNote ? 4200 : 3200);
       }
     });
   }
@@ -11919,7 +11958,7 @@ async function _vpImageSave(opts) {
   }
   // (dev1091) Same trap one level down: a pre-dev1091 proxy grades the colour
   // and silently drops Clarity/Sharpen.
-  if (payload.color && payload.color.detail && !(await _vpProxyHasFeature('vpdetail'))) {
+  if (payload.color && payload.color.detail && !(await _vpDetailFeaturesOk(payload.color.detail))) {
     if (typeof toast === 'function') {
       toast('Clarity/Sharpen need an updated proxy — restart "node proxy.js" and retry', 4400);
     }
@@ -12305,6 +12344,9 @@ async function _vpGoSave(opts) {
     }
     // (dev0871) …and the encoder and the loop, for the same reason.
     if (s.vcodec === 'h265' || s.vcodec === 'gif') detailParts.push(s.vcodec);
+    // (dev1092) …and the CRF actually sent, which nothing recorded before. A GIF
+    // has none.
+    if (s.vcodec !== 'gif') detailParts.push('crf' + s.crf);
     if (s.loop === 'boom') detailParts.push('boomerang');
     else if (s.loop === 'fwd') detailParts.push('loop');
     detailParts.push(durStr);
@@ -12313,10 +12355,10 @@ async function _vpGoSave(opts) {
       output: '',                       // (dev0863) filled in after the branch
       crop: cropBox,
       // (dev0871) CRF is per-encoder: x265 reaches the same picture at a NUMBER
-      // a few points above x264's, so sending the slider's value verbatim would
-      // hand back a needlessly heavy file. +5 is the usual equivalence, clamped
-      // to the scale's own ceiling.
-      crf: (s.vcodec === 'h265') ? Math.min(51, s.crf + 5) : s.crf,
+      // a few points above x264's. (dev1092) That +5 now happens on the SLIDER
+      // when the encoder is switched (see the encoder select), so the number
+      // shown is the number sent — it used to be added here, out of sight.
+      crf: s.crf,
       vcodec: s.vcodec || 'h264',
       preset: s.slow ? 'slow' : 'medium',
       aspect: effAspect, resHeight: resHeight,     // (dev0778) derived, see above; (dev1059) GIF cap
@@ -12404,7 +12446,7 @@ async function _vpGoSave(opts) {
     return;
   }
   // (dev1091) …and a pre-dev1091 one drops Clarity/Sharpen the same way.
-  if (payload.color && payload.color.detail && !(await _vpProxyHasFeature('vpdetail'))) {
+  if (payload.color && payload.color.detail && !(await _vpDetailFeaturesOk(payload.color.detail))) {
     if (typeof toast === 'function') {
       toast('Clarity/Sharpen need an updated proxy — restart "node proxy.js" and retry', 4400);
     }
@@ -12745,7 +12787,7 @@ async function _vpFrameSave(opts) {
   // (dev1091) …and Clarity/Sharpen, which a pre-dev1091 proxy drops silently.
   {
     const _c = (typeof window.vpColorPayload === 'function') ? window.vpColorPayload() : null;
-    if (_c && _c.detail && !(await _vpProxyHasFeature('vpdetail'))) {
+    if (_c && _c.detail && !(await _vpDetailFeaturesOk(_c.detail))) {
       if (typeof toast === 'function') {
         toast('Clarity/Sharpen need an updated proxy — restart "node proxy.js" and retry', 4400);
       }
@@ -12925,6 +12967,15 @@ function _vpCropStderrSaysExists(lines) {
 // feature at GET /version. A stale proxy (or any without /version) returns
 // false, letting the caller refuse the job instead of writing a wrong file.
 // (dev0719) Generalized from _vpProxySupportsRotate; 'noaudio' joined 'rotate'.
+// (dev1091/1092) Can the running proxy render this color.detail exactly as
+// previewed? dev1091 knows Clarity/Sharpen; dev1092 adds Clarity's radius.
+async function _vpDetailFeaturesOk(d) {
+  if (!d) return true;
+  if (!(await _vpProxyHasFeature('vpdetail'))) return false;
+  if (d.clarityFrac != null && !(await _vpProxyHasFeature('vpdetailr'))) return false;
+  return true;
+}
+
 async function _vpProxyHasFeature(name) {
   try {
     const r = await fetch(PROXY_BASE + '/version', { method: 'GET' });

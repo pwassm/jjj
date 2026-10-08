@@ -123,8 +123,14 @@
   const SHARPEN_FRAC = 0.001;
   const DETAIL_MAX   = 2;
 
+  // (dev1092) clarityR = Clarity's radius in PERCENT of the short side. It is a
+  // setting, not a grade: it changes nothing while Clarity is 0, so it takes no
+  // part in "is a grade in force?" (detailNeutral), and its default is the
+  // dev1091 radius, CLARITY_FRAC.
+  const CLARITY_R_DEFAULT = CLARITY_FRAC * 100;   // 1.5 (%)
+
   const NEUTRAL = { warmth: 0, tint: 0, bright: 0, contrast: 1, sat: 1, gamma: 1,
-                    clarity: 0, sharpen: 0 };
+                    clarity: 0, clarityR: CLARITY_R_DEFAULT, sharpen: 0 };
 
   const SLIDERS = [
     { key: 'warmth',   label: 'Warmth',   min: -300, max: 300, signed: true,
@@ -143,6 +149,9 @@
     // works on the B&W.
     { key: 'clarity',  label: 'Clarity',  min:    0, max: 200, signed: false, detail: true,
       hint: 'local contrast: outlines legs, fins and cirri against what is around them. Try 1.0–1.5' },
+    // (dev1092) Clarity's radius, as % of the picture's short side (slider/100).
+    { key: 'clarityR', label: '↳ radius', min:   20, max: 300, signed: false, detail: true,
+      hint: 'how big a thing Clarity outlines, in % of the short side. 1.5 (default) ≈ 22 px on a 2K save — whole shells and rocks. Thin rays like barnacle cirri respond best near 0.4 (≈ 6 px), with fewer halos and less sand grain' },
     { key: 'sharpen',  label: 'Sharpen',  min:    0, max: 200, signed: false, detail: true,
       hint: 'fine edges only. Also lifts grain and compression blocks, so keep it low. Previews weaker than it saves on a big render' }
   ];
@@ -175,6 +184,7 @@
     o.sat      = clamp(num(o.sat,      1), 0, SAT_MAX);
     o.gamma    = clamp(num(o.gamma,    1), 0.6, 1.6);
     o.clarity  = clamp(num(o.clarity,  0), 0, DETAIL_MAX);   // (dev1091)
+    o.clarityR = clamp(num(o.clarityR, CLARITY_R_DEFAULT), 0.2, 3);   // (dev1092) %
     o.sharpen  = clamp(num(o.sharpen,  0), 0, DETAIL_MAX);
     return o;
   }
@@ -373,7 +383,7 @@
       f.appendChild(cp);
       last = tag;
     };
-    pass(grade.clarity, CLARITY_FRAC, 'vpdCl');
+    pass(grade.clarity, grade.clarityR / 100, 'vpdCl');   // (dev1092) user's radius
     pass(grade.sharpen, SHARPEN_FRAC, 'vpdSh');
   }
 
@@ -406,6 +416,7 @@
 
   function fmt(key, v) {
     if (key === 'clarity' || key === 'sharpen') return v.toFixed(2);   // (dev1091) an amount, 0 = off
+    if (key === 'clarityR') return v.toFixed(2) + '%';                 // (dev1092) of the short side
     if (key === 'contrast' || key === 'sat' || key === 'gamma') return '×' + v.toFixed(2);
     return (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2);
   }
@@ -811,6 +822,11 @@
     if (!detailNeutral(grade)) {
       out.detail = {};
       if (!near(grade.clarity, 0)) out.detail.clarity = +grade.clarity.toFixed(4);
+      // (dev1092) Only when moved off the default, so a default-radius render
+      // still goes to a dev1091 proxy unchanged.
+      if (!near(grade.clarity, 0) && !near(grade.clarityR, CLARITY_R_DEFAULT)) {
+        out.detail.clarityFrac = +(grade.clarityR / 100).toFixed(5);
+      }
       if (!near(grade.sharpen, 0)) out.detail.sharpen = +grade.sharpen.toFixed(4);
     }
     return (out.lut || out.mix || out.detail) ? out : null;
@@ -843,6 +859,9 @@
     if (!near(grade.sat, 1))      bits.push('s' + grade.sat.toFixed(2));
     if (!near(grade.gamma, 1))    bits.push('g' + grade.gamma.toFixed(2));
     if (!near(grade.clarity, 0))  bits.push('cl' + grade.clarity.toFixed(2));   // (dev1091)
+    if (!near(grade.clarity, 0) && !near(grade.clarityR, CLARITY_R_DEFAULT)) {
+      bits.push('clr' + grade.clarityR.toFixed(2) + '%');                      // (dev1092)
+    }
     if (!near(grade.sharpen, 0))  bits.push('sh' + grade.sharpen.toFixed(2));
     return 'col ' + bits.join(' ');
   };
