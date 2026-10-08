@@ -2,7 +2,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // Six sliders over the V crop overlay and the still-image crop, previewed live
-// on the frame and baked into the render.
+// on the frame and baked into the render. (dev1091) Plus two Detail sliders,
+// Clarity and Sharpen, after the grade — see STAGE 3 below.
 //
 // THE ONE DECISION EVERYTHING ELSE FOLLOWS FROM
 //
@@ -54,6 +55,25 @@
 // the calibration against Chrome recorded beside it). Nothing in THIS file
 // changes for HDR: the browser was already doing the right thing.
 //
+// (dev1091) STAGE 3 — DETAIL: CLARITY + SHARPEN
+//
+// Two unsharp masks after the grade, one after the other:
+//     out = clamp( A + k * (A - blur(A, sigma)) )
+//   browser: feGaussianBlur + feComposite arithmetic (k2 = 1+k, k3 = -k), which
+//            clamps to 0..1 at each stage
+//   ffmpeg : split -> gblur -> blend 'clip(A+k*(A-B),0,255)'  (buildDetailChain)
+// Clarity has a wide sigma (mid-size edges against their surroundings: what
+// outlines barnacle cirri on pale sand); Sharpen a narrow one (fine edges).
+//
+// The radius is a FRACTION OF THE PICTURE's short side, never a pixel count:
+// the render takes it of the frame the mask runs on, and the preview takes it
+// of the crop as displayed, in the element's own CSS pixels (what an SVG
+// stdDeviation is measured in). So a 1080p save, a 2K save and the screen all
+// get the same look. CLARITY_FRAC / SHARPEN_FRAC must match the proxy's
+// DETAIL_*_FRAC. A Sharpen pass on a small preview of a big render is
+// sub-pixel on screen, so it previews weaker than it saves; Clarity does not
+// have that problem.
+//
 // The grade is STICKY: it survives moving to the next clip and reloading the
 // page, because a batch of dives shares one cast. That is only safe because the
 // crop bar carries an amber "graded" chip whenever one is loaded — a sticky
@@ -97,7 +117,14 @@
   // from silently truncating one into a colour nobody asked for.
   const SAT_MAX = 1.8;
 
-  const NEUTRAL = { warmth: 0, tint: 0, bright: 0, contrast: 1, sat: 1, gamma: 1 };
+  // (dev1091) Detail radii, as a fraction of the short side — see the header.
+  // MUST equal DETAIL_CLARITY_FRAC / DETAIL_SHARPEN_FRAC in proxy.js.
+  const CLARITY_FRAC = 0.015;
+  const SHARPEN_FRAC = 0.001;
+  const DETAIL_MAX   = 2;
+
+  const NEUTRAL = { warmth: 0, tint: 0, bright: 0, contrast: 1, sat: 1, gamma: 1,
+                    clarity: 0, sharpen: 0 };
 
   const SLIDERS = [
     { key: 'warmth',   label: 'Warmth',   min: -300, max: 300, signed: true,
@@ -111,7 +138,13 @@
     { key: 'sat',      label: 'Satur.',   min:    0, max: 180, signed: false,
       hint: '0 is monochrome; 1.8 is the ceiling ffmpeg will take' },
     { key: 'gamma',    label: 'Gamma',    min:   60, max: 160, signed: false,
-      hint: 'opens the shadows without blowing the highlights' }
+      hint: 'opens the shadows without blowing the highlights' },
+    // (dev1091) Detail — runs on the graded picture, so on a B&W grade it
+    // works on the B&W.
+    { key: 'clarity',  label: 'Clarity',  min:    0, max: 200, signed: false, detail: true,
+      hint: 'local contrast: outlines legs, fins and cirri against what is around them. Try 1.0–1.5' },
+    { key: 'sharpen',  label: 'Sharpen',  min:    0, max: 200, signed: false, detail: true,
+      hint: 'fine edges only. Also lifts grain and compression blocks, so keep it low. Previews weaker than it saves on a big render' }
   ];
 
   let grade   = loadGrade();
@@ -141,6 +174,8 @@
     o.contrast = clamp(num(o.contrast, 1), 0.5, 2);
     o.sat      = clamp(num(o.sat,      1), 0, SAT_MAX);
     o.gamma    = clamp(num(o.gamma,    1), 0.6, 1.6);
+    o.clarity  = clamp(num(o.clarity,  0), 0, DETAIL_MAX);   // (dev1091)
+    o.sharpen  = clamp(num(o.sharpen,  0), 0, DETAIL_MAX);
     return o;
   }
 
@@ -177,7 +212,8 @@
            near(g.contrast, 1) && near(g.gamma, 1);
   }
   function mixNeutral(g) { return near(g.sat, 1); }
-  function isNeutral(g)  { return lutNeutral(g) && mixNeutral(g); }
+  function detailNeutral(g) { return near(g.clarity, 0) && near(g.sharpen, 0); }   // (dev1091)
+  function isNeutral(g)  { return lutNeutral(g) && mixNeutral(g) && detailNeutral(g); }
 
   // (dev0958) "No grade is in force" — either there is nothing to apply, or it
   // has been switched off with c. The single question every caller asks, so
@@ -252,6 +288,8 @@
     const cm = document.createElementNS(SVG_NS, 'feColorMatrix');
     cm.setAttribute('type', 'matrix');
     cm.setAttribute('values', '1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0');
+    // (dev1091) Named, so the detail passes appended after it can read it.
+    cm.setAttribute('result', 'vpGraded');
 
     f.appendChild(ctG);
     f.appendChild(ctL);
@@ -286,6 +324,57 @@
          M.br, M.bg, M.bb, 0, 0,
          0, 0, 0, 1, 0].map(n => (+n).toFixed(6)).join(' '));
     }
+    paintDetail(svg);
+  }
+
+  // (dev1091) The crop's short side as displayed, in the media element's own
+  // CSS pixels — the unit an SVG stdDeviation is read in, and the frame the
+  // render's radius is a fraction of. vp.js measures it (it owns the rect);
+  // without it, the element's own short side is a rough stand-in.
+  function previewShort() {
+    let s = 0;
+    if (typeof window._vpColorCropShortCss === 'function') {
+      try { s = +window._vpColorCropShortCss() || 0; } catch (_) { s = 0; }
+    }
+    if (s > 0) return s;
+    if (!mediaEl) return 0;
+    return Math.min(mediaEl.clientWidth || 0, mediaEl.clientHeight || 0);
+  }
+
+  // (dev1091) Stage 3. The passes are rebuilt from scratch each time: a pass at
+  // zero is left out rather than run at k=0, because a blur nobody asked for
+  // still costs a full-frame gaussian on every video frame.
+  function paintDetail(svg) {
+    const f = svg.querySelector('filter');
+    if (!f) return;
+    f.querySelectorAll('[data-vpd]').forEach(n => n.remove());
+    if (detailNeutral(grade)) return;
+    const short = previewShort();
+    let last = 'vpGraded';
+    const pass = (k, frac, tag) => {
+      if (!(k > 0)) return;
+      const bl = document.createElementNS(SVG_NS, 'feGaussianBlur');
+      bl.setAttribute('data-vpd', '1');
+      bl.setAttribute('data-frac', String(frac));
+      bl.setAttribute('in', last);
+      bl.setAttribute('stdDeviation', Math.max(0.05, frac * short).toFixed(3));
+      bl.setAttribute('result', tag + 'B');
+      const cp = document.createElementNS(SVG_NS, 'feComposite');
+      cp.setAttribute('data-vpd', '1');
+      cp.setAttribute('in', last);
+      cp.setAttribute('in2', tag + 'B');
+      cp.setAttribute('operator', 'arithmetic');
+      cp.setAttribute('k1', '0');
+      cp.setAttribute('k2', (1 + k).toFixed(6));
+      cp.setAttribute('k3', (-k).toFixed(6));
+      cp.setAttribute('k4', '0');
+      cp.setAttribute('result', tag);
+      f.appendChild(bl);
+      f.appendChild(cp);
+      last = tag;
+    };
+    pass(grade.clarity, CLARITY_FRAC, 'vpdCl');
+    pass(grade.sharpen, SHARPEN_FRAC, 'vpdSh');
   }
 
   function applyPreview() {
@@ -316,6 +405,7 @@
   // ── the panel ────────────────────────────────────────────────────────────
 
   function fmt(key, v) {
+    if (key === 'clarity' || key === 'sharpen') return v.toFixed(2);   // (dev1091) an amount, 0 = off
     if (key === 'contrast' || key === 'sat' || key === 'gamma') return '×' + v.toFixed(2);
     return (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2);
   }
@@ -360,6 +450,13 @@
       '</div><div style="padding:6px 7px 7px;">';
 
     SLIDERS.forEach(sl => {
+      // (dev1091) A rule above the first detail slider: these act on edges,
+      // not on colour, and run after everything above them.
+      if (sl.key === 'clarity') {
+        html += '<div title="Detail runs after the colour above it — on a B&amp;W grade, on the B&amp;W" ' +
+          'style="border-top:1px solid rgba(102,170,255,0.25);margin:6px 0 2px;padding-top:3px;' +
+          'opacity:0.6;font-size:11px;">Detail</div>';
+      }
       html +=
         '<div style="display:flex;align-items:center;gap:5px;margin:3px 0;">' +
           '<span class="vp-color-lbl" data-k="' + sl.key + '" title="' + sl.hint +
@@ -709,7 +806,29 @@
     const out = {};
     if (!lutNeutral(grade)) out.lut = lutOf(grade);
     if (!mixNeutral(grade)) out.mix = mixOf(grade);
-    return (out.lut || out.mix) ? out : null;
+    // (dev1091) Amounts only — the proxy works out the radius from the frame
+    // it is rendering, the same fraction the preview used.
+    if (!detailNeutral(grade)) {
+      out.detail = {};
+      if (!near(grade.clarity, 0)) out.detail.clarity = +grade.clarity.toFixed(4);
+      if (!near(grade.sharpen, 0)) out.detail.sharpen = +grade.sharpen.toFixed(4);
+    }
+    return (out.lut || out.mix || out.detail) ? out : null;
+  };
+
+  // (dev1091) The crop rect moved or the window resized: the preview's radius
+  // is a fraction of the crop as displayed, so re-measure it. Called from the
+  // crop overlay's paint(), i.e. on every drag step, so it only touches the
+  // blur radii, and only when one actually changed.
+  window.vpColorGeom = function () {
+    if (!mediaEl || bypass || gradeOff() || detailNeutral(grade)) return;
+    const svg = document.getElementById(SVG_ID);
+    if (!svg) return;
+    const short = previewShort();
+    svg.querySelectorAll('feGaussianBlur[data-vpd]').forEach(b => {
+      const v = Math.max(0.05, (+b.getAttribute('data-frac') || 0) * short).toFixed(3);
+      if (b.getAttribute('stdDeviation') !== v) b.setAttribute('stdDeviation', v);
+    });
   };
 
   // One compact token for the sidecar description, naming only what was moved.
@@ -723,6 +842,8 @@
     if (!near(grade.contrast, 1)) bits.push('c' + grade.contrast.toFixed(2));
     if (!near(grade.sat, 1))      bits.push('s' + grade.sat.toFixed(2));
     if (!near(grade.gamma, 1))    bits.push('g' + grade.gamma.toFixed(2));
+    if (!near(grade.clarity, 0))  bits.push('cl' + grade.clarity.toFixed(2));   // (dev1091)
+    if (!near(grade.sharpen, 0))  bits.push('sh' + grade.sharpen.toFixed(2));
     return 'col ' + bits.join(' ');
   };
 })();

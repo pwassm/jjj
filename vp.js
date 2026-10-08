@@ -8335,6 +8335,9 @@ function _vpMountCropOverlay(host, vid, row, opts) {
 
   function paint() {
     const r = viewRect();
+    // (dev1091) The colour tool's Clarity/Sharpen preview radius follows the
+    // rect's displayed size; this is the one place every drag step passes.
+    if (typeof window.vpColorGeom === 'function') window.vpColorGeom();
     const rl = r.rx + state.frac.x * r.rw;
     const rt = r.ry + state.frac.y * r.rh;
     const rw = state.frac.w * r.rw;
@@ -10385,6 +10388,25 @@ window._vpColorAutoContext = function () {
   return out;
 };
 
+// (dev1091) The crop's short side as it is DISPLAYED, in the media element's
+// own (untransformed) CSS pixels — the unit the colour tool's preview blur is
+// measured in. The render's Clarity/Sharpen radius is a fraction of the output
+// frame's short side, so the preview's must be the same fraction of this.
+// object-fit: contain, hence the smaller of the two scales. The rect is
+// clipped to the frame first (a bled rect renders only its intersection).
+window._vpColorCropShortCss = function () {
+  const st = _vpState && _vpState.crop;
+  const el = _vpColorMediaEl();
+  if (!st || !st.frac || !el) return 0;
+  const VW = el.videoWidth  || el.naturalWidth  || 0;
+  const VH = el.videoHeight || el.naturalHeight || 0;
+  const cw = el.clientWidth, ch = el.clientHeight;
+  if (!(VW > 0 && VH > 0 && cw > 0 && ch > 0)) return 0;
+  const k = Math.min(cw / VW, ch / VH);
+  const ef = _vpEffFrac(st);
+  return Math.min(ef.w * VW, ef.h * VH) * k;
+};
+
 // (dev0867) The grade's token for the sidecar description, or ''.
 function _vpColorToken() {
   return (typeof window.vpColorDetailToken === 'function') ? window.vpColorDetailToken() : '';
@@ -11895,6 +11917,14 @@ async function _vpImageSave(opts) {
     }
     return;
   }
+  // (dev1091) Same trap one level down: a pre-dev1091 proxy grades the colour
+  // and silently drops Clarity/Sharpen.
+  if (payload.color && payload.color.detail && !(await _vpProxyHasFeature('vpdetail'))) {
+    if (typeof toast === 'function') {
+      toast('Clarity/Sharpen need an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
 
   const btn = s.el.bar.querySelector('#vp-crop-do');
   const origLabel = btn ? btn.textContent : null;
@@ -12373,6 +12403,13 @@ async function _vpGoSave(opts) {
     }
     return;
   }
+  // (dev1091) …and a pre-dev1091 one drops Clarity/Sharpen the same way.
+  if (payload.color && payload.color.detail && !(await _vpProxyHasFeature('vpdetail'))) {
+    if (typeof toast === 'function') {
+      toast('Clarity/Sharpen need an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
   // (dev0319) Deskew preflight — a stale proxy silently ignores payload.rotate
   // and applies the rotated-canvas crop coords to the raw frame (grabs the wrong
   // region, no deskew). Refuse loudly instead of writing a mis-cropped file.
@@ -12704,6 +12741,16 @@ async function _vpFrameSave(opts) {
       toast('Arrows need an updated proxy — restart "node proxy.js" and retry', 4400);
     }
     return;
+  }
+  // (dev1091) …and Clarity/Sharpen, which a pre-dev1091 proxy drops silently.
+  {
+    const _c = (typeof window.vpColorPayload === 'function') ? window.vpColorPayload() : null;
+    if (_c && _c.detail && !(await _vpProxyHasFeature('vpdetail'))) {
+      if (typeof toast === 'function') {
+        toast('Clarity/Sharpen need an updated proxy — restart "node proxy.js" and retry', 4400);
+      }
+      return;
+    }
   }
 
   const atSec = Math.max(0, +(vid.currentTime || 0));

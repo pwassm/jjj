@@ -63,3 +63,4 @@
 2026-10-05T13:44:34.040Z	bare-links paste	886	https://vimeo.com/17280832	Cuttlefish Love
 2026-10-05T13:49:19.251Z	bare-links paste	890_4	https://vimeo.com/254923920	The Wild Life of a Female Flamboyant Cuttlefish
 2026-10-06T15:58:13.203Z	bare-links paste	2419	https://youtu.be/s47F3BwFnvE	What Exactly is: Stargazer | The Gaping Gaze
+2026-10-07T17:50:50.848Z	bare-links paste	2537	https://www.quantamagazine.org/wp-content/uploads/2026/08/Combined_cilia_movement_temperature-cr-Courtesy-of-Cesar-Pacherres.mp4	
