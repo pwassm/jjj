@@ -324,6 +324,9 @@ ig-harvests.json.tmp-*
 # /ig/cut-after; /ig/add drops anything older. Local only.
 ig-cuts.json
 ig-cuts.json.tmp-*
+# (dev1102) Ids removed with 🗑 Delete sel / 🤖 AI delete, so no harvest re-adds them. Local only.
+ig-deleted.json
+ig-deleted.json.tmp-*
 
 # (dev0961) YouTube transcript + local-Ollama summary output, written by proxy
 # /ytt/run from a T row: <uid>~<videoId>~<title>.{transcript,summary}.txt. DEV-ONLY
