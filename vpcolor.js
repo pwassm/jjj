@@ -132,8 +132,11 @@
   // dev1091 radius, CLARITY_FRAC.
   const CLARITY_R_DEFAULT = CLARITY_FRAC * 100;   // 1.5 (%)
 
+  // (dev1094) detailT = the threshold, in levels of 255, shared by Clarity and
+  // Sharpen. Like clarityR it is a setting, not a grade (detailNeutral ignores
+  // it). Kept to half-levels so the preview's lookup table hits it exactly.
   const NEUTRAL = { warmth: 0, tint: 0, bright: 0, contrast: 1, sat: 1, gamma: 1,
-                    clarity: 0, clarityR: CLARITY_R_DEFAULT, sharpen: 0 };
+                    clarity: 0, clarityR: CLARITY_R_DEFAULT, sharpen: 0, detailT: 0 };
 
   const SLIDERS = [
     { key: 'warmth',   label: 'Warmth',   min: -300, max: 300, signed: true,
@@ -156,7 +159,10 @@
     { key: 'clarityR', label: '↳ radius', min:   20, max: 300, signed: false, detail: true,
       hint: 'how big a thing Clarity outlines, in % of the short side. 1.5 (default) ≈ 22 px on a 2K save — whole shells and rocks. Thin rays like barnacle cirri respond best near 0.4 (≈ 6 px), with fewer halos and less sand grain' },
     { key: 'sharpen',  label: 'Sharpen',  min:    0, max: 200, signed: false, detail: true,
-      hint: 'fine edges only. Also lifts grain and compression blocks, so keep it low. Previews weaker than it saves on a big render' }
+      hint: 'fine edges only. Also lifts grain and compression blocks, so keep it low. Previews weaker than it saves on a big render' },
+    // (dev1094) Shared by both passes; slider/100 = levels of 255.
+    { key: 'detailT',  label: '↳ thresh.', min:   0, max: 2000, signed: false, detail: true,
+      hint: 'Clarity and Sharpen skip any difference smaller than this (levels of 255), so fine sand grain and noise stay as they were while stronger edges still get the boost. 0 = off. Try 3–6: at 4 the barnacle fans kept about ¾ of their boost and the added sand grain halved' }
   ];
 
   let grade   = loadGrade();
@@ -189,6 +195,7 @@
     o.clarity  = clamp(num(o.clarity,  0), 0, DETAIL_MAX);   // (dev1091)
     o.clarityR = clamp(num(o.clarityR, CLARITY_R_DEFAULT), 0.2, 3);   // (dev1092) %
     o.sharpen  = clamp(num(o.sharpen,  0), 0, DETAIL_MAX);
+    o.detailT  = Math.round(clamp(num(o.detailT, 0), 0, 20) * 2) / 2;   // (dev1094) half-levels
     return o;
   }
 
@@ -354,6 +361,24 @@
     return Math.min(mediaEl.clientWidth || 0, mediaEl.clientHeight || 0);
   }
 
+  // (dev1094) The coring curve as an SVG lookup table: v = d + 0.5 in, 0.5 +
+  // sgn(d)·max(|d| − t, 0) out. A table is piecewise-linear between evenly
+  // spaced points; 511 of them put 0.5 on a point and, at the slider's
+  // half-level steps, 0.5 ± t on points too — so the knees are exact, not
+  // rounded off between samples.
+  const _coringCache = {};
+  function coringTable(t) {
+    const key = t.toFixed(6);
+    if (_coringCache[key]) return _coringCache[key];
+    const N = 511, out = [];
+    for (let i = 0; i < N; i++) {
+      const d = i / (N - 1) - 0.5;
+      const c = Math.sign(d) * Math.max(Math.abs(d) - t, 0);
+      out.push((0.5 + c).toFixed(5));
+    }
+    return (_coringCache[key] = out.join(' '));
+  }
+
   // (dev1091) Stage 3. The passes are rebuilt from scratch each time: a pass at
   // zero is left out rather than run at k=0, because a blur nobody asked for
   // still costs a full-frame gaussian on every video frame.
@@ -372,20 +397,46 @@
       bl.setAttribute('in', last);
       bl.setAttribute('stdDeviation', Math.max(0.05, frac * short).toFixed(3));
       bl.setAttribute('result', tag + 'B');
-      const cp = document.createElementNS(SVG_NS, 'feComposite');
-      cp.setAttribute('data-vpd', '1');
-      cp.setAttribute('in', last);
-      cp.setAttribute('in2', tag + 'B');
-      cp.setAttribute('operator', 'arithmetic');
-      cp.setAttribute('k1', '0');
-      cp.setAttribute('k2', (1 + k).toFixed(6));
-      cp.setAttribute('k3', (-k).toFixed(6));
-      cp.setAttribute('k4', '0');
-      cp.setAttribute('result', tag);
       f.appendChild(bl);
-      f.appendChild(cp);
+      const node = (name, attrs) => {
+        const n = document.createElementNS(SVG_NS, name);
+        n.setAttribute('data-vpd', '1');
+        Object.keys(attrs).forEach(a => n.setAttribute(a, String(attrs[a])));
+        f.appendChild(n);
+        return n;
+      };
+      if (!(T > 0)) {
+        node('feComposite', { in: last, in2: tag + 'B', operator: 'arithmetic',
+                              k1: 0, k2: (1 + k).toFixed(6), k3: (-k).toFixed(6), k4: 0, result: tag });
+        last = tag;
+        return;
+      }
+      // (dev1094) THRESHOLD: out = A + k·sgn(d)·max(|d|−t, 0), d = A − blur.
+      // An arithmetic composite works on premultiplied RGBA and its alpha is
+      // k2+k3+k4, so a plain A − B would come out with alpha 0 and every
+      // colour clamped to it. Hence: invert the blur (1 − B, alpha untouched),
+      // ADD it with a −0.5 offset — d + 0.5 with alpha 1.5→1 — core it with a
+      // lookup table, and add k·(cored − 0.5) back to A (alpha 1 + k/2 → 1).
+      const inv = node('feComponentTransfer', { in: tag + 'B', result: tag + 'I' });
+      ['R', 'G', 'B'].forEach(ch => {
+        const fn = document.createElementNS(SVG_NS, 'feFunc' + ch);
+        fn.setAttribute('type', 'linear'); fn.setAttribute('slope', '-1'); fn.setAttribute('intercept', '1');
+        inv.appendChild(fn);
+      });
+      node('feComposite', { in: last, in2: tag + 'I', operator: 'arithmetic',
+                            k1: 0, k2: 1, k3: 1, k4: -0.5, result: tag + 'D' });
+      const core = node('feComponentTransfer', { in: tag + 'D', result: tag + 'C' });
+      const table = coringTable(T);
+      ['R', 'G', 'B'].forEach(ch => {
+        const fn = document.createElementNS(SVG_NS, 'feFunc' + ch);
+        fn.setAttribute('type', 'table'); fn.setAttribute('tableValues', table);
+        core.appendChild(fn);
+      });
+      node('feComposite', { in: last, in2: tag + 'C', operator: 'arithmetic',
+                            k1: 0, k2: 1, k3: k.toFixed(6), k4: (-0.5 * k).toFixed(6), result: tag });
       last = tag;
     };
+    const T = grade.detailT / 255;   // (dev1094) shared by both passes
     pass(grade.clarity, grade.clarityR / 100, 'vpdCl');   // (dev1092) user's radius
     pass(grade.sharpen, SHARPEN_FRAC, 'vpdSh');
 
@@ -446,6 +497,7 @@
   function fmt(key, v) {
     if (key === 'clarity' || key === 'sharpen') return v.toFixed(2);   // (dev1091) an amount, 0 = off
     if (key === 'clarityR') return v.toFixed(2) + '%';                 // (dev1092) of the short side
+    if (key === 'detailT')  return v.toFixed(1);                       // (dev1094) levels of 255
     if (key === 'contrast' || key === 'sat' || key === 'gamma') return '×' + v.toFixed(2);
     return (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2);
   }
@@ -883,6 +935,8 @@
       if (!near(grade.clarity, 0) && !near(grade.clarityR, CLARITY_R_DEFAULT)) {
         out.detail.clarityFrac = +(grade.clarityR / 100).toFixed(5);
       }
+      // (dev1094) The threshold, in levels of 255, for both passes.
+      if (grade.detailT > 0) out.detail.threshold = grade.detailT;
       // (dev1093) The drawn box, in fractions of the rendered frame.
       const area = (typeof window._vpDetailArea === 'function') ? window._vpDetailArea() : null;
       if (area) out.detail.area = area;
@@ -934,6 +988,7 @@
       bits.push('clr' + grade.clarityR.toFixed(2) + '%');                      // (dev1092)
     }
     if (!near(grade.sharpen, 0))  bits.push('sh' + grade.sharpen.toFixed(2));
+    if (!detailNeutral(grade) && grade.detailT > 0) bits.push('thr' + grade.detailT.toFixed(1));   // (dev1094)
     if (!detailNeutral(grade) && typeof window._vpDetailArea === 'function' && window._vpDetailArea()) {
       bits.push('area');                                                        // (dev1093)
     }

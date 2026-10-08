@@ -13163,6 +13163,7 @@ async function _vpDetailFeaturesOk(d) {
   if (!(await _vpProxyHasFeature('vpdetail'))) return false;
   if (d.clarityFrac != null && !(await _vpProxyHasFeature('vpdetailr'))) return false;
   if (d.area && !(await _vpProxyHasFeature('vpdetailarea'))) return false;   // (dev1093)
+  if (d.threshold && !(await _vpProxyHasFeature('vpdetailt'))) return false;  // (dev1094)
   return true;
 }
 
