@@ -320,6 +320,10 @@ ig-checked.json.tmp-*
 # count, rows held), written by proxy.js on every /ig/add. Local only.
 ig-harvests.json
 ig-harvests.json.tmp-*
+# (dev1099) Per-author ✂ stop posts (the oldest post wanted), written by proxy.js
+# /ig/cut-after; /ig/add drops anything older. Local only.
+ig-cuts.json
+ig-cuts.json.tmp-*
 
 # (dev0961) YouTube transcript + local-Ollama summary output, written by proxy
 # /ytt/run from a T row: <uid>~<videoId>~<title>.{transcript,summary}.txt. DEV-ONLY
