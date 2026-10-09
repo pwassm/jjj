@@ -5657,7 +5657,10 @@ function _vpCropUpscaleFactor(state, sw, sh) {
   // (dev0720) A Ken Burns move ENDS on the inner box, so that — not the whole
   // crop — is the framing that has to carry the output resolution. Judge the
   // enlargement by the tightest moment of the shot.
-  if (state.ken && state.ken.on && state.ken.frac.w > 0) srcShort *= state.ken.frac.w;
+  // (dev1104) …or the start box, when that is the tighter of the two.
+  if (state.ken && state.ken.on && state.ken.frac.w > 0) {
+    srcShort *= Math.min(state.ken.frac.w, state.ken.from ? state.ken.from.w : 1);
+  }
   if (!srcShort) return 1;
   return resH / srcShort;
 }
@@ -5696,6 +5699,57 @@ function _vpKenToggle() {
   if (armed && typeof toast === 'function') {
     toast('🎬 output is now an mp4 clip (M for gif)', 2400);
   }
+}
+
+// (dev1104) ── The START box ───────────────────────────────────────────────
+// Without it the move always leaves the whole crop. With it, it leaves the
+// green box: the same size as the amber one = a pan along the picture, bigger
+// = a zoom in while moving, smaller = a zoom out. Turned on from the Z card.
+// The first time it is placed as a pan already: the end box's size, on the
+// far side of the crop from it. Off and on again brings back where it was.
+function _vpKenFromToggle() {
+  const s = _vpState && _vpState.crop;
+  if (!s || !s.ken) return;
+  const k = s.ken;
+  if (!k.on) {
+    if (typeof toast === 'function') toast('🎬 arm the zoom first (Z) — the start box goes with it', 2400);
+    return;
+  }
+  if (k.from) {
+    k._fromWas = k.from;
+    k.from = null;
+  } else if (k._fromWas) {
+    k.from = k._fromWas;
+  } else {
+    const w = k.frac.w;
+    const x = (k.frac.x >= (1 - w) / 2) ? 0 : (1 - w);
+    k.from = { x, y: k.frac.y, w, h: w };
+  }
+  if (s.paintKen) s.paintKen();
+  if (s.paint) s.paint();   // ⚠ enlargement label: the start box may be the tighter one
+  _vpKenCardShow();
+  if (typeof toast === 'function') {
+    toast(k.from
+      ? '▶ green start box — the move runs from it to the amber box. Same size = a pan.'
+      : '▶ start box off — the move starts from the whole crop again', 3200);
+  }
+}
+// (dev1104) Either boomerang: 'boom' shows each turn frame twice, 'boom1'
+// once (payload boomEnds:'single').
+function _vpIsBoom(l) { return l === 'boom' || l === 'boom1'; }
+
+// What the two boxes add up to, in words.
+function _vpKenFromKind(k) {
+  if (!k.from) return 'zooms in';
+  const d = k.from.w - k.frac.w;
+  if (Math.abs(d) < 0.01) return 'pans';
+  return d > 0 ? 'zooms in as it moves' : 'zooms out as it moves';
+}
+function _vpKenFromBtn(k) {
+  return '<span id="vp-ken-from-btn" title="A green start box: the move runs from it to the amber box instead of from the whole crop" ' +
+    'style="cursor:pointer;padding:0 6px;border-radius:3px;background:' + (k.from ? '#1f4a1f' : '#234') +
+    ';color:' + (k.from ? '#8f8' : '#cde') + ';">' +
+    (k.from ? '▶ start box ON — click for the whole crop' : '▶ start from a box (pan)') + '</span>';
 }
 
 // (dev0919) ── When the move BEGINS ──────────────────────────────────────────
@@ -5816,7 +5870,10 @@ function _vpKenCardShow() {
     el.style.top  = ((pos && Number.isFinite(pos.y)) ? pos.y : 64) + 'px';
 
     // Clicks must not reach #gridFullscreen's handler (which would close V).
-    el.addEventListener('click', e => e.stopPropagation());
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      if (e.target.closest && e.target.closest('#vp-ken-from-btn')) _vpKenFromToggle();   // (dev1104)
+    });
     el.querySelector('#vp-ken-card-close').addEventListener('click', e => {
       e.stopPropagation();
       _vpKenCardHide();
@@ -5862,6 +5919,7 @@ function _vpKenCardPaint() {
   if (!s || !s.ken) return;
   const k = s.ken;
   const sig = JSON.stringify([k.on, k.frac.x, k.frac.y, k.frac.w, k.atSec, k.fromSec,
+                              k.from && [k.from.x, k.from.y, k.from.w], s.loop,   // (dev1104)
                               _vpState.aPoint, _vpState.bPoint, !!s.imageMode,
                               s.motion && s.motion.format, s.motion && s.motion.durSec,
                               s.resHeight]);
@@ -5926,6 +5984,9 @@ function _vpKenCardNowVideo(s) {
   }
   h += _vpKenCardRow('Zoom', (1 / k.frac.w).toFixed(2) + '× — the amber box is ' +
                      Math.round(k.frac.w * 100) + '% of the crop’s width');
+  // (dev1104) Where the move starts: the whole crop, or the green box.
+  h += _vpKenCardRow('Start', (k.from ? (1 / k.from.w).toFixed(2) + '×, the green box — it ' +
+                     _vpKenFromKind(k) + ' ' : 'the whole crop ') + _vpKenFromBtn(k));
   const aRaw = _vpState.aPoint, bRaw = _vpState.bPoint;
   if (aRaw == null || bRaw == null) {
     h += _vpKenCardRow('Lands', f2(k.atSec) +
@@ -5948,10 +6009,12 @@ function _vpKenCardNowVideo(s) {
        '</div>';
   const span = (t0, t1) => f2(t0) + '–' + f2(t1);
   if (hold1 > 0.005) {
-    h += _vpKenCardRow('Still', span(A, from) + ' whole crop, held (' + hold1.toFixed(2) + 's)');
+    h += _vpKenCardRow('Still', span(A, from) + (k.from ? ' start box' : ' whole crop') +
+                       ', held (' + hold1.toFixed(2) + 's)');
   }
   if (move > 0.005) {
-    h += _vpKenCardRow('Move', span(from, land) + ' glides into the box (' + move.toFixed(2) + 's)');
+    h += _vpKenCardRow('Move', span(from, land) + (k.from ? ' ' + _vpKenFromKind(k) + ' to' : ' glides into') +
+                       ' the box (' + move.toFixed(2) + 's)');
   }
   if (hold2 > 0.005) {
     h += _vpKenCardRow('Hold', span(land, B) + ' stays on the box (' + hold2.toFixed(2) + 's)');
@@ -5989,6 +6052,8 @@ function _vpKenCardNowImage(s) {
   const zoom = 1 / k.frac.w;
   h += _vpKenCardRow('Zoom', zoom.toFixed(2) + '× — the amber box is ' +
                      Math.round(k.frac.w * 100) + '% of the crop’s width');
+  h += _vpKenCardRow('Start', (k.from ? (1 / k.from.w).toFixed(2) + '×, the green box ' :
+                     'the whole crop ') + _vpKenFromBtn(k));   // (dev1104)
   const fmt = s.motion && s.motion.format, dur = s.motion && s.motion.durSec;
   if (fmt === 'still') {
     return h + _vpKenCardWarn('The output is a still picture, so the box does nothing. ' +
@@ -5996,8 +6061,11 @@ function _vpKenCardNowImage(s) {
   }
   h += _vpKenCardRow('Clip', (fmt === 'gif' ? '🎞 gif, 15fps' : '🎬 mp4, 30fps, silent') +
                      ' · ' + dur + 's');
-  h += _vpKenCardRow('Move', 'the whole ' + dur + 's: leaves the full crop on the first ' +
-                     'frame and lands on the box on the last — no hold at either end');
+  h += _vpKenCardRow('Move', 'the whole ' + dur + 's: leaves the ' +
+                     (k.from ? 'green box' : 'full crop') + ' on the first frame and ' +
+                     (k.from ? _vpKenFromKind(k) + ' to' : 'lands on') +
+                     ' the amber box on the last — no hold at either end' +
+                     (_vpIsBoom(s.loop) ? ', then back again (⇄ boomerang: ' + (2 * dur) + 's in all)' : ''));
   if (s.resHeight === 'source' && zoom > 1.01) {
     h += _vpKenCardNote('res <i>Same</i>: the clip is the crop’s own size, so its last ' +
       'frame is the box enlarged ' + zoom.toFixed(2) + '×. The ⚠ chip does not count ' +
@@ -6018,7 +6086,9 @@ function _vpKenCardHowVideo() {
         K('d') + ' step one frame, Ctrl+' + K('←') + ' / ' + K('→') + ' jump keyframes.',
       K('Z') + ' arms the amber box (' + K('Z') + ' again = off). <b>Drag it onto ' +
         'the subject</b>: inside = move, a corner = resize. It keeps the crop’s shape, ' +
-        'up to 12.5×. Letting go stamps the frame you are parked on as the landing.',
+        'up to 10×. Letting go stamps the frame you are parked on as the landing.',
+      '<i>Optional</i> — <b>▶ start from a box</b> (above) adds a green box where the ' +
+        'move BEGINS instead of the whole crop. Same size as the amber one = a pan.',
       '<i>Optional</i> — a still beat first: park where the move should BEGIN and ' +
         'press ' + K('⇧Z') + ', or Alt-click the timeline there. Until then the whole ' +
         'crop holds still. ' + K('⇧Z') + ' again clears it.',
@@ -6026,8 +6096,8 @@ function _vpKenCardHowVideo() {
     ]) +
     _vpKenCardHead('Good to know') +
     _vpKenCardBullets([
-      'It always zooms <b>IN</b>: whole crop → amber box. The box is the END of the ' +
-        'move, never the start.',
+      'Amber = the END of the move. It starts on the whole crop, or on the green ' +
+        'box when there is one (pan, zoom in or zoom out).',
       '<b>Every time you let go of the box, the landing jumps to wherever the playhead ' +
         'is NOW.</b> To nudge the box without moving the landing, park back on the ' +
         'landing first — the faint amber line on the timeline.',
@@ -6055,14 +6125,18 @@ function _vpKenCardHowImage() {
       K('Z') + ' arms the amber box (' + K('Z') + ' again = off), and a still output ' +
         'becomes an mp4. ' + K('M') + ' cycles mp4 → gif → still.',
       '<b>Drag the amber box onto the subject</b>: inside = move, a corner = resize. ' +
-        'It keeps the crop’s shape, up to 12.5×. That is the LAST frame.',
+        'It keeps the crop’s shape, up to 10×. That is the LAST frame.',
+      '<i>Optional</i> — <b>▶ start from a box</b> (above) adds a green FIRST-frame ' +
+        'box instead of the whole crop. Same size as the amber one = a pan along the picture.',
       '<b>Pick the length</b> on the bar: 2–10s.',
       K('G') + ' saves it beside the picture.'
     ]) +
     _vpKenCardHead('Good to know') +
     _vpKenCardBullets([
-      'It always zooms <b>IN</b>: whole crop → amber box, spread over the whole clip ' +
-        'and eased at both ends.',
+      'Whole crop (or the green box) → amber box, spread over the whole clip and ' +
+        'eased at both ends.',
+      'Loop menu <b>⇄ boomerang</b>: the move goes there and comes back, so the clip ' +
+        'loops smoothly. “single end frames” shows the turn frames once.',
       'gif is 15fps with its own palette — keep it short and small. mp4 is 30fps, ' +
         'h264, silent.',
       'Captions (' + K('E') + ') stay put while the picture moves under them.'
@@ -7829,11 +7903,12 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // that plays it on repeat, which is the only place "looping" can actually
     // live. Boomerang additionally BAKES the ping-pong into the clip, so the
     // join is invisible: the last frame is the first one again.
-    '<select id="vp-crop-loop" title="Looping. ▸ loop writes an HTML5 page beside the clip that plays it on repeat. ⇄ boomerang also renders it forward-then-backward, so the loop joins itself seamlessly (silent — a reversed soundtrack is noise)." ' +
+    '<select id="vp-crop-loop" title="Looping. ▸ loop writes an HTML5 page beside the clip that plays it on repeat. ⇄ boomerang also renders it forward-then-backward, so the loop joins itself seamlessly (silent — a reversed soundtrack is noise). Plain ⇄ shows the first and last frames twice at each turn (a tiny pause); “single end frames” shows them once, so the turn is smooth." ' +
       'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;flex:0 0 auto;">' +
       '<option value="off" selected>no loop</option>' +
       '<option value="fwd">▸ loop</option>' +
       '<option value="boom">⇄ boomerang</option>' +
+      '<option value="boom1">⇄ boomerang, single end frames</option>' +
     '</select>' +
     // (dev0908) Magnifier. NOT part of the render — it blows the picture up on
     // screen so the detail inside the box can be judged for focus BEFORE the
@@ -7893,11 +7968,16 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // <img> this overlay maps its screen→source arithmetic through.
     ['vp-crop-crf-lbl', 'vp-crop-crf', 'vp-crop-crf-val',
      'vp-crop-audio', 'vp-crop-slow-lbl', 'vp-crop-deshake', 'vp-crop-descreen', 'vp-crop-expand',
-     'vp-crop-speed', 'vp-crop-enc', 'vp-crop-loop', 'vp-crop-jpg',
+     'vp-crop-speed', 'vp-crop-enc', 'vp-crop-jpg',
      'vp-crop-zoom-lbl', 'vp-crop-zoom'].forEach(id => {
       const el = bar.querySelector('#' + id);
       if (el) el.style.display = 'none';
     });
+    // (dev1104) The loop menu stays, for a still's mp4/gif: ⇄ boomerang makes
+    // the move go there and back. ▸ loop only writes an .html page, which the
+    // still path does not do, so it is taken off the list here.
+    const fwdOpt = bar.querySelector('#vp-crop-loop option[value="fwd"]');
+    if (fwdOpt) fwdOpt.remove();
     const eng = bar.querySelector('#vp-crop-engine');
     if (eng) eng.style.display = '';
     const mo = bar.querySelector('#vp-crop-motion');
@@ -8067,6 +8147,34 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     if (pos.includes('e')) h.style.right  = (-KHSZ/2) + 'px';
     kenBox.appendChild(h);
     kenHandles[pos] = h;
+  });
+  // (dev1104) The START box: where the move begins, when it should not begin
+  // on the whole crop. Green (go) beside the amber end box; same shape rule,
+  // same gestures. Two boxes the same size = a pan along the picture.
+  const kenFromBox = document.createElement('div');
+  kenFromBox.style.cssText =
+    'position:absolute;box-sizing:border-box;border:2px dashed #6e6;' +
+    'background:rgba(102,238,102,0.05);cursor:move;pointer-events:auto;display:none;';
+  rect.appendChild(kenFromBox);
+  const kenFromLbl = document.createElement('div');
+  kenFromLbl.style.cssText =
+    'position:absolute;left:50%;top:3px;transform:translateX(-50%);' +
+    'background:rgba(0,0,0,0.62);color:#6e6;padding:1px 6px;border-radius:3px;' +
+    'font:11px ui-monospace,Consolas,monospace;pointer-events:none;white-space:nowrap;';
+  kenFromBox.appendChild(kenFromLbl);
+  const kenFromHandles = {};
+  ['nw','ne','sw','se'].forEach(pos => {
+    const h = document.createElement('div');
+    h.style.cssText =
+      'position:absolute;width:' + KHSZ + 'px;height:' + KHSZ + 'px;' +
+      'background:#6e6;border:1px solid #031;pointer-events:auto;' +
+      'cursor:' + pos + '-resize;';
+    if (pos.includes('n')) h.style.top    = (-KHSZ/2) + 'px';
+    if (pos.includes('s')) h.style.bottom = (-KHSZ/2) + 'px';
+    if (pos.includes('w')) h.style.left   = (-KHSZ/2) + 'px';
+    if (pos.includes('e')) h.style.right  = (-KHSZ/2) + 'px';
+    kenFromBox.appendChild(h);
+    kenFromHandles[pos] = h;
   });
 
   // (dev1093) ── Detail area ───────────────────────────────────────────────
@@ -8244,7 +8352,8 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // atSec (and like the track's keys), rebased onto A→B at save so moving a
     // mark re-cuts the move instead of invalidating it. null = begin at A,
     // which is what every Ken Burns did before this.
-    ken: { on: false, frac: { x: 0.2, y: 0.2, w: 0.6, h: 0.6 }, atSec: 0, fromSec: null },
+    ken: { on: false, frac: { x: 0.2, y: 0.2, w: 0.6, h: 0.6 }, atSec: 0, fromSec: null,
+           from: null },   // (dev1104) start box {x,y,w,h}, or null = the whole crop
     // (dev0777) The rect may outgrow the source frame; the surplus renders as
     // symmetric black bars. Off by default — every existing gesture is unchanged
     // until the rect is actually bigger than the picture.
@@ -8621,6 +8730,18 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     const k = state.ken;
     _vpKenCardPaint();   // (dev1080) the Z card's live half, if it is up
     kenBox.style.display = k.on ? '' : 'none';
+    // (dev1104) …and the start box, when there is one.
+    const fb = k.on && k.from;
+    kenFromBox.style.display = fb ? '' : 'none';
+    if (fb) {
+      kenFromBox.style.left   = (fb.x * 100) + '%';
+      kenFromBox.style.top    = (fb.y * 100) + '%';
+      kenFromBox.style.width  = (fb.w * 100) + '%';
+      kenFromBox.style.height = (fb.h * 100) + '%';
+      kenFromLbl.textContent = '▶ ' + (1 / fb.w).toFixed(2) + '× · the move starts here' +
+        ((!imageMode && k.fromSec != null) ? ' · ' + k.fromSec.toFixed(1) + 's' : '');
+      kenFromLbl.style.transform = 'translateX(-50%) rotate(' + (-state.angle) + 'deg)';
+    }
     if (!k.on) return;
     kenBox.style.left   = (k.frac.x * 100) + '%';
     kenBox.style.top    = (k.frac.y * 100) + '%';
@@ -9362,11 +9483,13 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // relative to the crop window, so the pointer delta is measured against the
   // crop's on-screen size and un-rotated into the crop's own axes first
   // (dragging a tilted box by screen-x must slide it along the box's x).
-  function kenStart(kind, pos, e, capEl) {
+  function kenStart(kind, pos, e, capEl, box) {
     e.preventDefault(); e.stopPropagation();
     const r = viewRect();
-    drag = { kind, pos, el: capEl, sx: e.clientX, sy: e.clientY,
-             of: { ...state.ken.frac },
+    // (dev1104) box = 'from' for the green start box, else the amber end box.
+    const fromBox = (box === 'from' && state.ken.from);
+    drag = { kind, pos, el: capEl, sx: e.clientX, sy: e.clientY, box: fromBox ? 'from' : 'end',
+             of: { ...(fromBox ? state.ken.from : state.ken.frac) },
              kw: Math.max(1, state.frac.w * r.rw),
              kh: Math.max(1, state.frac.h * r.rh), r };
     try { capEl.setPointerCapture(e.pointerId); } catch (_) {}
@@ -9377,6 +9500,13 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   });
   Object.entries(kenHandles).forEach(([pos, h]) => {
     h.addEventListener('pointerdown', e => kenStart('kresize', pos, e, h));
+  });
+  kenFromBox.addEventListener('pointerdown', e => {
+    if (e.target !== kenFromBox) return;
+    kenStart('kmove', null, e, kenFromBox, 'from');
+  });
+  Object.entries(kenFromHandles).forEach(([pos, h]) => {
+    h.addEventListener('pointerdown', e => kenStart('kresize', pos, e, h, 'from'));
   });
 
   // (dev1093) ── Detail area: paint + drag ─────────────────────────────────
@@ -9551,7 +9681,8 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       paint();
     } else if (drag.kind === 'kmove') {
       // (dev0720) Move the Ken Burns box inside the crop window.
-      const d = kenLocal(e), k = state.ken.frac, of = drag.of;
+      const d = kenLocal(e), of = drag.of;
+      const k = (drag.box === 'from' && state.ken.from) ? state.ken.from : state.ken.frac;   // (dev1104)
       k.x = Math.max(0, Math.min(1 - k.w, of.x + d.dxF));
       k.y = Math.max(0, Math.min(1 - k.h, of.y + d.dyF));
       paintKen();
@@ -9567,8 +9698,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       if (drag.pos === 'nw') { ax = of.x+of.w; ay = of.y+of.h; px = of.x     +d.dxF; py = of.y     +d.dyF; }
       let n = Math.max(Math.abs(px - ax), Math.abs(py - ay));
       n = Math.min(n, (px >= ax) ? (1 - ax) : ax, (py >= ay) ? (1 - ay) : ay);
-      n = Math.max(0.08, Math.min(1, n));   // 0.08 → a 12.5× zoom ceiling
-      const k = state.ken.frac;
+      // (dev1104) 0.1 → a 10× ceiling. It was 0.08 (12.5×), but ffmpeg's
+      // zoompan stops at 10×: past that the render showed a wider window than
+      // the box, off-centre (measured on a 0.08 box).
+      n = Math.max(0.1, Math.min(1, n));
+      const k = (drag.box === 'from' && state.ken.from) ? state.ken.from : state.ken.frac;
       k.w = k.h = n;
       k.x = Math.max(0, Math.min(1 - n, (px >= ax) ? ax : ax - n));
       k.y = Math.max(0, Math.min(1 - n, (py >= ay) ? ay : ay - n));
@@ -9638,7 +9772,8 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       try { if (drag.el) drag.el.releasePointerCapture(e.pointerId); } catch (_) {}
       // (dev0720) Placing the box also stamps WHEN it lands: the zoom finishes
       // on the frame you were parked on while positioning it, then holds to B.
-      if (drag.kind === 'kmove' || drag.kind === 'kresize') {
+      // (dev1104) The end box only: the start box has no landing to stamp.
+      if ((drag.kind === 'kmove' || drag.kind === 'kresize') && drag.box !== 'from') {
         state.ken.atSec = _vpNowSec();
         paintKen();
       }
@@ -9784,12 +9919,15 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     loopSel.value = state.loop;
     loopSel.addEventListener('change', () => {
       const v = loopSel.value;
-      state.loop = (v === 'fwd' || v === 'boom') ? v : 'off';
+      state.loop = (v === 'fwd' || _vpIsBoom(v)) ? v : 'off';
       if (typeof toast === 'function' && state.loop !== 'off') {
-        toast(state.loop === 'boom'
+        toast(state.loop === 'boom1'
+          ? '⇄ boomerang, single end frames — forward then backward, each turn frame shown once'
+          : state.loop === 'boom'
           ? '⇄ boomerang — rendered forward then backward, silent, with a looping .html beside it'
           : '▸ loop — a looping .html page is written beside the clip', 3000);
       }
+      _vpKenCardPaint();   // (dev1104) a still's card counts the boomerang's length
     });
   }
 
@@ -12127,7 +12265,18 @@ async function _vpImageSave(opts) {
                          fps: (fmt === 'gif') ? 15 : 30 };
       if (s.ken && s.ken.on) {
         payload.ken = { x: s.ken.frac.x, y: s.ken.frac.y, w: s.ken.frac.w, h: s.ken.frac.h };
-        toks.push('kb');
+        // (dev1104) …from the green start box, when there is one.
+        if (s.ken.from) {
+          const f = s.ken.from;
+          payload.ken.from = { x: f.x, y: f.y, w: f.w, h: f.h };
+        }
+        toks.push(s.ken.from ? 'kbfrom' : 'kb');
+      }
+      // (dev1104) Boomerang: there and back.
+      if (_vpIsBoom(s.loop)) {
+        payload.loop = 'boom';
+        if (s.loop === 'boom1') payload.boomEnds = 'single';
+        toks.push(s.loop === 'boom1' ? 'boomerang1' : 'boomerang');
       }
       toks.push(fmt + s.motion.durSec + 'sec');
     }
@@ -12168,6 +12317,17 @@ async function _vpImageSave(opts) {
   if (payload.loop === 'boom' && !(await _vpProxyHasFeature('vploop'))) {
     if (typeof toast === 'function') {
       toast('A boomerang needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
+  // (dev1104) A still's boomerang, single end frames and the start box are all
+  // new to the proxy, and an older one renders a one-way move from the whole
+  // crop without a word.
+  if ((payload.loop === 'boom' && !(await _vpProxyHasFeature('imgboom'))) ||
+      (payload.boomEnds && !(await _vpProxyHasFeature('boomsingle'))) ||
+      (payload.ken && payload.ken.from && !(await _vpProxyHasFeature('kenfrom')))) {
+    if (typeof toast === 'function') {
+      toast('A boomerang or a start box on a picture needs an updated proxy — restart "node proxy.js" and retry', 4600);
     }
     return;
   }
@@ -12514,6 +12674,12 @@ async function _vpGoSave(opts) {
       if (waitSec > 0.01) kenPayload.fromSec = +waitSec.toFixed(3);
       kenTok = 'kb' + (1 / k.frac.w).toFixed(1).replace('.', '_') + 'x';
       if (kenPayload.fromSec) kenTok += 'from' + waitSec.toFixed(1).replace('.', '_') + 's';
+      // (dev1104) The green start box, when the move should not start on the
+      // whole crop.
+      if (k.from) {
+        kenPayload.from = { x: k.from.x, y: k.from.y, w: k.from.w, h: k.from.h };
+        kenTok += 'box' + (1 / k.from.w).toFixed(1).replace('.', '_') + 'x';
+      }
       detailParts.push(kenTok);
     }
     // (dev0777) The tracking window. Keys are held in ABSOLUTE video seconds, so
@@ -12576,7 +12742,8 @@ async function _vpGoSave(opts) {
     // (dev1092) …and the CRF actually sent, which nothing recorded before. A GIF
     // has none.
     if (s.vcodec !== 'gif') detailParts.push('crf' + s.crf);
-    if (s.loop === 'boom') detailParts.push('boomerang');
+    if (s.loop === 'boom1') detailParts.push('boomerang1');       // (dev1104) single end frames
+    else if (s.loop === 'boom') detailParts.push('boomerang');
     else if (s.loop === 'fwd') detailParts.push('loop');
     detailParts.push(durStr);
     payload = {
@@ -12604,7 +12771,8 @@ async function _vpGoSave(opts) {
     if (s.speed && s.speed !== 1) payload.speed = s.speed;
     // (dev0871) Only 'boom' changes the pixels; 'fwd' is purely the .html page
     // written after the render, so the proxy is not told about it at all.
-    if (s.loop === 'boom') payload.loop = 'boom';
+    if (_vpIsBoom(s.loop)) payload.loop = 'boom';
+    if (s.loop === 'boom1') payload.boomEnds = 'single';   // (dev1104)
     // (dev0778) No `pad` — a bled rect renders its intersection with the frame,
     // so nothing black is ever encoded. The proxy keeps the capability for the
     // day something genuinely needs a fixed output aspect; sending it is a
@@ -12736,6 +12904,20 @@ async function _vpGoSave(opts) {
     if (typeof toast === 'function') {
       toast('A zoom that starts partway in needs an updated proxy — restart ' +
             '"node proxy.js" and retry (or ⇧Z to clear the start mark)', 5200);
+    }
+    return;
+  }
+  // (dev1104) …and the start box, and a boomerang's single end frames: an old
+  // proxy ignores both and renders the dev0720 move / the doubled turn.
+  if (payload.ken && payload.ken.from && !(await _vpProxyHasFeature('kenfrom'))) {
+    if (typeof toast === 'function') {
+      toast('A zoom start box needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
+  if (payload.boomEnds && !(await _vpProxyHasFeature('boomsingle'))) {
+    if (typeof toast === 'function') {
+      toast('Boomerang single end frames needs an updated proxy — restart "node proxy.js" and retry', 4400);
     }
     return;
   }
@@ -12926,7 +13108,8 @@ async function _vpGoSave(opts) {
       // (dev0871) …and, when a loop was asked for, the page that plays it on
       // repeat. A failure here is worth a word but not an alarm: the clip
       // itself is already written and good.
-      const loopMode = (cropOn && _vpState.crop) ? _vpState.crop.loop : 'off';
+      let loopMode = (cropOn && _vpState.crop) ? _vpState.crop.loop : 'off';
+      if (loopMode === 'boom1') loopMode = 'boom';   // (dev1104) the page is the same
       let loopNote = '';
       // (dev1059) A GIF loops by itself; the page would only wrap it in a video tag.
       if ((loopMode === 'fwd' || loopMode === 'boom') && !gifOut) {
