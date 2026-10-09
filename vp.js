@@ -8073,40 +8073,68 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // The box Clarity/Sharpen are confined to. A child of `rect` like the zoom
   // box, so it tilts with the crop and its geometry stays in fractions OF THE
   // CROP. Cyan, not amber, so it is never mistaken for the zoom box.
+  // (dev1103) Any four-sided shape, not just a rectangle: an SVG polygon over
+  // the whole rect (only the polygon itself takes the pointer), a square handle
+  // on each corner that moves on its own, and a round one mid-edge that moves
+  // that whole side.
   const areaBox = document.createElement('div');
   areaBox.style.cssText =
-    'position:absolute;box-sizing:border-box;border:2px dashed #5cf;' +
-    'background:rgba(85,204,255,0.04);cursor:move;pointer-events:auto;display:none;';
+    'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;display:none;';
   rect.appendChild(areaBox);
+  const areaSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  areaSvg.setAttribute('viewBox', '0 0 100 100');
+  areaSvg.setAttribute('preserveAspectRatio', 'none');
+  areaSvg.style.cssText =
+    'position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none;';
+  const areaPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+  areaPoly.setAttribute('fill', 'rgba(85,204,255,0.05)');
+  areaPoly.setAttribute('fill-rule', 'evenodd');     // = the proxy's crossing count
+  areaPoly.setAttribute('stroke', '#5cf');
+  areaPoly.setAttribute('stroke-width', '2');
+  areaPoly.setAttribute('stroke-dasharray', '7 5');
+  areaPoly.setAttribute('vector-effect', 'non-scaling-stroke');
+  areaPoly.style.cssText = 'pointer-events:visiblePainted;cursor:move;';
+  areaSvg.appendChild(areaPoly);
+  areaBox.appendChild(areaSvg);
+  const areaTag = document.createElement('div');     // label + ✕, rides the top corner
+  areaTag.style.cssText =
+    'position:absolute;display:flex;gap:4px;pointer-events:none;white-space:nowrap;' +
+    'transform:translate(' + KHSZ + 'px,' + Math.round(KHSZ / 2) + 'px);';
+  areaBox.appendChild(areaTag);
   const areaLbl = document.createElement('div');
   areaLbl.textContent = '✦ Clarity / Sharpen area';
   areaLbl.style.cssText =
-    'position:absolute;left:4px;top:3px;background:rgba(0,0,0,0.62);color:#5cf;' +
-    'padding:1px 6px;border-radius:3px;font:11px ui-monospace,Consolas,monospace;' +
-    'pointer-events:none;white-space:nowrap;';
-  areaBox.appendChild(areaLbl);
+    'background:rgba(0,0,0,0.62);color:#5cf;' +
+    'padding:1px 6px;border-radius:3px;font:11px ui-monospace,Consolas,monospace;';
+  areaTag.appendChild(areaLbl);
   const areaX = document.createElement('div');
   areaX.textContent = '✕';
-  areaX.title = 'Remove the box — Clarity/Sharpen go back to the whole picture';
+  areaX.title = 'Remove the area — Clarity/Sharpen go back to the whole picture';
   areaX.style.cssText =
-    'position:absolute;right:4px;top:3px;background:rgba(0,0,0,0.62);color:#5cf;' +
+    'background:rgba(0,0,0,0.62);color:#5cf;' +
     'padding:0 6px;border-radius:3px;font:12px ui-monospace,Consolas,monospace;' +
     'cursor:pointer;pointer-events:auto;';
-  areaBox.appendChild(areaX);
-  const areaHandles = {};
-  ['nw','ne','sw','se'].forEach(pos => {
+  areaTag.appendChild(areaX);
+  const areaCorners = [], areaEdges = [];
+  for (let i = 0; i < 4; i++) {
     const h = document.createElement('div');
+    h.title = 'Drag this corner anywhere';
     h.style.cssText =
       'position:absolute;width:' + KHSZ + 'px;height:' + KHSZ + 'px;' +
-      'background:#5cf;border:1px solid #024;pointer-events:auto;' +
-      'cursor:' + pos + '-resize;';
-    if (pos.includes('n')) h.style.top    = (-KHSZ/2) + 'px';
-    if (pos.includes('s')) h.style.bottom = (-KHSZ/2) + 'px';
-    if (pos.includes('w')) h.style.left   = (-KHSZ/2) + 'px';
-    if (pos.includes('e')) h.style.right  = (-KHSZ/2) + 'px';
+      'margin:' + (-KHSZ/2) + 'px 0 0 ' + (-KHSZ/2) + 'px;box-sizing:border-box;' +
+      'background:#5cf;border:1px solid #024;pointer-events:auto;cursor:crosshair;';
     areaBox.appendChild(h);
-    areaHandles[pos] = h;
-  });
+    areaCorners.push(h);
+    const m = document.createElement('div');
+    const MS = Math.max(6, KHSZ - 2);
+    m.title = 'Drag to move this whole side';
+    m.style.cssText =
+      'position:absolute;width:' + MS + 'px;height:' + MS + 'px;' +
+      'margin:' + (-MS/2) + 'px 0 0 ' + (-MS/2) + 'px;box-sizing:border-box;border-radius:50%;' +
+      'background:rgba(85,204,255,0.55);border:1px solid #024;pointer-events:auto;cursor:move;';
+    areaBox.appendChild(m);
+    areaEdges.push(m);
+  }
 
   // (dev0724) ── Text layer ────────────────────────────────────────────────
   // A child of `rect` like the zoom box, so the boxes tilt with the crop —
@@ -9354,22 +9382,35 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // (dev1093) ── Detail area: paint + drag ─────────────────────────────────
   // Self-contained, with its own pointer capture, so the crop's own drag state
   // machine (onMove/onUp above) never sees it: every event stops here.
+  // (dev1103) state.detailArea = { q: [[x,y] ×4] }, corners in drawing order
+  // (top-left, top-right, bottom-right, bottom-left as first drawn), fractions
+  // of the crop rect. Corners may cross: the fill is even-odd, as in the render.
   function paintArea() {
     const a = state.detailArea;
     areaBox.style.display = a ? '' : 'none';
     if (!a) return;
-    areaBox.style.left   = (a.x * 100) + '%';
-    areaBox.style.top    = (a.y * 100) + '%';
-    areaBox.style.width  = (a.w * 100) + '%';
-    areaBox.style.height = (a.h * 100) + '%';
+    const q = a.q;
+    areaPoly.setAttribute('points', q.map(p => (p[0] * 100).toFixed(3) + ',' + (p[1] * 100).toFixed(3)).join(' '));
+    q.forEach((p, i) => {
+      areaCorners[i].style.left = (p[0] * 100) + '%';
+      areaCorners[i].style.top  = (p[1] * 100) + '%';
+      const n = q[(i + 1) % 4];
+      areaEdges[i].style.left = ((p[0] + n[0]) * 50) + '%';
+      areaEdges[i].style.top  = ((p[1] + n[1]) * 50) + '%';
+    });
+    let top = 0;
+    q.forEach((p, i) => { if (p[1] < q[top][1] - 1e-6 || (Math.abs(p[1] - q[top][1]) <= 1e-6 && p[0] < q[top][0])) top = i; });
+    areaTag.style.left = (q[top][0] * 100) + '%';
+    areaTag.style.top  = (q[top][1] * 100) + '%';
   }
   state.paintArea = paintArea;
   let aDrag = null;
-  function areaStart(kind, pos, e, capEl) {
+  function areaStart(kind, idx, e, capEl) {
     if (e.button !== 0 || !state.detailArea) return;
     e.preventDefault(); e.stopPropagation();
     const r = viewRect();
-    aDrag = { kind, pos, el: capEl, sx: e.clientX, sy: e.clientY, of: { ...state.detailArea },
+    aDrag = { kind, idx, el: capEl, sx: e.clientX, sy: e.clientY,
+              of: state.detailArea.q.map(p => p.slice()),
               kw: Math.max(1, state.frac.w * r.rw), kh: Math.max(1, state.frac.h * r.rh) };
     try { capEl.setPointerCapture(e.pointerId); } catch (_) {}
   }
@@ -9379,25 +9420,23 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // Screen delta → the crop rect's own (possibly tilted) axes, in fractions.
     const dxs = e.clientX - aDrag.sx, dys = e.clientY - aDrag.sy;
     const th = (state.angle || 0) * Math.PI / 180, ct = Math.cos(th), st = Math.sin(th);
-    const dx = ( dxs * ct + dys * st) / aDrag.kw;
-    const dy = (-dxs * st + dys * ct) / aDrag.kh;
-    const o = aDrag.of, MIN = 0.04;
-    if (aDrag.kind === 'move') {
-      state.detailArea = { x: Math.max(0, Math.min(1 - o.w, o.x + dx)),
-                           y: Math.max(0, Math.min(1 - o.h, o.y + dy)), w: o.w, h: o.h };
-    } else {
-      let l = o.x, t = o.y, r = o.x + o.w, b = o.y + o.h;
-      if (aDrag.pos.includes('w')) l += dx;
-      if (aDrag.pos.includes('e')) r += dx;
-      if (aDrag.pos.includes('n')) t += dy;
-      if (aDrag.pos.includes('s')) b += dy;
-      if (r < l) { const m = l; l = r; r = m; }
-      if (b < t) { const m = t; t = b; b = m; }
-      l = Math.max(0, l); t = Math.max(0, t); r = Math.min(1, r); b = Math.min(1, b);
-      if (r - l < MIN) { if (aDrag.pos.includes('w')) l = r - MIN; else r = l + MIN; }
-      if (b - t < MIN) { if (aDrag.pos.includes('n')) t = b - MIN; else b = t + MIN; }
-      state.detailArea = { x: l, y: t, w: r - l, h: b - t };
+    let dx = ( dxs * ct + dys * st) / aDrag.kw;
+    let dy = (-dxs * st + dys * ct) / aDrag.kh;
+    const o = aDrag.of;
+    const c01 = v => Math.max(0, Math.min(1, v));
+    // A corner moves alone; a side moves its two corners; the body moves all
+    // four. The moved corners stay inside the crop, and a side or the body
+    // stops as a whole at the edge rather than squashing.
+    const moving = aDrag.kind === 'corner' ? [aDrag.idx]
+                 : aDrag.kind === 'edge'   ? [aDrag.idx, (aDrag.idx + 1) % 4] : [0, 1, 2, 3];
+    if (aDrag.kind !== 'corner') {
+      const xs = moving.map(i => o[i][0]), ys = moving.map(i => o[i][1]);
+      dx = Math.max(-Math.min(...xs), Math.min(1 - Math.max(...xs), dx));
+      dy = Math.max(-Math.min(...ys), Math.min(1 - Math.max(...ys), dy));
     }
+    const q = o.map(p => p.slice());
+    moving.forEach(i => { q[i] = [c01(o[i][0] + dx), c01(o[i][1] + dy)]; });
+    state.detailArea = { q };
     paintArea();
     _vpDetailAreaChanged();
   }
@@ -9407,14 +9446,10 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     try { aDrag.el.releasePointerCapture(e.pointerId); } catch (_) {}
     aDrag = null;
   }
-  areaBox.addEventListener('pointerdown', e => {
-    if (e.target !== areaBox) return;      // handles and ✕ have their own
-    areaStart('move', null, e, areaBox);
-  });
-  Object.entries(areaHandles).forEach(([pos, h]) => {
-    h.addEventListener('pointerdown', e => areaStart('resize', pos, e, h));
-  });
-  [areaBox, ...Object.values(areaHandles)].forEach(el => {
+  areaPoly.addEventListener('pointerdown', e => areaStart('move', -1, e, areaPoly));
+  areaCorners.forEach((h, i) => h.addEventListener('pointerdown', e => areaStart('corner', i, e, h)));
+  areaEdges.forEach((h, i) => h.addEventListener('pointerdown', e => areaStart('edge', i, e, h)));
+  [areaPoly, ...areaCorners, ...areaEdges].forEach(el => {
     el.addEventListener('pointermove', areaMove);
     el.addEventListener('pointerup', areaEnd);
     el.addEventListener('pointercancel', areaEnd);
@@ -10581,7 +10616,8 @@ function _vpDetailAreaChanged() {
 window._vpDetailAreaToggle = function () {
   const st = _vpState && _vpState.crop;
   if (!st) return false;
-  st.detailArea = st.detailArea ? null : { x: 0.2, y: 0.15, w: 0.6, h: 0.7 };
+  // (dev1103) Four free corners; it starts as the old generous middle box.
+  st.detailArea = st.detailArea ? null : { q: [[0.2, 0.15], [0.8, 0.15], [0.8, 0.85], [0.2, 0.85]] };
   if (st.paintArea) st.paintArea();
   _vpDetailAreaChanged();
   return !!st.detailArea;
@@ -10589,32 +10625,40 @@ window._vpDetailAreaToggle = function () {
 window._vpDetailAreaOn = function () {
   return !!(_vpState && _vpState.crop && _vpState.crop.detailArea);
 };
-// For the render: fractions of what gets rendered — the rect's intersection
-// with the frame (a bled rect renders only that). null = no box, or a box
-// that lies wholly outside the picture.
+// (dev1103) A shape squeezed to (nearly) nothing counts as no area at all, in
+// the preview and the render alike, so the two cannot disagree about it.
+// Shoelace area in crop fractions; 0.0004 = a 2% × 2% square.
+function _vpDetailAreaLive(a) {
+  if (!a || !Array.isArray(a.q) || a.q.length !== 4) return false;
+  let s = 0;
+  for (let i = 0; i < 4; i++) {
+    const p = a.q[i], n = a.q[(i + 1) % 4];
+    s += p[0] * n[1] - n[0] * p[1];
+  }
+  return Math.abs(s) / 2 >= 0.0004;
+}
+// For the render: the four corners as fractions of what gets rendered (a bled
+// rect renders only its overlap with the frame, so a corner can fall a little
+// outside 0..1 there — the proxy's mask simply clips it).
 window._vpDetailArea = function () {
   const st = _vpState && _vpState.crop;
   const a = st && st.detailArea;
-  if (!a) return null;
+  if (!_vpDetailAreaLive(a)) return null;
   const f = st.frac, ef = _vpEffFrac(st);
-  const c01 = v => Math.max(0, Math.min(1, v));
-  const x0 = c01((f.x + a.x * f.w - ef.x) / ef.w), x1 = c01((f.x + (a.x + a.w) * f.w - ef.x) / ef.w);
-  const y0 = c01((f.y + a.y * f.h - ef.y) / ef.h), y1 = c01((f.y + (a.y + a.h) * f.h - ef.y) / ef.h);
-  if (x1 - x0 < 0.01 || y1 - y0 < 0.01) return null;
-  const r = n => +n.toFixed(5);
-  return { x: r(x0), y: r(y0), w: r(x1 - x0), h: r(y1 - y0) };
+  const r = n => +Math.max(-1, Math.min(2, n)).toFixed(5);
+  return { q: a.q.map(p => [r((f.x + p[0] * f.w - ef.x) / ef.w),
+                            r((f.y + p[1] * f.h - ef.y) / ef.h)]) };
 };
-// For the preview: the box in the media element's own (untransformed) CSS
-// pixels, object-fit: contain, plus the element's size — the units an SVG
-// filter primitive's x/y/width/height are read in. A tilted crop is drawn
-// level here (the filter cannot tilt); the render straightens the crop, so
-// there the box is level by construction. Small tilts differ by a sliver of
-// the soft edge.
+// For the preview: the corners in the media element's own (untransformed) CSS
+// pixels, object-fit: contain, plus the element's size — the units the SVG
+// filter is read in. (dev1103) A tilted crop's corners are turned with it
+// about the rect's centre, as the rect is drawn on screen, so the preview
+// shows the area exactly where the straightened render will have it.
 window._vpDetailAreaCss = function () {
   const st = _vpState && _vpState.crop;
   const a = st && st.detailArea;
   const el = _vpColorMediaEl();
-  if (!a || !el) return null;
+  if (!_vpDetailAreaLive(a) || !el) return null;
   const VW = el.videoWidth  || el.naturalWidth  || 0;
   const VH = el.videoHeight || el.naturalHeight || 0;
   const cw = el.clientWidth, ch = el.clientHeight;
@@ -10622,8 +10666,13 @@ window._vpDetailAreaCss = function () {
   const k = Math.min(cw / VW, ch / VH);
   const ox = (cw - VW * k) / 2, oy = (ch - VH * k) / 2;
   const f = st.frac;
-  return { x: ox + (f.x + a.x * f.w) * VW * k, y: oy + (f.y + a.y * f.h) * VH * k,
-           w: a.w * f.w * VW * k,              h: a.h * f.h * VH * k, cw, ch };
+  const th = (st.angle || 0) * Math.PI / 180, ct = Math.cos(th), sn = Math.sin(th);
+  const cx = ox + (f.x + f.w / 2) * VW * k, cy = oy + (f.y + f.h / 2) * VH * k;
+  const pts = a.q.map(p => {
+    const dx = (p[0] - 0.5) * f.w * VW * k, dy = (p[1] - 0.5) * f.h * VH * k;
+    return [cx + dx * ct - dy * sn, cy + dx * sn + dy * ct];
+  });
+  return { pts, cw, ch };
 };
 
 // (dev0867) The grade's token for the sidecar description, or ''.
@@ -13163,6 +13212,7 @@ async function _vpDetailFeaturesOk(d) {
   if (!(await _vpProxyHasFeature('vpdetail'))) return false;
   if (d.clarityFrac != null && !(await _vpProxyHasFeature('vpdetailr'))) return false;
   if (d.area && !(await _vpProxyHasFeature('vpdetailarea'))) return false;   // (dev1093)
+  if (d.area && d.area.q && !(await _vpProxyHasFeature('vpdetailquad'))) return false;   // (dev1103)
   if (d.threshold && !(await _vpProxyHasFeature('vpdetailt'))) return false;  // (dev1094)
   return true;
 }

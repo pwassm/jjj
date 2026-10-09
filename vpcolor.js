@@ -379,6 +379,17 @@
     return (_coringCache[key] = out.join(' '));
   }
 
+  // (dev1103) The Clarity/Sharpen area as a picture: a white polygon on
+  // transparent, element-sized, in element CSS pixels.
+  let areaShown = '', areaPending = '';
+  function areaMaskUri(ar) {
+    const W = ar.cw.toFixed(2), H = ar.ch.toFixed(2);
+    const pts = ar.pts.map(p => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(' ');
+    return 'data:image/svg+xml,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
+      '<polygon points="' + pts + '" fill="#fff" fill-rule="evenodd"/></svg>');
+  }
+
   // (dev1091) Stage 3. The passes are rebuilt from scratch each time: a pass at
   // zero is left out rather than run at k=0, because a blur nobody asked for
   // still costs a full-frame gaussian on every video frame.
@@ -440,11 +451,12 @@
     pass(grade.clarity, grade.clarityR / 100, 'vpdCl');   // (dev1092) user's radius
     pass(grade.sharpen, SHARPEN_FRAC, 'vpdSh');
 
-    // (dev1093) Confined to the drawn box: out = D·m + A·(1−m), m a feathered
-    // rectangle. feFlood limited to the box (a primitive subregion), blurred by
-    // the same sigma the proxy feathers with — the blur gets the WHOLE element
-    // as its subregion, or it would inherit the box's and never fade outward.
+    // (dev1093) Confined to the drawn area: out = D·m + A·(1−m), m a feathered
+    // shape, blurred by the same sigma the proxy feathers with — the blur gets
+    // the WHOLE element as its subregion, or it would never fade outward.
     // "in" and "out" read the mask's alpha; their sum has alpha m + (1−m) = 1.
+    // (dev1103) The shape is any four-cornered polygon, so the mask is now an
+    // feImage of it (a white even-odd polygon, as the proxy draws it).
     const ar = (last !== 'vpGraded' && typeof window._vpDetailAreaCss === 'function')
       ? window._vpDetailAreaCss() : null;
     if (!ar) return;
@@ -453,12 +465,26 @@
       n.setAttribute('data-vpd', '1');
       Object.keys(attrs).forEach(k => n.setAttribute(k, String(attrs[k])));
       f.appendChild(n);
+      return n;
     };
     const whole = { x: 0, y: 0, width: ar.cw.toFixed(2), height: ar.ch.toFixed(2) };
-    mk('feFlood', { 'flood-color': '#ffffff', 'flood-opacity': 1,
-                    x: ar.x.toFixed(2), y: ar.y.toFixed(2),
-                    width: Math.max(1, ar.w).toFixed(2), height: Math.max(1, ar.h).toFixed(2),
-                    result: 'vpdMk0' });
+    const uri = areaMaskUri(ar);
+    const img = mk('feImage', Object.assign({ preserveAspectRatio: 'none', result: 'vpdMk0' }, whole));
+    // An feImage loads its picture asynchronously and shows nothing until it
+    // has — on every drag step that would blink Clarity off. So it keeps the
+    // last mask that finished loading and swaps when the new one is ready.
+    img.setAttribute('href', areaShown || uri);
+    if (uri !== areaShown) {
+      const pre = new Image();
+      areaPending = uri;
+      pre.onload = () => {
+        if (areaPending !== uri) return;           // a newer step overtook it
+        areaShown = uri;
+        const live = svg.querySelector('feImage[data-vpd]');
+        if (live) live.setAttribute('href', uri);
+      };
+      pre.src = uri;
+    }
     mk('feGaussianBlur', Object.assign({ in: 'vpdMk0', result: 'vpdMk',
       stdDeviation: Math.max(0.05, AREA_FEATHER_FRAC * short).toFixed(3) }, whole));
     mk('feComposite', Object.assign({ in: last, in2: 'vpdMk', operator: 'in', result: 'vpdDm' }, whole));
@@ -550,7 +576,7 @@
             'margin:6px 0 2px;padding-top:3px;font-size:11px;">' +
           '<span title="Detail runs after the colour above it — on a B&amp;W grade, on the B&amp;W" ' +
             'style="opacity:0.6;">Detail</span>' +
-          '<span id="vp-color-area" title="Confine Clarity/Sharpen to a box you draw on the picture (drag it, drag its corners; ✕ on the box removes it). The edge fades over a short distance." ' +
+          '<span id="vp-color-area" title="Confine Clarity/Sharpen to an area you draw on the picture: any four-sided shape. Drag a square corner anywhere, a round dot to move that whole side, inside to move it all; ✕ removes it. The edge fades over a short distance." ' +
             'style="margin-left:auto;cursor:pointer;padding:1px 6px;background:#234;border-radius:3px;">▭ whole picture</span>' +
           '</div>';
       }
@@ -626,7 +652,7 @@
         if (typeof window._vpDetailAreaToggle !== 'function') return;
         const on = window._vpDetailAreaToggle();   // vp.js repaints, then calls vpColorAreaChanged
         if (on && detailNeutral(grade) && typeof toast === 'function') {
-          toast('▭ box drawn — it confines Clarity/Sharpen, so turn one of them up to see it work', 3200);
+          toast('▭ area drawn — drag its corners into any four-sided shape. It confines Clarity/Sharpen, so turn one of them up to see it work', 3200);
         }
       });
     }
@@ -662,7 +688,7 @@
     const chip = document.getElementById('vp-color-area');
     if (!chip) return;
     const on = (typeof window._vpDetailAreaOn === 'function') && window._vpDetailAreaOn();
-    chip.textContent = on ? '▭ inside the box' : '▭ whole picture';
+    chip.textContent = on ? '▭ inside the area' : '▭ whole picture';
     chip.style.background = on ? '#124a5c' : '#234';
     chip.style.color = on ? '#5cf' : '';
   }
