@@ -11326,6 +11326,24 @@ function _vpDurStr(sec) {
   return String(m).padStart(2, '0') + 'min' + String(s).padStart(2, '0') + 'sec';
 }
 
+// (dev1107) WHERE in the original a save came from, for the sidecar: the trim
+// exactly as ffmpeg was sent it, and the rect in the original's pixels spelled
+// as ffmpeg's own crop= so it can be pasted straight back. Nothing recorded
+// either before this, and finding the place and the moment of a 27-frame crop
+// again took an afternoon of picture matching (2026-10-10, the hermit crab
+// boomerang) — Phil: "Need to start recording trim points (time) and crop
+// points (space) for saves." x/y are the rect's top-left BEFORE any tilt; a
+// tilted rect turns about its own centre by the r…deg token beside it.
+function _vpTrimTok(startSec, endSec) {
+  if (!(isFinite(startSec) && isFinite(endSec))) return '';
+  return 'trim ' + (+startSec).toFixed(3) + '-' + (+endSec).toFixed(3) + 's';
+}
+function _vpRectTok(x, y, w, h, VW, VH) {
+  if (![x, y, w, h].every(v => isFinite(v)) || !(w > 0 && h > 0)) return '';
+  return 'crop=' + Math.round(w) + ':' + Math.round(h) + ':' + Math.round(x) + ':' + Math.round(y) +
+         ((VW && VH) ? (' of ' + Math.round(VW) + 'x' + Math.round(VH)) : '');
+}
+
 // (dev0293) Split an absolute path into {dir, base, ext}. Handles both
 // Windows and POSIX separators. Returns null if it doesn't look like a
 // path with an extension.
@@ -12169,6 +12187,7 @@ async function _vpImageSave(opts) {
   // the lock the box was drawn with — resHeight scales the short side, and with
   // a free ratio s.aspect no longer answers which side that is.
   let payload, route, sizeStr, engTok, effAspect = s.aspect;
+  let rectTok = '';   // (dev1107) the rect in the picture's pixels, for the sidecar
 
   if (verdict.ok) {
     // Lossless: no tilt and no scale by definition, so the rect maps straight
@@ -12181,6 +12200,7 @@ async function _vpImageSave(opts) {
     engTok  = 'lossless';
     route   = 'jpegtran';
     effAspect = _vpEffAspect(box.w, box.h);
+    rectTok = _vpRectTok(box.x, box.y, box.w, box.h, VW, VH);   // (dev1107)
     payload = { input: absInput, crop: box, overwrite: false };
     // (dev0959) The quarter turn rides along. jpegtran rotates first and crops
     // second whatever order the flags are given in (measured), and `box` is
@@ -12216,6 +12236,8 @@ async function _vpImageSave(opts) {
       };
       rotate = { rad: a, ow: D, oh: D };
     }
+    rectTok = _vpRectTok(angle ? s.frac.x * VW : cropBox.x,      // (dev1107)
+                         angle ? s.frac.y * VH : cropBox.y, sw, sh, VW, VH);
     payload = {
       image: true, input: absInput, crop: cropBox,
       aspect: effAspect, resHeight: s.resHeight, quality: 2, overwrite: false
@@ -12294,7 +12316,7 @@ async function _vpImageSave(opts) {
   // which is the fine tilt in degrees — "turn90" and "r1_5deg" are different
   // operations and reading them as one would be misleading.
   const turnTok = _vpImgRotNow() ? ('turn' + _vpImgRotNow()) : '';
-  const detail = [sizeStr, effAspect, angTok, turnTok,
+  const detail = [sizeStr, effAspect, rectTok, angTok, turnTok,   // (dev1107) rectTok
                   s.freeRatio ? ('ar' + _vpAspectLabel(s.frac.w * VW, s.frac.h * VH)) : '',
                   'img', engTok, _vpColorToken()].filter(Boolean).join(' · ');
   const want = outDir + parts.sep + _vpCropOutStem(parts.base, safeId) + '.' + outExt;
@@ -12635,7 +12657,10 @@ async function _vpGoSave(opts) {
         frame: { w: VW, h: VH }
       };
     }
-    detailParts = [sizeStr, effAspect, 'crop'];
+    detailParts = [sizeStr, effAspect, 'crop',
+                   _vpRectTok(angle ? Math.max(0, ef.x) * VW : cropBox.x,      // (dev1107)
+                              angle ? Math.max(0, ef.y) * VH : cropBox.y, sw, sh, VW, VH),
+                   _vpTrimTok(startSec, endSec)];
     if (angTok) detailParts.push(angTok);
     // (dev0778) A bled render is no longer 16:9, so the name has to carry the
     // shape — 'L'/'P' alone stops being enough the moment the dial is used.
@@ -12810,7 +12835,7 @@ async function _vpGoSave(opts) {
     const sourceShort = (VW && VH) ? Math.min(VW, VH) : 0;
     const sourceSizeStr = sourceShort ? (sourceShort + 'p') : 'source';
     const sourceAspect  = (VW && VH) ? ((VW >= VH) ? 'L' : 'P') : 'L';
-    detailParts = [sourceSizeStr, sourceAspect, 'full', durStr];
+    detailParts = [sourceSizeStr, sourceAspect, 'full', _vpTrimTok(startSec, endSec), durStr];   // (dev1107)
     payload = {
       input: absInput,
       output: '',                       // (dev0863) filled in after the branch
@@ -13305,9 +13330,12 @@ async function _vpFrameSave(opts) {
   // (dev0863) The sidecar's description — what the filename used to spell out.
   // The timestamp is in it because that is the one fact about a frame grab that
   // nothing else records: two stills of the same crop differ only in when.
-  const detail = [sizeStr, effAspect, 'jpg q90', angTok,
+  const detail = [sizeStr, effAspect, 'jpg q90',
+                  _vpRectTok(angle ? Math.max(0, ef.x) * VW : cropBox.x,      // (dev1107)
+                             angle ? Math.max(0, ef.y) * VH : cropBox.y, sw, sh, VW, VH),
+                  angTok,
                   (s.freeRatio ? ('ar' + _vpAspectLabel(sw, sh).replace(':', '_')) : ''),
-                  'at ' + atSec.toFixed(2) + 's',
+                  'at ' + atSec.toFixed(3) + 's',   // (dev1107) to the millisecond, like trim
                   (payload.texts ? ('tx' + payload.texts.length) : ''),
                   (payload.arrows ? ('arw' + payload.arrows.length) : ''),   // (dev1086)
                   _vpColorToken()].filter(Boolean).join(' · ');

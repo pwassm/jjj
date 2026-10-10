@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1791397822003,
+    "_salPushTime": 1791669131643,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1791397822003
+    "_salSavedAt": 1791669131643
   },
   {
     "UID": "1",
@@ -54954,12 +54954,12 @@
     "link": "https://www.australiangeographic.com.au/blogs/creatura-with-bec-crew/2021/07/the-whitemargin-stargazer-is-all-of-us-right-now/",
     "show": "1",
     "DateAdded": "2026-10-06 21:33:38",
-    "DateModified": "2026-10-06 21:35:28",
+    "DateModified": "2026-10-09 04:34:40",
     "tags": [
       "uranoscopus-sulphureus"
     ],
     "ltype": "w",
-    "ftextSize": "4207",
+    "ftextSize": "4205",
     "FtextJunk": "0",
     "DictSize": "0",
     "ftext": "",
@@ -55247,5 +55247,24 @@
     "FtextJunk": "0",
     "DictSize": "0",
     "ftext": ""
+  },
+  {
+    "UID": "2546",
+    "link": "https://youtu.be/gqfsDpqH1EI",
+    "show": "1",
+    "DateAdded": "2026-10-10 21:51:16",
+    "DateModified": "2026-10-10 21:51:21",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "1179",
+    "FtextJunk": "6",
+    "DictSize": "0",
+    "VidTitle": "Scientists Discovered What Blueberries Actually Do To Your Arteries",
+    "VidAuthor": "@FoundMyFitnessClips",
+    "Mode": "L",
+    "ftext": "",
+    "FTLsaved": "9"
   }
 ]
