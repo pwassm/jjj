@@ -5709,7 +5709,7 @@ async function housekeepingAddWatermarked(opts) {
     } catch (_) {}
     // (dev0819) The proxy says which it is; the extension is the fallback for
     // an older proxy that predates the `image` flag.
-    const isImg = meta ? !!meta.image : /\.(jpg|jpeg|png)$/i.test(f.key);
+    const isImg = meta ? !!meta.image : /\.(jpg|jpeg|png|gif)$/i.test(f.key);   // (dev1105) +gif
     const row = {
       UID: nextUID(),
       link: _wmKeyToUrl(f.key),
