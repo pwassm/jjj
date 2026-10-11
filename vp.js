@@ -4836,14 +4836,20 @@ async function _vpMarksFromCut(start, end) {
 async function _vpCutTimes(a, b) {
   const fd = _vpFrameSec();
   const ca = await _vpFrameTable(a), cb = await _vpFrameTable(b);
-  let startSec, endSec;
+  let startSec, endSec, aFrame;
   if (ca) {
     const i = _vpShownIdx(ca.times, a);
     startSec = (i > 0) ? (ca.times[i - 1] + ca.times[i]) / 2 : 0;
-  } else startSec = Math.max(0, (Math.floor(a / fd + 1e-6) - 0.5) * fd);
+    aFrame = ca.times[Math.max(0, i)];
+  } else {
+    startSec = Math.max(0, (Math.floor(a / fd + 1e-6) - 0.5) * fd);
+    aFrame = Math.floor(a / fd + 1e-6) * fd;
+  }
   if (cb) endSec = _vpFrameMid(cb.times, Math.max(0, _vpShownIdx(cb.times, b)), fd);
   else endSec = (Math.floor(b / fd + 1e-6) + 0.5) * fd;
-  return { startSec, endSec };
+  // (dev1108) aFrame = the time OF the frame shown at A — what a keyframe cut
+  // has to compare keyframes against (see _vpGoSave's LosslessCut note).
+  return { startSec, endSec, aFrame };
 }
 // Park a freshly set mark in the middle of the frame it was set on. Nothing on
 // screen moves; it only takes the mark off a frame edge.
@@ -7893,9 +7899,14 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // for the same picture, and is refused by older players and some editors.
     // (dev1059) GIF — not a codec, a different file: no sound, 256 colours,
     // ≤30fps, and no more than 720 on the short side. For a few seconds only.
-    '<select id="vp-crop-enc" title="Video codec of the saved clip. H.264 plays everywhere. H.265 (HEVC) is about half the file for the same picture, but older players and some editors will not open it. GIF: silent, 256 colours, 30fps at most, 720 at most on the short side — for a few seconds." ' +
+    // (dev1108) …and LosslessCut's two modes, under H.264: no encoder at all —
+    // the WHOLE frame from A to B, stream-copied, every pixel as the camera
+    // wrote it. The crop box, grade, speed and captions do not apply.
+    '<select id="vp-crop-enc" title="Video codec of the saved clip. H.264 plays everywhere. LosslessCut modes save the WHOLE frame from A to B without re-encoding (crop box, grade, speed and captions are not applied): keyframe = starts on the keyframe at or before A (may begin a little early, plays the same everywhere); no keyframe = starts exactly at A through an edit list (the lead-in frames stay in the file, hidden; a player that ignores edit lists shows them). H.265 (HEVC) is about half the file for the same picture, but older players and some editors will not open it. GIF: silent, 256 colours, 30fps at most, 720 at most on the short side — for a few seconds." ' +
       'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;flex:0 0 auto;">' +
       '<option value="h264" selected>H.264</option>' +
+      '<option value="llc-key">LosslessCut · keyframe</option>' +
+      '<option value="llc-exact">LosslessCut · no keyframe</option>' +
       '<option value="h265">H.265</option>' +
       '<option value="gif">GIF</option>' +
     '</select>' +
@@ -9890,16 +9901,19 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     encSel.value = state.vcodec;
     encSel.addEventListener('change', () => {
       const was = state.vcodec;
-      state.vcodec = (encSel.value === 'h265' || encSel.value === 'gif') ? encSel.value : 'h264';
+      state.vcodec = (['h265', 'gif', 'llc-key', 'llc-exact'].includes(encSel.value)) ? encSel.value : 'h264';
       // (dev1092) Carry the picture quality across, in the open: x265 reaches
       // the same picture at a CRF about 5 higher than x264. GIF has no CRF, so
       // the H.264/H.265 number is left where it was.
       // Which scale the number is on survives a detour through GIF:
       // H.264 → GIF → H.265 still adds the 5.
+      // (dev1108) A LosslessCut mode has no CRF either, and is a detour the
+      // same way GIF is.
+      const noCrf = v => (v === 'gif' || _vpIsLlc(v));
       let crfNote = '';
       const from = state.crf;
-      const fromScale = (was === 'gif') ? (state._crfScale || 'h264') : was;
-      const toScale = (state.vcodec === 'gif') ? fromScale : state.vcodec;
+      const fromScale = noCrf(was) ? (state._crfScale || 'h264') : was;
+      const toScale = noCrf(state.vcodec) ? fromScale : state.vcodec;
       if (fromScale === 'h264' && toScale === 'h265') state.crf = Math.min(VP_CRF_MAX_H265, from + 5);
       if (fromScale === 'h265' && toScale === 'h264') state.crf = Math.max(0, Math.min(VP_CRF_MAX_H264, from - 5));
       state._crfScale = toScale;
@@ -9908,6 +9922,10 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       if (typeof toast === 'function') {
         toast((state.vcodec === 'h265'
           ? 'H.265 — about half the size, slower to encode, and older players will refuse it'
+          : state.vcodec === 'llc-key'
+          ? 'LosslessCut · keyframe — the WHOLE frame A→B, not re-encoded; starts on the keyframe at or before A'
+          : state.vcodec === 'llc-exact'
+          ? 'LosslessCut · no keyframe — the WHOLE frame, exactly A→B, not re-encoded; the lead-in to A is hidden by an edit list'
           : state.vcodec === 'gif'
             ? 'GIF — silent, 256 colours, 30fps at most, 720 at most on the short side. Keep it to a few seconds.'
             : 'H.264 — plays everywhere') + crfNote, crfNote ? 4200 : 3200);
@@ -11344,6 +11362,30 @@ function _vpRectTok(x, y, w, h, VW, VH) {
          ((VW && VH) ? (' of ' + Math.round(VW) + 'x' + Math.round(VH)) : '');
 }
 
+// (dev1108) The two LosslessCut entries on the encoder menu — not encoders at
+// all: the whole frame A→B, stream-copied. See _vpGoSave.
+function _vpIsLlc(v) { return v === 'llc-key' || v === 'llc-exact'; }
+
+// (dev1108) Keyframe times near `t` (20 s back, 1 s on), from the same packet
+// probe LLC uses (dev0927) — nothing is decoded. null when it can't be read;
+// the cut still happens, the toast just can't say where it landed.
+async function _vpKeyframesNear(absInput, t) {
+  try {
+    const from = Math.max(0, t - 20);
+    const r = await fetch(PROXY_BASE + '/exec/ffprobe', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: absInput, keyframes: { fromSec: from, spanSec: Math.min(600, t - from + 1) } })
+    });
+    const j = await r.json();
+    const pk = j && j.result && j.result.packets;
+    if (!Array.isArray(pk)) return null;
+    const ks = pk.filter(p => p && /K/.test(String(p.flags || '')))
+                 .map(p => parseFloat(p.pts_time)).filter(v => isFinite(v));
+    ks.sort((a, b) => a - b);
+    return ks.length ? ks : null;
+  } catch (_) { return null; }
+}
+
 // (dev0293) Split an absolute path into {dir, base, ext}. Handles both
 // Windows and POSIX separators. Returns null if it doesn't look like a
 // path with an extension.
@@ -11528,6 +11570,14 @@ function _vpXmpSidecarWanted(outPath) {
   try { return localStorage.getItem('salXmpSidecar') === '1'; } catch (_) { return false; }
 }
 
+// (dev1108) The one-line record — "<out> is a crop of <orig>  [detail]" —
+// shared by the sidecar and, for a picture that gets no sidecar, the picture.
+function _vpCropNote(originalPath, outPath, detail) {
+  const origName = String(originalPath).split(/[\\/]/).pop() || originalPath;
+  const outName  = String(outPath).split(/[\\/]/).pop() || outPath;
+  return outName + ' is a crop of ' + origName + (detail ? ('  [' + detail + ']') : '');
+}
+
 async function _vpWriteXmpSidecar(originalPath, outPath, detail) {
   if (!_vpXmpSidecarWanted(outPath)) return '';
   const origName = String(originalPath).split(/[\\/]/).pop() || originalPath;
@@ -11545,8 +11595,7 @@ async function _vpWriteXmpSidecar(originalPath, outPath, detail) {
     'XMP-xmpMM:InstanceID': 'xmp.iid:' + outHash,
     'XMP-xmp:CreatorTool': 'SLAM ' + ver + ' crop tool',
     'XMP-dc:source': origName,
-    'XMP-photoshop:Instructions':
-      outName + ' is a crop of ' + origName + (detail ? ('  [' + detail + ']') : ''),
+    'XMP-photoshop:Instructions': _vpCropNote(originalPath, outPath, detail),   // (dev1108) shared
     // Cleared, not copied — see the note above.
     'XMP-tiff:ImageWidth': '', 'XMP-tiff:ImageHeight': '',
     'XMP-exif:ExifImageWidth': '', 'XMP-exif:ExifImageHeight': '',
@@ -11614,6 +11663,15 @@ async function _vpCarryMetadata(sourcePath, outPath, opts) {
     const carry = isVideo
       ? { kind: 'video' }
       : { kind: 'image', orient: (opts && opts.lossless) ? 'keep' : 'reset' };
+    // (dev1108) A picture's crop record goes INSIDE it (XMP-photoshop:
+    // Instructions, the sidecar's tag) — a JPG has no .xmp beside it since
+    // dev0960, so this is the only place the trim/rect can live. An older
+    // proxy would drop it without a word, hence the check.
+    let noteWarn = '';
+    if (isImage && opts && opts.note) {
+      if (await _vpProxyHasFeature('metanote')) carry.note = opts.note;
+      else noteWarn = '  ·  ⚠ crop record not in the picture — restart "node proxy.js"';
+    }
     const r = await fetch(PROXY_BASE + '/exec/exiftool', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ input: sourcePath, output: outPath, carry })
@@ -11626,9 +11684,9 @@ async function _vpCarryMetadata(sourcePath, outPath, opts) {
     // exiftool exits non-zero when it had nothing to write, which on a source
     // with no camera block at all is the honest answer and not a failure worth
     // a warning triangle over.
-    if (j && j.exitCode === 0) return '';
+    if (j && j.exitCode === 0) return noteWarn;
     console.warn('[carry metadata: nothing written]', j);
-    return '';
+    return noteWarn;
   } catch (err) {
     console.warn('[carry metadata failed]', err);
     return '  ·  ⚠ no camera tags';
@@ -12430,7 +12488,8 @@ async function _vpImageSave(opts) {
       // everything after it is either a different file or a timestamp this
       // write would bump. `verdict.ok` is the lossless engine: jpegtran has not
       // touched a pixel, so its orientation tag still describes the file.
-      const meta = await _vpCarryMetadata(absInput, payload.output, { lossless: verdict.ok });
+      const meta = await _vpCarryMetadata(absInput, payload.output,
+        { lossless: verdict.ok, note: _vpCropNote(absInput, payload.output, detail) });   // (dev1108) note
       // (dev0863) The sidecar that says which picture this came out of.
       const xmp = await _vpWriteXmpSidecar(absInput, payload.output, detail);
       // (dev0872 / dev0909) …and the original's dates, on the picture and its
@@ -12551,6 +12610,16 @@ async function _vpGoSave(opts) {
   // Crop overlay visible → crop+scale. Else → lossless trim.
   const cropOn = !!(_vpState.crop && _vpState.crop.el.container.style.display !== 'none');
   const vid = _vpState.player && _vpState.player.el;
+  // (dev1108) LosslessCut modes, picked on the encoder menu: the lossless trim
+  // below even with the crop box up. 'no keyframe' needs a proxy that can write
+  // the edit list — an older one would hand back a keyframe cut under that name.
+  const llcMode = (_vpState.crop && _vpIsLlc(_vpState.crop.vcodec)) ? _vpState.crop.vcodec : null;
+  if (llcMode === 'llc-exact' && !(await _vpProxyHasFeature('copyexact'))) {
+    if (typeof toast === 'function') {
+      toast('LosslessCut · no keyframe needs an updated proxy — restart "node proxy.js", or pick LosslessCut · keyframe', 4600);
+    }
+    return;
+  }
   // (dev0717/dev0921) The enlargement preflight used to stop here and ask.
   // It no longer does: the factor is on the toolbar the whole time the box
   // is being drawn (far-left ⚠ chip), so a confirm at save could only
@@ -12574,7 +12643,8 @@ async function _vpGoSave(opts) {
   // tilt, zoom, track, captions, duration. It goes in the sidecar now.
   let outName, payload, kenPayload = null, trackPayload = null, detailParts = [];
   let descreenReq = null;   // (dev1033) what the proxy measures the grid on, when armed
-  if (cropOn) {
+  let llcNote = '';         // (dev1108) where a lossless cut really starts, for the toast
+  if (cropOn && !llcMode) {
     const s = _vpState.crop;
     let VW = vid.videoWidth, VH = vid.videoHeight;
     // (dev1034) …in the pixels ffmpeg will crop, which are not always the ones
@@ -12843,6 +12913,41 @@ async function _vpGoSave(opts) {
       overwrite: false
       // No `crop` → builder takes the lossless -c copy path.
     };
+    // (dev1108) LosslessCut modes. 'no keyframe' asks for the edit-list cut:
+    // the frame shown at A is the first one PLAYED, and the GOP lead-in rides
+    // along hidden. Every other lossless cut — 'keyframe', and the plain one
+    // with the crop box down, which always behaved this way — starts on the
+    // keyframe at or before A, and now SAYS which one, since ffmpeg moves it
+    // there without a word. One catch fixed on the way: the cut time sits half
+    // a frame before A's frame (dev1060), so when A is itself a keyframe the
+    // seek fell back a whole GOP. Then the cut starts ON that keyframe instead.
+    if (llcMode === 'llc-exact') {
+      payload.copyMode = 'exact';
+      detailParts.splice(3, 0, 'LosslessCut no-keyframe (edit list)');
+      llcNote = '  ·  plays from A exactly (lead-in hidden by an edit list)';
+    } else {
+      if (llcMode) detailParts.splice(3, 0, 'LosslessCut keyframe');
+      const ks = await _vpKeyframesNear(absInput, _cut.aFrame);
+      if (ks) {
+        const onA = ks.find(k => Math.abs(k - _cut.aFrame) < 0.002);
+        const kf  = (onA != null) ? onA : ks.filter(k => k <= startSec + 1e-6).pop();
+        if (onA != null) {
+          // A hair past the keyframe, so the proxy's 3-decimal seek can't round
+          // below it and fall back a GOP; still far short of the next frame.
+          payload.trim.startSec = onA + 0.0006;
+          const ti = detailParts.findIndex(t => /^trim /.test(String(t)));
+          if (ti >= 0) detailParts[ti] = _vpTrimTok(payload.trim.startSec, endSec);
+        }
+        if (kf != null) {
+          const early = _cut.aFrame - kf;
+          detailParts.splice(detailParts.length - 1, 0, 'from keyframe ' + kf.toFixed(3) + 's');
+          llcNote = (early < 0.002)
+            ? '  ·  A is a keyframe — starts exactly there'
+            : '  ·  starts on the keyframe at ' + kf.toFixed(3) + 's, ' + early.toFixed(2) + 's before A';
+        }
+      }
+    }
+    if (llcMode && cropOn) llcNote += '  ·  whole frame — crop box, grade, speed and captions not applied';
   }
   // (dev0863) One name for both paths: beside the original, called after it,
   // numbered by the proxy if that name is taken.
@@ -13133,14 +13238,16 @@ async function _vpGoSave(opts) {
       // (dev0871) …and, when a loop was asked for, the page that plays it on
       // repeat. A failure here is worth a word but not an alarm: the clip
       // itself is already written and good.
-      let loopMode = (cropOn && _vpState.crop) ? _vpState.crop.loop : 'off';
+      let loopMode = (cropOn && !llcMode && _vpState.crop) ? _vpState.crop.loop : 'off';   // (dev1108) not on a LosslessCut
       if (loopMode === 'boom1') loopMode = 'boom';   // (dev1104) the page is the same
       let loopNote = '';
       // (dev1059) A GIF loops by itself; the page would only wrap it in a video tag.
       if ((loopMode === 'fwd' || loopMode === 'boom') && !gifOut) {
         loopNote = (await _vpWriteLoopHtml(payload.output, loopMode)) ? ' + .html' : '';
       }
-      if (typeof toast === 'function') toast('saved → ' + outName + xmp + meta + loopNote + dates, 3200);
+      if (typeof toast === 'function') {
+        toast('saved → ' + outName + xmp + meta + loopNote + dates + llcNote, llcNote ? 6000 : 3200);   // (dev1108)
+      }
     } else {
       // (dev0919) The REASON, not just the last thing printed — see
       // _vpCropFailLine. Long enough on screen to be read and acted on.
@@ -13384,7 +13491,8 @@ async function _vpFrameSave(opts) {
       // dates on both. `orient` is left to reset — ffmpeg has already handed
       // back an upright picture, so carrying "Rotate 90 CW" across would tell
       // every reader to turn it on its side.
-      const meta  = await _vpCarryMetadata(absInput, payload.output, {});
+      const meta  = await _vpCarryMetadata(absInput, payload.output,
+        { note: _vpCropNote(absInput, payload.output, detail) });   // (dev1108) the record, inside the JPG
       const xmp   = await _vpWriteXmpSidecar(absInput, payload.output, detail);
       const dates = (await _vpCopySourceTimes(absInput, payload.output))
         ? '' : '  ·  ⚠ dates not copied';
