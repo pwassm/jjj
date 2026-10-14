@@ -7744,7 +7744,14 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     'scrollbar-width:thin;' +
     'background:rgba(0,0,0,0.7);color:#dfe6f0;font:12px ui-monospace,Consolas,monospace;' +
     'border-radius:4px;pointer-events:auto;z-index:2;';
+  bar.style.gap = '4px';
+  bar.className = 'vp-cbar';
   bar.innerHTML =
+    // (dev1109) A <select> is as wide as its LONGEST option ('⇄ boomerang,
+    // single end frames', the encoder names), so the closed menus alone pushed
+    // the bar past the screen and Crop needed a sideways scroll. Capped; the
+    // open list still shows each option in full.
+    '<style>.vp-cbar select{max-width:7.5em;text-overflow:ellipsis;}</style>' +
     // (dev0921) The enlargement warning, FAR LEFT and always in the same place.
     // It used to live in the W×H label over the picture, which is where the
     // eye is least likely to be at the moment the resolution is chosen — and it
