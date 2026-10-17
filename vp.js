@@ -5356,16 +5356,39 @@ function _vpMountDiskInfoOverlay(host, vid, row) {
     'max-width:60%;overflow:hidden;text-overflow:ellipsis;';
   host.appendChild(ov);
   const fname = row.VidTitle || (row.comment || '').split(/[\\/]/).pop() || '(unnamed)';
+  let fps = '';   // (dev1110) filled in when the probe answers
   const render = () => {
     const w = vid.videoWidth, h = vid.videoHeight;
     const res = (w && h) ? (w + '×' + h) : '…';
     const dur = _vpFmtDur(vid.duration);
-    ov.textContent = fname + '\n' + res + '   ' + dur;
+    ov.textContent = fname + '\n' + res + (fps ? ' · ' + fps + ' fps' : '') + '   ' + dur;
   };
   render();
   vid.addEventListener('loadedmetadata', render);
   vid.addEventListener('durationchange', render);
   if (_vpState) _vpState.diskInfoOverlay = ov;
+  // (dev1110) …and the frame rate, which the <video> element cannot tell us.
+  _vpSourceFpsLabel(_vpCropResolveAbsPathCached(row.comment || row.VidTitle || ''))
+    .then(f => { if (f && ov.isConnected) { fps = f; render(); } });
+}
+
+// (dev1110) The source's frame rate for display — "120", "29.97", "30" — from
+// the probe the Ken Burns and the frame nudges use (_vpProbeFps: on a Galaxy
+// VFR clip that is the snapped average, not the 120 Hz timebase). One probe per
+// file per mount, keyed by path because a slideshow reuses _vpState. Null when
+// the path is not known without asking.
+function _vpSourceFpsLabel(absPath) {
+  if (!absPath) return Promise.resolve(null);
+  const st = _vpState;
+  if (st && st._srcFpsFor === absPath && st._srcFpsP) return st._srcFpsP;
+  const p = _vpProbeFps(absPath).then(f => {
+    const m = /^(\d+)\/(\d+)$/.exec(String(f || ''));
+    const v = m ? (+m[1] / +m[2]) : parseFloat(f);
+    if (!(v > 0 && v < 1000)) return null;
+    return (Math.abs(v - Math.round(v)) < 0.005) ? String(Math.round(v)) : v.toFixed(2);
+  }).catch(() => null);
+  if (st) { st._srcFpsFor = absPath; st._srcFpsP = p; }
+  return p;
 }
 
 // (dev0288) ── CROP OVERLAY (disk videos only) ─────────────────────────────
@@ -5464,16 +5487,28 @@ const VP_BLEED_MAX = 4;      // rect may reach 4× the frame on either axis
 // value by 5 (see the encoder select) rather than the payload adding it unseen.
 const VP_CRF_MAX_H264 = 28;
 const VP_CRF_MAX_H265 = 33;
+// (dev1110) The GPU encoder (h264_amf) has no CRF: the number is a constant QP,
+// and it needs about 3 more than x264's CRF for the same picture (measured on a
+// 1080p120 clip: QP 26 ≈ CRF 23, at about twice the bytes).
+const VP_CRF_MAX_AMF = 31;
+const VP_CRF_OFFSET = { h264: 0, h265: 5, h264amf: 3 };
+// Which scale the slider is on. GIF and the LosslessCut modes have no number of
+// their own, so they keep whichever scale it was on.
+function _vpCrfScale(state) {
+  const v = state && state.vcodec;
+  return (v === 'h264' || v === 'h265' || v === 'h264amf') ? v : ((state && state._crfScale) || 'h264');
+}
 function _vpCrfPaint(state, bar) {
   if (!state || !bar) return;
   const sl  = bar.querySelector('#vp-crop-crf');
   const val = bar.querySelector('#vp-crop-crf-val');
-  // A GIF keeps whichever scale the number was on (it has no CRF of its own).
-  const onH265 = (state.vcodec === 'h265') || (state.vcodec === 'gif' && state._crfScale === 'h265');
-  const max = onH265 ? VP_CRF_MAX_H265 : VP_CRF_MAX_H264;
+  const lbl = bar.querySelector('#vp-crop-crf-lbl');
+  const scale = _vpCrfScale(state);
+  const max = scale === 'h265' ? VP_CRF_MAX_H265 : scale === 'h264amf' ? VP_CRF_MAX_AMF : VP_CRF_MAX_H264;
   state.crf = Math.max(0, Math.min(max, Math.round(+state.crf || 0)));
   if (sl)  { sl.max = String(max); sl.value = String(state.crf); }
   if (val) val.textContent = String(state.crf);
+  if (lbl) lbl.textContent = (scale === 'h264amf') ? 'QP' : 'CRF';   // (dev1110)
 }
 
 function _vpEffFrac(state) {
@@ -7901,6 +7936,17 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       '<option value="15">15x</option>' +
       '<option value="20">20x</option>' +
       '</select>' +
+    // (dev1110) Output frame rate. "same" = as shot, which is what every render
+    // did before. Fewer frames = a faster encode and a smaller file; taken AFTER
+    // the speed, so a 120 fps clip at 0.25x and 30 fps is smooth slow motion.
+    // No 29.97: these are not going to a broadcast or a DVD.
+    '<select id="vp-crop-fps" title="Frame rate of the saved clip. same = as shot. Fewer frames = a faster encode and a smaller file. Applied after Speed, so a 120 fps clip at 0.25x and 30 fps plays every frame shot, as smooth slow motion. The LosslessCut modes ignore it." ' +
+      'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;flex:0 0 auto;">' +
+      '<option value="0" selected>fps same</option>' +
+      '<option value="30">30 fps</option>' +
+      '<option value="60">60 fps</option>' +
+      '<option value="120">120 fps</option>' +
+    '</select>' +
     // (dev0871) Encoder. H.264 is what every build before this one wrote, and it
     // stays the default — it plays everywhere. H.265 is roughly half the size
     // for the same picture, and is refused by older players and some editors.
@@ -7909,9 +7955,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // (dev1108) …and LosslessCut's two modes, under H.264: no encoder at all —
     // the WHOLE frame from A to B, stream-copied, every pixel as the camera
     // wrote it. The crop box, grade, speed and captions do not apply.
-    '<select id="vp-crop-enc" title="Video codec of the saved clip. H.264 plays everywhere. LosslessCut modes save the WHOLE frame from A to B without re-encoding (crop box, grade, speed and captions are not applied): keyframe = starts on the keyframe at or before A (may begin a little early, plays the same everywhere); no keyframe = starts exactly at A through an edit list (the lead-in frames stay in the file, hidden; a player that ignores edit lists shows them). H.265 (HEVC) is about half the file for the same picture, but older players and some editors will not open it. GIF: silent, 256 colours, 30fps at most, 720 at most on the short side — for a few seconds." ' +
+    // (dev1110) …and H.264 · GPU: AMD's hardware encoder on the 780M.
+    '<select id="vp-crop-enc" title="Video codec of the saved clip. H.264 plays everywhere. H.264 · GPU = the same format made by the graphics chip: several times faster, about twice the file for the same picture, 8-bit only; its number is a QP, about 3 above the CRF that looks the same. LosslessCut modes save the WHOLE frame from A to B without re-encoding (crop box, grade, speed and captions are not applied): keyframe = starts on the keyframe at or before A (may begin a little early, plays the same everywhere); no keyframe = starts exactly at A through an edit list (the lead-in frames stay in the file, hidden; a player that ignores edit lists shows them). H.265 (HEVC) is about half the file for the same picture, but older players and some editors will not open it. GIF: silent, 256 colours, 30fps at most, 720 at most on the short side — for a few seconds." ' +
       'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;flex:0 0 auto;">' +
       '<option value="h264" selected>H.264</option>' +
+      '<option value="h264amf">H.264 · GPU</option>' +
       '<option value="llc-key">LosslessCut · keyframe</option>' +
       '<option value="llc-exact">LosslessCut · no keyframe</option>' +
       '<option value="h265">H.265</option>' +
@@ -7986,7 +8034,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // <img> this overlay maps its screen→source arithmetic through.
     ['vp-crop-crf-lbl', 'vp-crop-crf', 'vp-crop-crf-val',
      'vp-crop-audio', 'vp-crop-slow-lbl', 'vp-crop-deshake', 'vp-crop-descreen', 'vp-crop-expand',
-     'vp-crop-speed', 'vp-crop-enc', 'vp-crop-jpg',
+     'vp-crop-speed', 'vp-crop-fps', 'vp-crop-enc', 'vp-crop-jpg',
      'vp-crop-zoom-lbl', 'vp-crop-zoom'].forEach(id => {
       const el = bar.querySelector('#' + id);
       if (el) el.style.display = 'none';
@@ -8354,7 +8402,8 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     deshake: 'off',                   // (dev0789) off | light | medium | strong
     descreen: 'off',                  // (dev1033) off | light | medium | heavy
     speed: 1,                         // (dev0869) signed render speed, -20..20 (negative = reverse)
-    vcodec: 'h264',                   // (dev0871) h264 | h265
+    outFps: 0,                        // (dev1110) output frame rate; 0 = as shot
+    vcodec: 'h264',                   // (dev0871) h264 | h265; (dev1110) h264amf = GPU
     loop: 'off',                      // (dev0871) off | fwd | boom
     texts: [],                        // (dev0724) burned-in captions, see addText
     arrows: [],                       // (dev1086) burned-in arrows, see addArrow
@@ -9902,13 +9951,34 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     });
   }
 
+  // (dev1110) ── Output fps ─────────────────────────────────────────────────
+  // "fps same" names the source's own rate once the probe answers, so the
+  // choice is made knowing what it is a choice against.
+  const fpsSel = bar.querySelector('#vp-crop-fps');
+  if (fpsSel && !imageMode) {
+    fpsSel.value = String(state.outFps || 0);
+    _vpSourceFpsLabel(_vpDiskAbsPath()).then(f => {
+      const o = fpsSel.querySelector('option[value="0"]');
+      if (f && o) o.textContent = 'fps same (' + f + ')';
+    });
+    fpsSel.addEventListener('change', () => {
+      const v = parseInt(fpsSel.value, 10);
+      state.outFps = (v === 30 || v === 60 || v === 120) ? v : 0;
+      if (typeof toast === 'function') {
+        toast(state.outFps
+          ? ('Saved clip at ' + state.outFps + ' fps — taken after Speed; fewer frames encode faster and make a smaller file')
+          : 'fps same — the saved clip keeps the frame rate it was shot at', 2600);
+      }
+    });
+  }
+
   // (dev0871) ── Encoder · Loop ─────────────────────────────────────────────
   const encSel = bar.querySelector('#vp-crop-enc');
   if (encSel) {
     encSel.value = state.vcodec;
     encSel.addEventListener('change', () => {
       const was = state.vcodec;
-      state.vcodec = (['h265', 'gif', 'llc-key', 'llc-exact'].includes(encSel.value)) ? encSel.value : 'h264';
+      state.vcodec = (['h265', 'h264amf', 'gif', 'llc-key', 'llc-exact'].includes(encSel.value)) ? encSel.value : 'h264';
       // (dev1092) Carry the picture quality across, in the open: x265 reaches
       // the same picture at a CRF about 5 higher than x264. GIF has no CRF, so
       // the H.264/H.265 number is left where it was.
@@ -9921,14 +9991,21 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       const from = state.crf;
       const fromScale = noCrf(was) ? (state._crfScale || 'h264') : was;
       const toScale = noCrf(state.vcodec) ? fromScale : state.vcodec;
-      if (fromScale === 'h264' && toScale === 'h265') state.crf = Math.min(VP_CRF_MAX_H265, from + 5);
-      if (fromScale === 'h265' && toScale === 'h264') state.crf = Math.max(0, Math.min(VP_CRF_MAX_H264, from - 5));
+      // (dev1110) Three scales now — x264 CRF, x265 CRF (+5), GPU QP (+3) — so
+      // the move is the difference of the two offsets; _vpCrfPaint clamps it.
+      if (fromScale !== toScale) state.crf = from - VP_CRF_OFFSET[fromScale] + VP_CRF_OFFSET[toScale];
       state._crfScale = toScale;
       _vpCrfPaint(state, bar);
-      if (state.crf !== from) crfNote = ' · CRF ' + from + ' → ' + state.crf + ' (same picture quality)';
+      const unit = sc => (sc === 'h264amf' ? 'QP' : 'CRF');
+      if (state.crf !== from) {
+        crfNote = ' · ' + unit(fromScale) + ' ' + from + ' → ' + unit(toScale) + ' ' + state.crf +
+                  ' (same picture quality)';
+      }
       if (typeof toast === 'function') {
         toast((state.vcodec === 'h265'
           ? 'H.265 — about half the size, slower to encode, and older players will refuse it'
+          : state.vcodec === 'h264amf'
+          ? 'H.264 · GPU — the 780M encodes it, several times faster; about twice the file for the same picture, 8-bit only'
           : state.vcodec === 'llc-key'
           ? 'LosslessCut · keyframe — the WHOLE frame A→B, not re-encoded; starts on the keyframe at or before A'
           : state.vcodec === 'llc-exact'
@@ -12841,9 +12918,11 @@ async function _vpGoSave(opts) {
     }
     // (dev0871) …and the encoder and the loop, for the same reason.
     if (s.vcodec === 'h265' || s.vcodec === 'gif') detailParts.push(s.vcodec);
+    if (s.vcodec === 'h264amf') detailParts.push('h264 gpu');   // (dev1110)
     // (dev1092) …and the CRF actually sent, which nothing recorded before. A GIF
-    // has none.
-    if (s.vcodec !== 'gif') detailParts.push('crf' + s.crf);
+    // has none. (dev1110) The GPU's number is a QP and says so.
+    if (s.vcodec !== 'gif') detailParts.push((s.vcodec === 'h264amf' ? 'qp' : 'crf') + s.crf);
+    if (s.outFps) detailParts.push(s.outFps + 'fps');            // (dev1110)
     if (s.loop === 'boom1') detailParts.push('boomerang1');       // (dev1104) single end frames
     else if (s.loop === 'boom') detailParts.push('boomerang');
     else if (s.loop === 'fwd') detailParts.push('loop');
@@ -12871,6 +12950,7 @@ async function _vpGoSave(opts) {
     // (dev0869) Speed / reverse. Only sent when it is actually something —
     // 1x means "as shot", and the proxy should take its untouched path.
     if (s.speed && s.speed !== 1) payload.speed = s.speed;
+    if (s.outFps) payload.fps = s.outFps;   // (dev1110) absent = as shot
     // (dev0871) Only 'boom' changes the pixels; 'fwd' is purely the .html page
     // written after the render, so the proxy is not told about it at all.
     if (_vpIsBoom(s.loop)) payload.loop = 'boom';
@@ -12968,6 +13048,20 @@ async function _vpGoSave(opts) {
   if (gifOut && !(await _vpProxyHasFeature('vpgif'))) {
     if (typeof toast === 'function') {
       toast('GIF needs an updated proxy — restart "node proxy.js", or pick H.264', 4400);
+    }
+    return;
+  }
+  // (dev1110) An older proxy refuses vcodec 'h264amf' outright, and drops
+  // payload.fps without a word — a full-rate clip after a long encode.
+  if (payload.vcodec === 'h264amf' && !(await _vpProxyHasFeature('h264amf'))) {
+    if (typeof toast === 'function') {
+      toast('H.264 · GPU needs an updated proxy — restart "node proxy.js", or pick H.264', 4400);
+    }
+    return;
+  }
+  if (payload.fps && !(await _vpProxyHasFeature('vpfps'))) {
+    if (typeof toast === 'function') {
+      toast('An output fps needs an updated proxy — restart "node proxy.js", or set fps same', 4400);
     }
     return;
   }

@@ -4123,7 +4123,7 @@
     "label": "Mobula",
     "kind": "taxon",
     "parents": [
-      "myliobatidae"
+      "mobulidae"
     ],
     "aliases": [],
     "def": "",
@@ -8830,5 +8830,90 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "pagurus-armatus",
+    "label": "Pagurus armatus",
+    "kind": "taxon",
+    "parents": [
+      "pagurus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "armored or black-eyed hermit crab",
+    "extinct": false
+  },
+  {
+    "id": "paguridae",
+    "label": "Paguridae",
+    "kind": "taxon",
+    "parents": [
+      "decapoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "pagurus",
+    "label": "Pagurus",
+    "kind": "taxon",
+    "parents": [
+      "paguridae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "pagurus-prideaux",
+    "label": "Pagurus prideaux",
+    "kind": "taxon",
+    "parents": [
+      "pagurus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Prideaux hermit crab",
+    "extinct": false
+  },
+  {
+    "id": "pagurus-bernhardus",
+    "label": "Pagurus bernhardus",
+    "kind": "taxon",
+    "parents": [
+      "pagurus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "common hermit crab",
+    "extinct": false
+  },
+  {
+    "id": "mobula-birostris",
+    "label": "Mobula birostris",
+    "kind": "taxon",
+    "parents": [
+      "mobula"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "giant manta ray",
+    "extinct": false
+  },
+  {
+    "id": "mobulidae",
+    "label": "Mobulidae",
+    "kind": "taxon",
+    "parents": [
+      "myliobatiformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
   }
 ]
