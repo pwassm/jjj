@@ -14822,8 +14822,16 @@ async function _vectViaStandin(absPath, keep) {
   }
 }
 
+// (dev1114) Only a refusal from the player that is still on screen counts.
+// Closing one empties its src, and Chrome answers that with code 4 too ("Empty
+// src attribute") on the detached element, a moment AFTER a lossless turn has
+// already reopened the clip — so every turn was being treated as a refusal and
+// shown through a stand-in. A stand-in is keyed on path|size|mtime, which a turn
+// keeps on purpose, so it showed whatever way up the clip was when it was made,
+// and further turns changed nothing on screen.
 function _vectRetryAsStandin(vid) {
   const err = vid.error, row = window._vpCurrentRow;
+  if (!vid.isConnected || !vid.getAttribute('src')) return;
   if (!err || err.code !== 4 || !row || !row._directVideoFile || row._vectStandin) return;
   if (!/\/localfile\?/.test(vid.currentSrc || vid.src || '')) return;
   const abs = String(row.comment || '');
