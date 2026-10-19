@@ -9673,11 +9673,57 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     return { dxF: ( dxs * ct + dys * st) / drag.kw,
              dyF: (-dxs * st + dys * ct) / drag.kh };
   }
+  // (dev1112) ── Edge pan while dragging the box ─────────────────────────────
+  // Magnified, the frame runs off the screen, and a handle only goes where the
+  // pointer can: at 2x on a 4K clip the box stopped at the 1920×1080 that was
+  // on screen, its far corner out of reach. Holding the pointer in the band
+  // along an edge of the picture (or past it) now pans the view that way, and
+  // the box keeps following the pointer, so it can be grown — or carried — to
+  // anywhere in the frame. Deeper in the band = faster. Never at 1x.
+  const VP_EDGE_PAN_PX  = 40;   // band inside each edge of the picture area
+  const VP_EDGE_PAN_MAX = 24;   // px per frame at full depth
+  let edgePan = null;           // { x, y, raf } — the last pointer position
+  function edgePanVel(px, py) {
+    const hb = host.getBoundingClientRect();
+    const sp = d => (d > 0) ? Math.min(VP_EDGE_PAN_MAX, 2 + d * 0.5) : 0;
+    return { vx: sp(hb.left + VP_EDGE_PAN_PX - px) - sp(px - (hb.right  - VP_EDGE_PAN_PX)),
+             vy: sp(hb.top  + VP_EDGE_PAN_PX - py) - sp(py - (hb.bottom - VP_EDGE_PAN_PX)) };
+  }
+  function edgePanStop() {
+    if (edgePan && edgePan.raf) cancelAnimationFrame(edgePan.raf);
+    edgePan = null;
+  }
+  function edgePanTick() {
+    edgePan.raf = 0;
+    if (!drag || (drag.kind !== 'move' && drag.kind !== 'resize') || state.view.z <= 1) { edgePanStop(); return; }
+    const { vx, vy } = edgePanVel(edgePan.x, edgePan.y);
+    const v = state.view, tx0 = v.tx, ty0 = v.ty;
+    v.tx += vx; v.ty += vy;
+    applyView();                   // clamps the pan and repaints
+    // Out of the band, or already panned as far as the frame goes: stop until
+    // the pointer moves again.
+    if (v.tx === tx0 && v.ty === ty0) { edgePanStop(); return; }
+    onMove({ clientX: edgePan.x, clientY: edgePan.y, _vpEdgePan: true });
+    edgePan.raf = requestAnimationFrame(edgePanTick);
+  }
+  function edgePanFollow(e) {
+    if (state.view.z <= 1) return;
+    if (!edgePan) edgePan = { x: 0, y: 0, raf: 0 };
+    edgePan.x = e.clientX; edgePan.y = e.clientY;
+    if (!edgePan.raf) edgePan.raf = requestAnimationFrame(edgePanTick);
+  }
+
   function onMove(e) {
     if (!drag) return;
     showGrid();   // (dev0318) thirds grid visible while moving/resizing
-    const dxF = (e.clientX - drag.sx) / drag.r.rw;
-    const dyF = (e.clientY - drag.sy) / drag.r.rh;
+    if (!e._vpEdgePan && (drag.kind === 'move' || drag.kind === 'resize')) edgePanFollow(e);
+    // (dev1112) Measured in FRAME fractions — where the pointer is on the picture
+    // now, against where it pressed — rather than as a screen delta, so an edge
+    // pan sliding the picture under a still pointer still moves the box. The
+    // same number as before whenever the view hasn't moved.
+    const rNow = viewRect();
+    const dxF = (e.clientX - rNow.rx) / rNow.rw - (drag.sx - drag.r.rx) / drag.r.rw;
+    const dyF = (e.clientY - rNow.ry) / rNow.rh - (drag.sy - drag.r.ry) / drag.r.rh;
     if (drag.kind === 'move') {
       // (dev0777) _vpFitAxis is the old clamp for any axis that still fits the
       // frame, and pins a bled axis to dead centre so its bars stay equal.
@@ -9839,6 +9885,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     }
   }
   function onUp(e) {
+    edgePanStop();   // (dev1112)
     if (drag) {
       try { if (drag.el) drag.el.releasePointerCapture(e.pointerId); } catch (_) {}
       // (dev0720) Placing the box also stamps WHEN it lands: the zoom finishes
@@ -10179,6 +10226,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     state.track.on = false;
     if (trackRaf) { cancelAnimationFrame(trackRaf); trackRaf = null; }
     if (_gridTimer) clearTimeout(_gridTimer);
+    edgePanStop();   // (dev1112)
     document.removeEventListener('pointermove', onMove, true);
     document.removeEventListener('pointerup',   onUp,   true);
     document.removeEventListener('pointerdown', onArrowAway, true);   // (dev1086)
