@@ -3570,16 +3570,6 @@ function vpKeyHandler(e) {
     return;
   }
 
-  // (dev1084) O / ⇧O = turn a VECT-from-disk clip a quarter clockwise / back by
-  // its rotation flag (_vpVideoTurn). A still's turn is R, but here R is the
-  // track, so the clip's turn is O for Orientation.
-  if ((e.key === 'o' || e.key === 'O') && !e.ctrlKey && !e.altKey && !e.metaKey) {
-    if (!_vpCropHolding() || (_vpState && _vpState.imageMode)) return;
-    e.preventDefault(); e.stopPropagation();
-    _vpVideoTurn(e.shiftKey ? -90 : 90);
-    return;
-  }
-
   // (dev0777) Q = let the rect grow past the edge of the picture · ⇧Q = grow it
   // until the source's short axis is fully inside.
   if (e.key === 'q') {
@@ -7855,6 +7845,15 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     '<span id="vp-crop-turn" title="Quarter turns (R clockwise · ⇧R anti-clockwise · click / ⇧click). Stays lossless on a JPEG. Remembered for this picture." ' +
       'style="display:none;cursor:pointer;user-select:none;padding:2px 6px;' +
       'background:#234;border-radius:3px;flex:0 0 auto;">⟳ 0°</span>' +
+    // (dev1113) A clip's lossless turn is a menu: the turn to make, clockwise,
+    // from the way it plays now. Video from disk only; see _vpVideoTurn.
+    '<select id="vp-crop-vturn" disabled ' +
+      'style="display:none;background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;">' +
+      '<option value="0">⟳ no change</option>' +
+      '<option value="90">⟳ 90° cw</option>' +
+      '<option value="180">⟳ 180°</option>' +
+      '<option value="270">⟳ 270° cw</option>' +
+    '</select>' +
     '<label id="vp-crop-slow-lbl" style="display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none;opacity:0.85;">' +
       '<input id="vp-crop-slow" type="checkbox" style="margin:0;vertical-align:middle;">Slow</label>' +
     // (dev0745) Saved text — every caption you finish typing is remembered, and
@@ -8007,25 +8006,25 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       'padding:3px 8px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;">✕</button>';
   c.appendChild(bar);   // (dev0318) bar lives on the container, not the (tiltable) rect
 
-  // (dev1084) The stills' ⟳ chip, on a clip opened in VECT from disk. Here it
-  // reads and turns the FILE's rotation flag (_vpVideoTurn), not a turn kept
-  // in this browser — so it shows what every other player will do too.
+  // (dev1084) On a clip opened in VECT from disk, the turn reads and turns the
+  // FILE's rotation flag (_vpVideoTurn), not a turn kept in this browser — so
+  // it shows what every other player will do too.
+  // (dev1113) A menu now, not the stills' click chip: no change / 90 / 180 /
+  // 270 clockwise. The clip reopens after a turn, so the menu always starts
+  // back on "no change".
   if (!imageMode && _vpVideoTurnPath(row)) {
-    const turnChip = bar.querySelector('#vp-crop-turn');
-    if (turnChip) {
-      turnChip.style.display = '';
-      turnChip.textContent = '⟳ …';
-      turnChip.title = 'Turn the clip a quarter (O clockwise · ⇧O anti-clockwise · click / ⇧click / right-click). ' +
+    const turnSel = bar.querySelector('#vp-crop-vturn');
+    if (turnSel) {
+      turnSel.style.display = '';
+      turnSel.title = 'Turn the clip clockwise from the way it plays now. ' +
         'LOSSLESS: rewrites the rotation flag inside the file, so no pixel is re-encoded. The file date is kept.';
-      turnChip.addEventListener('click', e => {
-        e.preventDefault(); e.stopPropagation();
-        _vpVideoTurn(e.shiftKey ? -90 : 90);
+      turnSel.addEventListener('change', () => {
+        const t = +turnSel.value;
+        turnSel.value = '0';
+        turnSel.blur();
+        if (t) _vpVideoTurn(t === 270 ? -90 : t);
       });
-      turnChip.addEventListener('contextmenu', e => {
-        e.preventDefault(); e.stopPropagation();
-        _vpVideoTurn(-90);
-      });
-      _vpVideoTurnPaint(turnChip, _vpVideoTurnPath(row));
+      _vpVideoTurnPaint(turnSel, _vpVideoTurnPath(row));
     }
   }
 
@@ -10431,9 +10430,9 @@ function _vpCropHelpShow() {
                              '(' + K('T') + ' goes back to a locked rect)') +
         row(K('1') + K('2'), 'tilt ∓0.5° to straighten a horizon') +
         row('knob / ⟲',      'drag to tilt · wheel ±0.1° · double-click = level') +
-        // (dev1084)
-        row(K('O'),          'a clip playing sideways: turn it a quarter clockwise ' +
-                             '(⇧O the other way; the ⟳ chip clicks too). LOSSLESS — ' +
+        // (dev1084) (dev1113) a menu now; O / ⇧O are gone
+        row('⟳ menu',        'a clip playing sideways: turn it 90°, 180° or 270° ' +
+                             'clockwise. LOSSLESS — ' +
                              'it rewrites the file’s own rotation flag on disk, so ' +
                              'no pixel is re-encoded and every player, G and the ' +
                              'renders see it the new way. The clip reopens with A/B ' +
@@ -14848,7 +14847,9 @@ function _vpVideoTurnPath(row) {
   return /^([A-Za-z]:[\\/]|[\\/]{2}[^\\/])/.test(p) && /\.(mp4|m4v|mov)$/i.test(p) ? p : '';
 }
 
-async function _vpVideoTurnPaint(chip, absPath) {
+// (dev1113) Paints the ⟳ menu: usable once the proxy has read the flag, and
+// tinted blue when the file already carries a turn (the tooltip says which).
+async function _vpVideoTurnPaint(sel, absPath) {
   let j = null;
   try {
     if (await _vpProxyHasFeature('vectrotate')) {
@@ -14856,15 +14857,15 @@ async function _vpVideoTurnPaint(chip, absPath) {
       j = await r.json();
     }
   } catch (_) {}
-  if (!chip.isConnected) return;
+  if (!sel.isConnected) return;
   if (!j || !j.ok) {
-    chip.textContent = '⟳ ?';
-    if (j && j.error) chip.title = 'Cannot turn this clip: ' + j.error;
+    sel.title = 'Cannot turn this clip' + ((j && j.error) ? (': ' + j.error) : ' — restart "node proxy.js" (dev1084)');
     return;
   }
-  chip.textContent = '⟳ ' + j.rot + '°';
-  chip.style.background = j.rot ? '#2a5d9a' : '#234';
-  chip.style.color      = j.rot ? '#fff' : '#dfe6f0';
+  sel.disabled = false;
+  sel.title += ' The file is flagged ' + j.rot + '° clockwise now.';
+  sel.style.background = j.rot ? '#2a5d9a' : '#1a1a2e';
+  sel.style.color      = j.rot ? '#fff' : '#dfe6f0';
 }
 
 let _vpTurnBusy = false;
@@ -14899,7 +14900,7 @@ async function _vpVideoTurn(delta) {
     vpClose();
     _vectOpenVideo(abs, keep);
     toast('⟳ ' + j.was + '° → ' + j.rot + '° clockwise, written into the file (lossless). ' +
-          (delta > 0 ? '⇧O' : 'O') + ' turns it back.', 3600);
+          'The ⟳ menu turns it back.', 3600);
   } finally {
     _vpTurnBusy = false;
   }
