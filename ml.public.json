@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1792272454701,
+    "_salPushTime": 1792377005703,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -90,7 +90,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "DateAdded",
+      "col": "UID",
       "dir": "desc"
     },
     "_salGsize": 5,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1792272454701
+    "_salSavedAt": 1792377005703
   },
   {
     "UID": "1",
@@ -21716,8 +21716,8 @@
     "VidTitle": "The Hardest Problem Evolution Ever Solved",
     "VidAuthor": "@hankschannel",
     "cell": "",
-    "vidLength": "20:36",
-    "VQ": "",
+    "vidLength": "20:14",
+    "VQ": "9",
     "BQ": "",
     "COI": "",
     "segLength": "",
@@ -43302,7 +43302,8 @@
     "cell": "",
     "UOD": "",
     "DictSize": "203",
-    "ftext": ""
+    "ftext": "",
+    "VQ": "9"
   },
   {
     "UID": "1901",
@@ -43569,8 +43570,10 @@
     "link": "https://v1.pinimg.com/videos/mc/720p/89/b0/ca/89b0ca934276cfea2befe5274df51ec6.mp4",
     "show": "1",
     "DateAdded": "2026-07-29 14:20:33",
-    "DateModified": "2026-07-29 14:22:24",
-    "tags": [],
+    "DateModified": "2026-10-18 02:02:46",
+    "tags": [
+      "tardigrada"
+    ],
     "ltype": "v",
     "Mute": "0",
     "linkpage": "https://www.pinterest.com/pin/731694270718894799/",
@@ -43585,7 +43588,7 @@
     "vidLength": "0:13",
     "cell": "",
     "UOD": "",
-    "DictSize": "0",
+    "DictSize": "1778",
     "ftext": ""
   },
   {
@@ -49548,12 +49551,14 @@
     "link": "https://www.shutterstock.com/shutterstock/videos/1080183518/preview/stock-footage-sand-starfish-or-slender-sea-star-astropecten-spinulosus-creeps-along-the-sandy-bottom-then.webm",
     "show": "1",
     "DateAdded": "2026-09-04 03:57:12",
-    "DateModified": "2026-09-04 03:58:00",
-    "tags": [],
+    "DateModified": "2026-10-18 02:05:46",
+    "tags": [
+      "astropecten"
+    ],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0",
+    "DictSize": "2286",
     "MPix": "V",
     "vidLength": "0:18",
     "cell": ""
@@ -49563,12 +49568,14 @@
     "link": "https://www.shutterstock.com/shutterstock/videos/3483661789/preview/stock-footage-sand-sea-star-or-sandy-starfish-astropecten-jonstoni-quickly-burrows-into-the-sandy-seabed-close.webm",
     "show": "1",
     "DateAdded": "2026-09-04 03:58:40",
-    "DateModified": "2026-09-04 03:58:40",
-    "tags": [],
+    "DateModified": "2026-10-18 02:05:45",
+    "tags": [
+      "astropecten"
+    ],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0",
+    "DictSize": "2286",
     "MPix": "V",
     "vidLength": "0:42",
     "cell": ""
@@ -49578,28 +49585,34 @@
     "link": "https://www.shutterstock.com/shutterstock/videos/3496123471/preview/stock-footage-sand-sea-star-or-sandy-starfish-astropecten-jonstoni-crawling-quickly-along-the-sandy-seabed.webm",
     "show": "1",
     "DateAdded": "2026-09-04 04:00:08",
-    "DateModified": "2026-09-04 04:00:08",
-    "tags": [],
+    "DateModified": "2026-10-18 02:05:43",
+    "tags": [
+      "astropecten"
+    ],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0",
+    "DictSize": "2286",
     "MPix": "V",
-    "cell": ""
+    "cell": "",
+    "vidLength": "0:20"
   },
   {
     "UID": "2241",
     "link": "https://www.shutterstock.com/shutterstock/videos/3538510731/preview/stock-footage-comb-starfish-astropecten-polyacanthus-moving-at-night.webm",
     "show": "1",
     "DateAdded": "2026-09-04 04:01:53",
-    "DateModified": "2026-09-04 04:01:53",
-    "tags": [],
+    "DateModified": "2026-10-18 02:05:27",
+    "tags": [
+      "astropecten"
+    ],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
-    "DictSize": "0",
+    "DictSize": "2286",
     "MPix": "V",
-    "cell": ""
+    "cell": "",
+    "vidLength": "0:28"
   },
   {
     "UID": "2242",
@@ -56358,13 +56371,13 @@
     "link": "https://youtu.be/euFjdwEMCOc",
     "show": "1",
     "DateAdded": "2026-10-17 17:37:35",
-    "DateModified": "2026-10-17 17:37:39",
+    "DateModified": "2026-10-17 21:50:02",
     "tags": [
       "transcribed"
     ],
     "Mute": "0",
-    "ftextSize": "2202",
-    "FtextJunk": "3",
+    "ftextSize": "2129",
+    "FtextJunk": "0",
     "DictSize": "0",
     "VidTitle": "You’ll Never do 16:8 Fasting Again - This Works 3x Better for Insulin Resistance (full plan)",
     "VidAuthor": "@ThomasDeLauerOfficial",
@@ -56443,5 +56456,265 @@
     "VidAuthor": "@TheBloodPressureDoc",
     "Mode": "L",
     "ftext": ""
+  },
+  {
+    "UID": "2620",
+    "link": "https://youtu.be/yAJtc0u1vrg",
+    "show": "1",
+    "DateAdded": "2026-10-17 21:33:44",
+    "DateModified": "2026-10-17 21:37:17",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "5352",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "VidTitle": "It's Weird, But It Lowers LDL Cholesterol by 41% (Study Backed)",
+    "VidAuthor": "@TheBloodPressureDoc",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2621",
+    "link": "https://youtu.be/7Np2mQWaanQ",
+    "show": "1",
+    "DateAdded": "2026-10-17 21:39:46",
+    "DateModified": "2026-10-17 21:39:51",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "5811",
+    "FtextJunk": "1",
+    "DictSize": "0",
+    "VidTitle": "2 Minutes Every Morning Reduces Stroke Risk by 44% (Study)",
+    "VidAuthor": "@TheBloodPressureDoc",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2622",
+    "link": "https://youtu.be/3v1s5qQAPyk",
+    "show": "1",
+    "DateAdded": "2026-10-17 23:45:16",
+    "DateModified": "2026-10-17 23:45:19",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "5320",
+    "FtextJunk": "1",
+    "DictSize": "0",
+    "VidTitle": "DATE SHOCK: This Is What 2 Dates REALLY Do To Your Blood Sugar After 60",
+    "VidAuthor": "@FoodDecode07",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2623",
+    "link": "https://youtu.be/1gA_TMxBmDo",
+    "show": "1",
+    "DateAdded": "2026-10-17 23:52:31",
+    "DateModified": "2026-10-17 23:52:34",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "2736",
+    "FtextJunk": "3",
+    "DictSize": "0",
+    "VidTitle": "Do Cashews Really Lower LDL Cholesterol? What The Research Shows",
+    "VidAuthor": "@HealthyAging-Channel",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2624",
+    "link": "https://youtu.be/rQicGYU5wJ4",
+    "show": "1",
+    "DateAdded": "2026-10-18 00:02:05",
+    "DateModified": "2026-10-18 00:02:09",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "1111",
+    "FtextJunk": "7",
+    "DictSize": "0",
+    "VidTitle": "Stop Cooking With THIS If You Want to Lower Cholesterol",
+    "VidAuthor": "@FoundMyFitnessClips",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2625",
+    "link": "https://youtu.be/1qGdK7j86kM",
+    "show": "1",
+    "DateAdded": "2026-10-18 00:05:00",
+    "DateModified": "2026-10-18 00:05:10",
+    "tags": [
+      "pagurus-armatus"
+    ],
+    "Mute": "0",
+    "ftextSize": "2444",
+    "FtextJunk": "3",
+    "DictSize": "623",
+    "VidTitle": "Hermit Crab In A Moon Snail Shell 3 | Salish Sea Marine Wildlife",
+    "VidAuthor": "@CaptainEelgrass",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2626",
+    "link": "https://youtu.be/uRz0P-_J9sM",
+    "show": "1",
+    "DateAdded": "2026-10-18 00:05:40",
+    "DateModified": "2026-10-18 00:05:51",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "1672",
+    "FtextJunk": "5",
+    "DictSize": "0",
+    "VidTitle": "Add This To Mushrooms For 90% Lower Cancer Risk!",
+    "VidAuthor": "@PlantBasedScienceLondon",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2627",
+    "link": "https://youtu.be/ihYAY214z6s",
+    "show": "1",
+    "DateAdded": "2026-10-18 00:07:51",
+    "DateModified": "2026-10-18 00:07:58",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "1221",
+    "FtextJunk": "6",
+    "DictSize": "0",
+    "VidTitle": "The Surprising #2 Most Anti Inflammatory Food! Dr Greger",
+    "VidAuthor": "@PlantBasedScienceLondon",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2628",
+    "link": "https://youtu.be/GcXyiiwaspE",
+    "show": "1",
+    "DateAdded": "2026-10-18 00:11:07",
+    "DateModified": "2026-10-18 00:11:10",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "2791",
+    "FtextJunk": "3",
+    "DictSize": "0",
+    "VidTitle": "Q&A: Dr. Greger Talks Nutrient Content and Common Diseases",
+    "VidAuthor": "@NutritionFactsOrg",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2629",
+    "link": "https://youtu.be/IKdShZ2CDe4",
+    "show": "1",
+    "DateAdded": "2026-10-18 00:11:45",
+    "DateModified": "2026-10-18 00:11:53",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "3504",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "Why You Should Eat Blueberries Every Day As You Age",
+    "VidAuthor": "@FoundMyFitness",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2630",
+    "link": "https://youtu.be/n5U8M2JtAHk",
+    "show": "1",
+    "DateAdded": "2026-10-18 02:13:30",
+    "DateModified": "2026-10-18 02:13:41",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "4365",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "This May Be The Most Important Video You'll Watch This Year.",
+    "VidAuthor": "@CuriousOwl-l5p",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2631",
+    "link": "https://youtu.be/rc58xOwjwto",
+    "show": "1",
+    "DateAdded": "2026-10-18 02:17:00",
+    "DateModified": "2026-10-18 02:17:04",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "2698",
+    "FtextJunk": "3",
+    "DictSize": "0",
+    "VidTitle": "We Taught Bees To Use Tools. Then Things Got Strange.",
+    "VidAuthor": "@CuriousOwl-l5p",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2632",
+    "link": "https://youtu.be/s_aNH4hXz8I",
+    "show": "1",
+    "DateAdded": "2026-10-18 02:17:38",
+    "DateModified": "2026-10-18 02:17:42",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "2874",
+    "FtextJunk": "3",
+    "DictSize": "0",
+    "VidTitle": "We've Been Testing For Consciousness Wrong",
+    "VidAuthor": "@CuriousOwl-l5p",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "21:30"
+  },
+  {
+    "UID": "2633",
+    "link": "https://youtu.be/Drbl5udwk9I",
+    "show": "1",
+    "DateAdded": "2026-10-18 02:18:01",
+    "DateModified": "2026-10-18 02:18:04",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "3437",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "First Scientific Confirmation of Consciousness in a Tiny Fish",
+    "VidAuthor": "@whatdamath",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "15:33"
+  },
+  {
+    "UID": "2634",
+    "cell": "5b",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "",
+    "DateAdded": "2026-10-19 02:28:49",
+    "DateModified": "2026-10-19 02:30:05",
+    "ftextSize": "2093",
+    "FtextJunk": "0",
+    "DictSize": "0"
   }
 ]

@@ -4687,11 +4687,15 @@ async function _vpFrameTable(t) {
     return (i >= 1 || c.fromTop) && (i <= c.times.length - 2 || c.times[c.times.length - 1] >= dur - 0.5);
   };
   if (ok(st._ft)) return st._ft;
+  // (dev1111) An AVI's packets mostly carry no pts; its stand-in's are ffmpeg's
+  // own times for the same frames (see vectStandin in proxy.js).
+  const row = window._vpCurrentRow;
+  const probeIn = (row && row._vectStandin && row.comment === abs) ? row._vectStandin : abs;
   const read = async (fromSec, spanSec) => {
     try {
       const r = await fetch(PROXY_BASE + '/exec/ffprobe', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: abs, keyframes: { fromSec, spanSec } })
+        body: JSON.stringify({ input: probeIn, keyframes: { fromSec, spanSec } })
       });
       const j = await r.json();
       const pk = j && j.result && j.result.packets;
@@ -13904,7 +13908,7 @@ function vpMountDirectVideo(host, link, seg, muted) {
   host.innerHTML = '';
   const vid = document.createElement('video');
   vid.src = link;
-  vid.addEventListener('error', () => { _vpRetryWithoutAudio(vid); });   // (dev1082)
+  vid.addEventListener('error', () => { _vpRetryWithoutAudio(vid); _vectRetryAsStandin(vid); });   // (dev1082, dev1111)
   // (dev0949) Under slim chrome the native control bar is exactly what the Vss
   // dressing exists to remove — the thin strip replaces it.
   vid.controls = !_vpSlimActive;
@@ -14695,8 +14699,10 @@ window.vectOpenLocalFile = function (absPath) {
 
 // Video → the ordinary V player on a synthesized disk-video row, which brings
 // its crop overlay (C) with it. Same preconditions T's own V hotkey sets up.
-function _vectOpenVideo(absPath, keep) {
+function _vectOpenVideo(absPath, keep, standin) {
   if (typeof gridOpenFullscreen !== 'function') return false;
+  // (dev1111) Chrome plays no AVI: show a converted copy instead (see below).
+  if (!standin && VECT_STANDIN_RE.test(absPath)) { _vectViaStandin(absPath, keep); return true; }
   const gOvl = document.getElementById('gridOverlay');
   if (gOvl && gOvl.style.display !== 'flex') {
     gOvl.style.display = 'flex';
@@ -14708,6 +14714,9 @@ function _vectOpenVideo(absPath, keep) {
   // any other way still starts clean with the picture unobstructed.
   window._vectAutoCrop = true;
   const vrow = _vectRowFor(absPath, true);
+  // (dev1111) The <video> gets the copy; `comment` keeps naming the original,
+  // so every render, probe and sidecar still reads the AVI itself.
+  if (standin) { vrow.link = _vectFileUrl(standin); vrow._vectStandin = standin; }
   // (dev1084) After a turn the same URL would name different bytes; a fresh one
   // keeps Chrome's media cache from handing back the old header.
   if (keep) vrow.link += '&turn=' + Date.now();
@@ -14721,6 +14730,59 @@ function _vectOpenVideo(absPath, keep) {
   if (keep) _vectRestoreMarks(absPath, keep);
   else _vectApplyLlc(absPath);   // (dev1059)
   return true;
+}
+
+// (dev1111) ── A video Chrome cannot play ────────────────────────────────────
+// An AVI never plays in Chrome (an old one is usually XviD with PCM sound).
+// Proxy /vect/standin makes an H.264/AAC copy in %TEMP% once per file,
+// with every frame at the time ffmpeg gives it in the original, and VECT shows
+// that while saving from the original. Any other disk clip Chrome refuses
+// outright (MEDIA_ERR_SRC_NOT_SUPPORTED — an XviD .mkv, an old-codec .mov) takes
+// the same road after the refusal. The wait is a progress toast; opening
+// another file meanwhile drops it.
+const VECT_STANDIN_RE = /\.avi$/i;
+let _vectStandinFor = '';
+async function _vectViaStandin(absPath, keep) {
+  const name = absPath.split(/[\\/]/).pop() || absPath;
+  if (!(await _vpProxyHasFeature('vectstandin'))) {
+    toast('Chrome cannot play ' + name + '. VECT shows such a file through a converted copy, which needs the new proxy: restart "node proxy.js" (dev1111) and reopen it.', 6000);
+    return;
+  }
+  _vectStandinFor = absPath;
+  let waited = false;
+  for (;;) {
+    if (_vectStandinFor !== absPath) return;
+    let j;
+    try {
+      const r = await fetch(PROXY_BASE + '/vect/standin?p=' + encodeURIComponent(absPath), { cache: 'no-store' });
+      j = await r.json();
+    } catch (_) { j = { ok: false, error: 'the proxy did not answer' }; }
+    if (_vectStandinFor !== absPath) return;
+    if (!j || !j.ok) {
+      _vectStandinFor = '';
+      toast('Cannot show ' + name + ': ' + ((j && j.error) || 'unknown error'), 6000);
+      return;
+    }
+    if (j.state === 'ready') {
+      _vectStandinFor = '';
+      _vectOpenVideo(absPath, keep, j.path);
+      if (waited) toast('Showing a converted copy of ' + name + '; saves read the original.', 3000);
+      return;
+    }
+    waited = true;
+    toast('Chrome cannot play ' + name + ', so VECT is making a copy it can … ' + (j.pct || 0) + '%', 2500);
+    await new Promise(r => setTimeout(r, 400));
+  }
+}
+
+function _vectRetryAsStandin(vid) {
+  const err = vid.error, row = window._vpCurrentRow;
+  if (!err || err.code !== 4 || !row || !row._directVideoFile || row._vectStandin) return;
+  if (!/\/localfile\?/.test(vid.currentSrc || vid.src || '')) return;
+  const abs = String(row.comment || '');
+  if (!/^([A-Za-z]:[\\/]|[\\/]{2}[^\\/])/.test(abs) || !VECT_VIDEO_RE.test(abs)) return;
+  vpClose();
+  _vectViaStandin(abs, null);
 }
 
 // (dev1084) ── lossless quarter turn of a VIDEO ──────────────────────────────
