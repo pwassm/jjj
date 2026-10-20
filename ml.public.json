@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1792512152982,
+    "_salPushTime": 1792534555635,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1792512152982
+    "_salSavedAt": 1792534555635
   },
   {
     "UID": "1",
@@ -57377,5 +57377,56 @@
     "VidAuthor": "@ThomasDeLauerOfficial",
     "Mode": "L",
     "ftext": ""
+  },
+  {
+    "UID": "2665",
+    "link": "https://youtu.be/BpT5V6h42ck",
+    "show": "1",
+    "DateAdded": "2026-10-20 22:08:29",
+    "DateModified": "2026-10-20 22:08:32",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "1513",
+    "FtextJunk": "5",
+    "DictSize": "0",
+    "VidTitle": "Everything About This Fish is Confusing",
+    "VidAuthor": "@natureofthings",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2666",
+    "link": "https://youtu.be/_vTNoc7frfQ",
+    "show": "1",
+    "DateAdded": "2026-10-20 22:10:46",
+    "DateModified": "2026-10-20 22:12:09",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "1469",
+    "FtextJunk": "5",
+    "DictSize": "0",
+    "VidTitle": "Can a Pro Climber beat a Mountain Goat?",
+    "VidAuthor": "@natureofthings",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2667",
+    "link": "https://youtu.be/W7WVjontEmk",
+    "show": "1",
+    "DateAdded": "2026-10-20 22:11:25",
+    "DateModified": "2026-10-20 22:12:48",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "16059",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "VidTitle": "Members-Only: Two Key Details Every Beginner Needs for Backhand Power",
+    "VidAuthor": "@kakaluser",
+    "Mode": "L",
+    "ftext": "",
+    "VQ": "9"
   }
 ]
