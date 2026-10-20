@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1792422931551,
+    "_salPushTime": 1792512152982,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -93,7 +93,7 @@
       "col": "DateAdded",
       "dir": "desc"
     },
-    "_salGsize": 5,
+    "_salGsize": 3,
     "_salViews": {
       "view1": {
         "name": "view1",
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1792422931551
+    "_salSavedAt": 1792512152982
   },
   {
     "UID": "1",
@@ -55522,7 +55522,7 @@
     "vidLength": "0:12",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "5a"
+    "cell": ""
   },
   {
     "UID": "2562",
@@ -55538,7 +55538,7 @@
     "vidLength": "0:08",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "4e"
+    "cell": ""
   },
   {
     "UID": "2563",
@@ -55554,7 +55554,7 @@
     "vidLength": "0:15",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "4d"
+    "cell": ""
   },
   {
     "UID": "2564",
@@ -55569,7 +55569,7 @@
     "MPix": "0.9",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "4c"
+    "cell": ""
   },
   {
     "UID": "2565",
@@ -55585,7 +55585,7 @@
     "vidLength": "1:46",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "4b"
+    "cell": ""
   },
   {
     "UID": "2566",
@@ -55600,7 +55600,7 @@
     "MPix": "V",
     "vidLength": "",
     "DictSize": "0",
-    "cell": "4a"
+    "cell": ""
   },
   {
     "UID": "2567",
@@ -55616,7 +55616,7 @@
     "vidLength": "0:31",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "3e"
+    "cell": ""
   },
   {
     "UID": "2568",
@@ -55631,7 +55631,7 @@
     "MPix": "0.9",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "3d"
+    "cell": ""
   },
   {
     "UID": "2569",
@@ -55647,7 +55647,7 @@
     "vidLength": "2:22",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "3c"
+    "cell": ""
   },
   {
     "UID": "2570",
@@ -55663,7 +55663,7 @@
     "vidLength": "2:42",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "3b"
+    "cell": ""
   },
   {
     "UID": "2571",
@@ -55679,7 +55679,7 @@
     "vidLength": "0:12",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "3a"
+    "cell": ""
   },
   {
     "UID": "2572",
@@ -55695,7 +55695,7 @@
     "vidLength": "0:28",
     "Mode": "P",
     "DictSize": "0",
-    "cell": "2e"
+    "cell": ""
   },
   {
     "UID": "2573",
@@ -55711,7 +55711,7 @@
     "vidLength": "0:10",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "2d"
+    "cell": ""
   },
   {
     "UID": "2574",
@@ -55727,7 +55727,7 @@
     "vidLength": "0:07",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "2c"
+    "cell": ""
   },
   {
     "UID": "2575",
@@ -55743,7 +55743,7 @@
     "vidLength": "0:05",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "2b"
+    "cell": ""
   },
   {
     "UID": "2576",
@@ -55759,7 +55759,7 @@
     "vidLength": "0:15",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "2a"
+    "cell": ""
   },
   {
     "UID": "2577",
@@ -55774,7 +55774,7 @@
     "MPix": "12.0",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "1e"
+    "cell": ""
   },
   {
     "UID": "2578",
@@ -55789,7 +55789,7 @@
     "MPix": "6.0",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "1d"
+    "cell": ""
   },
   {
     "UID": "2579",
@@ -55805,7 +55805,7 @@
     "vidLength": "0:11",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "1c"
+    "cell": ""
   },
   {
     "UID": "2580",
@@ -55821,7 +55821,7 @@
     "vidLength": "0:10",
     "Mode": "P",
     "DictSize": "0",
-    "cell": "1b"
+    "cell": ""
   },
   {
     "UID": "2581",
@@ -55837,7 +55837,7 @@
     "vidLength": "0:13",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "1a"
+    "cell": ""
   },
   {
     "UID": "2583",
@@ -55851,7 +55851,8 @@
     "FtextJunk": "0",
     "DictSize": "0",
     "MPix": "2.5",
-    "Mode": "L"
+    "Mode": "L",
+    "cell": ""
   },
   {
     "UID": "2584",
@@ -55865,7 +55866,8 @@
     "FtextJunk": "0",
     "DictSize": "0",
     "MPix": "2.5",
-    "Mode": "L"
+    "Mode": "L",
+    "cell": ""
   },
   {
     "UID": "2585",
@@ -55879,7 +55881,8 @@
     "FtextJunk": "0",
     "DictSize": "0",
     "MPix": "2.5",
-    "Mode": "L"
+    "Mode": "L",
+    "cell": ""
   },
   {
     "UID": "2586",
@@ -55893,7 +55896,8 @@
     "FtextJunk": "0",
     "DictSize": "0",
     "MPix": "2.5",
-    "Mode": "L"
+    "Mode": "L",
+    "cell": ""
   },
   {
     "UID": "2587",
@@ -55911,7 +55915,8 @@
     "VidTitle": "This Creature Has 2 Brains… And Scientists Don’t Know Why…",
     "VidAuthor": "@Bio-FaunaReport",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2588",
@@ -55929,7 +55934,8 @@
     "VidTitle": "Comb Jelly 'Brain' Revealed: Ancient Secrets of Animal Evolution",
     "VidAuthor": "@EpicLEGOCreations",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2589",
@@ -55949,7 +55955,8 @@
     "Mode": "L",
     "ftext": "",
     "BQ": "8",
-    "VQ": "8"
+    "VQ": "8",
+    "cell": ""
   },
   {
     "UID": "2590",
@@ -55965,7 +55972,8 @@
     "VidTitle": "The #1 Supplement To Repair Tendons & Ligaments (1 DOSE Is Enough!)",
     "VidAuthor": "@felix-harder",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2591",
@@ -55983,7 +55991,8 @@
     "VidTitle": "Why This Hermit Crab Carries a Sea Anemone",
     "VidAuthor": "@ColdwaterTanks",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2592",
@@ -56001,7 +56010,8 @@
     "VidTitle": "This Coldwater Hermit Crab Had a Choice to Make",
     "VidAuthor": "@ColdwaterTanks",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2593",
@@ -56019,7 +56029,8 @@
     "VidTitle": "Bernhard's  or Common Hermit Crab, Pagurus bernhardus",
     "VidAuthor": "@sylviameller3378",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2594",
@@ -56037,7 +56048,8 @@
     "VidTitle": "The Black eyed Hermit Crab",
     "VidAuthor": "@RickyTheSmart",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2595",
@@ -56053,7 +56065,8 @@
     "VidTitle": "Hermit Crabs: Hermit Crabs Aren’t Really a Crab Here’s Why?",
     "VidAuthor": "@WildlifePediaEnglish",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2596",
@@ -56069,7 +56082,8 @@
     "VidTitle": "Hermit Crab: It Eats Its Own Old Shell for Calcium",
     "VidAuthor": "@VinnieBrendon",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2597",
@@ -56087,7 +56101,8 @@
     "VidTitle": "10 Best Tactics Chinese Coaches Teach Seniors to Win Points Without Running",
     "VidAuthor": "@meispinmasters",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2598",
@@ -56105,7 +56120,8 @@
     "VidTitle": "Why The Giant Manta Ray Is Nothing Like Any Other Ocean Animal",
     "VidAuthor": "@TheWildLoreYT",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2599",
@@ -56121,7 +56137,8 @@
     "VidTitle": "Why Orcas are Terrified of Blue Whales",
     "VidAuthor": "@OfficialBeyondTheBlue",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2600",
@@ -56137,7 +56154,8 @@
     "VidTitle": "It’s Weird, but Tendon Training Will Give You Jaw-Dropping Strength",
     "VidAuthor": "@MisterWhite-en",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2601",
@@ -56153,7 +56171,8 @@
     "VidTitle": "Why Swordfish Are the Weirdest Apex Predator on Earth",
     "VidAuthor": "@DeeeeepYT",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2602",
@@ -56169,7 +56188,8 @@
     "VidTitle": "Deep Sea Creatures Almost Nobody Has Ever Seen",
     "VidAuthor": "@EarthUnwatched",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2603",
@@ -56187,7 +56207,8 @@
     "VidTitle": "Blackeyed Hermit 5 | Salish Sea Marine Wildlife",
     "VidAuthor": "@CaptainEelgrass",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2604",
@@ -56203,7 +56224,8 @@
     "VidTitle": "Watch This Starfish Protect Her Babies From Danger | Deep Look",
     "VidAuthor": "@KQEDDeepLook",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2605",
@@ -56222,7 +56244,8 @@
     "VidAuthor": "@KQEDDeepLook",
     "Mode": "L",
     "ftext": "",
-    "vidLength": "4:10"
+    "vidLength": "4:10",
+    "cell": ""
   },
   {
     "UID": "2606",
@@ -56240,7 +56263,8 @@
     "VidTitle": "Hermit Crabs: 🦀 Amazing Facts, Behaviors & Secrets You Didn’t Know!",
     "VidAuthor": "@WildlifePediaEnglish",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2607",
@@ -56258,7 +56282,8 @@
     "VidTitle": "How to tell if a hermit crab is male or female",
     "VidAuthor": "@crabbygabbyofficial",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2608",
@@ -56276,7 +56301,8 @@
     "DictSize": "623",
     "VidTitle": "Why Are Hermit Crabs so Obsessed With Snail Shells? | #DeepLook #Shorts",
     "VidAuthor": "@KQEDDeepLook",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2609",
@@ -56292,7 +56318,8 @@
     "VidTitle": "Barnacles Go To Unbelievable Lengths To Hook Up | Deep Look",
     "VidAuthor": "@KQEDDeepLook",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2610",
@@ -56308,7 +56335,8 @@
     "VidTitle": "Ever Seen a Starfish Gallop? | Deep Look",
     "VidAuthor": "@KQEDDeepLook",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2611",
@@ -56326,7 +56354,8 @@
     "VidTitle": "Hermit Crab In A Moon Snail Shell 2 | Salish Sea Marine Wildlife",
     "VidAuthor": "@CaptainEelgrass",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2612",
@@ -56345,7 +56374,8 @@
     "VidAuthor": "@Hidden-Signal-HQ",
     "Mode": "L",
     "ftext": "",
-    "vidLength": "5:10"
+    "vidLength": "5:10",
+    "cell": ""
   },
   {
     "UID": "2613",
@@ -56363,7 +56393,8 @@
     "VidTitle": "Nobel Prize Winning Doctor: Just Eat These Every Day and You Will Live to 100 (not what you think)",
     "VidAuthor": "@foodsdrinks",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2614",
@@ -56381,7 +56412,8 @@
     "VidTitle": "Autophagy Doctor: Eat This for 4 Days and Shrink Fat More than Fasting (no muscle loss)",
     "VidAuthor": "@ThomasDeLauerOfficial",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2615",
@@ -56399,7 +56431,8 @@
     "VidTitle": "You’ll Never do 16:8 Fasting Again - This Works 3x Better for Insulin Resistance (full plan)",
     "VidAuthor": "@ThomasDeLauerOfficial",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2616",
@@ -56417,7 +56450,8 @@
     "VidTitle": "THIS Food Slows Biological Aging More Than Exercise (longevity scientist explains)",
     "VidAuthor": "@FoundMyFitnessClips",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2617",
@@ -56435,7 +56469,8 @@
     "VidTitle": "Dr. Jason Fung Changed His Mind About Fasting - Here’s Why",
     "VidAuthor": "@DrMindyPelz",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2618",
@@ -56454,7 +56489,8 @@
     "VidAuthor": "@KPassionate",
     "Mode": "L",
     "ftext": "",
-    "FTLsaved": "9"
+    "FTLsaved": "9",
+    "cell": ""
   },
   {
     "UID": "2619",
@@ -56472,7 +56508,8 @@
     "VidTitle": "4 Tricks to INSTANTLY Lower LDL Cholesterol Naturally",
     "VidAuthor": "@TheBloodPressureDoc",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2620",
@@ -56490,7 +56527,8 @@
     "VidTitle": "It's Weird, But It Lowers LDL Cholesterol by 41% (Study Backed)",
     "VidAuthor": "@TheBloodPressureDoc",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2621",
@@ -56508,7 +56546,8 @@
     "VidTitle": "2 Minutes Every Morning Reduces Stroke Risk by 44% (Study)",
     "VidAuthor": "@TheBloodPressureDoc",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2622",
@@ -56526,7 +56565,8 @@
     "VidTitle": "DATE SHOCK: This Is What 2 Dates REALLY Do To Your Blood Sugar After 60",
     "VidAuthor": "@FoodDecode07",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2623",
@@ -56544,7 +56584,8 @@
     "VidTitle": "Do Cashews Really Lower LDL Cholesterol? What The Research Shows",
     "VidAuthor": "@HealthyAging-Channel",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2624",
@@ -56562,7 +56603,8 @@
     "VidTitle": "Stop Cooking With THIS If You Want to Lower Cholesterol",
     "VidAuthor": "@FoundMyFitnessClips",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2625",
@@ -56580,7 +56622,8 @@
     "VidTitle": "Hermit Crab In A Moon Snail Shell 3 | Salish Sea Marine Wildlife",
     "VidAuthor": "@CaptainEelgrass",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2626",
@@ -56598,7 +56641,8 @@
     "VidTitle": "Add This To Mushrooms For 90% Lower Cancer Risk!",
     "VidAuthor": "@PlantBasedScienceLondon",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2627",
@@ -56616,7 +56660,8 @@
     "VidTitle": "The Surprising #2 Most Anti Inflammatory Food! Dr Greger",
     "VidAuthor": "@PlantBasedScienceLondon",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2628",
@@ -56634,7 +56679,8 @@
     "VidTitle": "Q&A: Dr. Greger Talks Nutrient Content and Common Diseases",
     "VidAuthor": "@NutritionFactsOrg",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2629",
@@ -56652,7 +56698,8 @@
     "VidTitle": "Why You Should Eat Blueberries Every Day As You Age",
     "VidAuthor": "@FoundMyFitness",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2630",
@@ -56670,7 +56717,8 @@
     "VidTitle": "This May Be The Most Important Video You'll Watch This Year.",
     "VidAuthor": "@CuriousOwl-l5p",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2631",
@@ -56686,7 +56734,8 @@
     "VidTitle": "We Taught Bees To Use Tools. Then Things Got Strange.",
     "VidAuthor": "@CuriousOwl-l5p",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2632",
@@ -56703,7 +56752,8 @@
     "VidAuthor": "@CuriousOwl-l5p",
     "Mode": "L",
     "ftext": "",
-    "vidLength": "21:30"
+    "vidLength": "21:30",
+    "cell": ""
   },
   {
     "UID": "2633",
@@ -56720,14 +56770,15 @@
     "VidAuthor": "@whatdamath",
     "Mode": "L",
     "ftext": "",
-    "vidLength": "15:33"
+    "vidLength": "15:33",
+    "cell": ""
   },
   {
     "UID": "2634",
-    "cell": "5b",
+    "cell": "",
     "show": "1",
     "VidRange": "text",
-    "ftext": "",
+    "ftext": "<p>On February 24, 2021, <em>Fry's announced the immediate and permanent closure of all of its stores</em>. A statement posted on its website cited \"changes in the retail&nbsp;...</p><p></p><p>Fry's Electronics officially closed on February 24, 2021, and permanently shut down all 31 remaining stores across nine states. While the company officially blamed the COVID-19 pandemic and shifts in the retail industry, its collapse was driven by a combination of long-standing internal issues:&nbsp;</p><p></p><p>Key Causes of the Collapse</p><ul><li><p><strong>Failure to Adapt to E-Commerce:</strong> Fry's was slow to move online, launching a basic dial-up service late and failing to effectively integrate its early e-commerce acquisition, <a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"http://Outpost.com\">Outpost.com</a>. It could not compete with online giants like Amazon and Newegg.&nbsp;</p><p></p></li><li><p><strong>The 2008 Embezzlement &amp; Kickback Scandal:</strong> Vice President of Merchandising Asaf Umar Sadiki orchestrated a massive kickback scheme, extorting vendors for prime shelf space and funneling over $160 million to a shell company to fund high-stakes gambling in Las Vegas. The scandal caused an estimated $87 million in direct damages and severely fractured Fry's crucial relationships with vendors</p></li><li><p></p></li><li><p><strong>Deteriorating Vendor Trust and Bare Shelves:</strong> Following the scandal and years of slow or disorganized billing, major suppliers (such as Samsung) stopped shipping inventory.&nbsp;</p></li><li><p></p></li><li><p><strong>Desperate Consignment Shift:</strong> By 2019, Fry's attempted to switch suppliers to a consignment model (where products are only paid for after they sell), which most vendors rejected, leading to massive, empty store aisles.&nbsp;</p></li><li><p></p></li><li><p><strong>The COVID-19 Pandemic:</strong> The sudden drop in foot traffic during 2020 dealt the final blow to an already cash-starved business model reliant on massive, high-overhead physical stores.&nbsp;</p><p></p></li></ul>",
     "DateAdded": "2026-10-19 02:28:49",
     "DateModified": "2026-10-19 02:30:05",
     "ftextSize": "2093",
@@ -56751,7 +56802,8 @@
     "VidAuthor": "@SquatUniversity",
     "Mode": "L",
     "ftext": "",
-    "vidLength": "13:02"
+    "vidLength": "13:02",
+    "cell": ""
   },
   {
     "UID": "2636",
@@ -56769,7 +56821,8 @@
     "VidTitle": "Got Elbow Pain? Do THIS Instead of Resting!",
     "VidAuthor": "@SquatUniversity",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2637",
@@ -56785,7 +56838,8 @@
     "VidTitle": "The Key Muscle for Tennis Elbow & Golfer's Elbow Rehab",
     "VidAuthor": "@z.elbowrehab",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2638",
@@ -56803,23 +56857,27 @@
     "VidTitle": "Hermit Crab Sifts The Sand For Food | Salish Sea Marine Wildlife",
     "VidAuthor": "@CaptainEelgrass",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2639",
     "link": "https://youtu.be/PtA_qXs8kTc",
     "show": "1",
     "DateAdded": "2026-10-19 14:53:36",
-    "DateModified": "2026-10-19 14:53:39",
-    "tags": [],
+    "DateModified": "2026-10-20 04:08:01",
+    "tags": [
+      "pagurus-armatus"
+    ],
     "Mute": "0",
     "ftextSize": "2282",
     "FtextJunk": "3",
-    "DictSize": "0",
+    "DictSize": "623",
     "VidTitle": "Hermit Crabs Mating 2 | Salish Sea Marine Wildlife",
     "VidAuthor": "@CaptainEelgrass",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2640",
@@ -56835,23 +56893,27 @@
     "VidTitle": "Crabs Trade Shells in the Strangest Way | BBC Earth",
     "VidAuthor": "@bbcearth",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2641",
     "link": "https://youtu.be/3rlwmMEv-co",
     "show": "1",
     "DateAdded": "2026-10-19 14:58:08",
-    "DateModified": "2026-10-19 14:58:11",
-    "tags": [],
+    "DateModified": "2026-10-20 04:07:59",
+    "tags": [
+      "pagurus-armatus"
+    ],
     "Mute": "0",
     "ftextSize": "2292",
     "FtextJunk": "3",
-    "DictSize": "0",
+    "DictSize": "623",
     "VidTitle": "Hermit Crabs Mating | Salish Sea Marine Wildlife",
     "VidAuthor": "@CaptainEelgrass",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2642",
@@ -56866,14 +56928,15 @@
     "ftextSize": "15886",
     "FtextJunk": "0",
     "DictSize": "437",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2643",
-    "cell": "5c",
+    "cell": "",
     "show": "1",
     "VidRange": "text",
-    "ftext": "",
+    "ftext": "<p>The taxonomic name <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/search?kgmid=%2Fg%2F121w6s23&amp;q=Kathetostoma+averruncus\"><strong><em><u>Kathetostoma averruncus</u></em></strong></a> (commonly known as the <strong>smooth stargazer</strong>) carries roots from classical mythology and anatomy, referencing both its striking physical form and defensive capabilities. [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESqgEB6zswFfVDdcA_ZNda1SgXRicKl3Tf4ZY1Y5rvv3duImxP6fvFsF3DWpS5ONnGeHO7eIc-Lhnudei-zBm3yE7nALXz3aYFdxOP3532fE5CuL1RrZ8F_mWIm6TXG-Kbq0C6mmk0L-WHLogdxRGkmAm6awdb0Rg4NaXZwUwhfQLVenKWEY6SlQFXXwX77mHoCvHJR4-qZJxQGWLyJ8GA0bUF-SFDGekxB3uaYQ\">1</a>]</p><p>🔊 Pronunciation</p><p>The scientific name is pronounced using traditional Latinized phonetic rules:</p><ul><li><p><strong><em>Kathetostoma</em></strong>: <strong>kuh-thee-TOH-stoh-muh</strong> (or <em>kath-eh-TOSS-toh-muh</em>)</p></li><li><p><strong><em>averruncus</em></strong>: <strong>ah-vur-RUNG-kus</strong></p></li></ul><p>🏛️ Origin and Meaning of the Name</p><p>The name is a combination of ancient Greek and Roman roots:</p><p>Name ComponentLinguistic OriginLiteral Meaning &amp; Context<strong><em>Kathetostoma</em></strong>Ancient Greek<em>Kathetos</em> (vertical / let down) + <em>Stoma</em> (mouth). This describes the fish's <strong>large, vertically oriented mouth</strong>, which it uses to ambush prey from beneath the sand.<strong><em>averruncus</em></strong>LatinNamed after <strong>Averruncus</strong>, the ancient Roman god of averting harm or warding off calamity. The Latin verb <em>averruncare</em> means \"to ward off\" or \"avert\". This likely refers to the fish's <strong>prominent, venomous spines</strong> located on its gill covers, which effectively ward off predators.</p><p>The species was officially cataloged and named in 1890 by renowned American ichthyologists <strong>David Starr Jordan</strong> and <strong>Charles Harvey Bollman</strong>. [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESdQHrOzAV2ATAkWrX0Y_br2mNOLKw8p76_zZigUDQbmmwmj6HAejgvq_OF_a2U0MsPbrIUHxUF_JMpmzv8oRcxt2HqDaZXnGN7U-oa_eCc5F55dbWt1hsNEP9MlexrPb7TGHmXNf1qkSyCKsZ0C0mP0PrEuVK1g\">1</a>]</p><p>If you are researching the smooth stargazer, let me know if you would like details on its <strong>geographic habitat range</strong>, its <strong>ambush hunting behavior</strong>, or how it compares to other species in the <strong>stargazer family</strong>. [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESYgHrOzAVaMNWp9oOQQYS3ihNI2kDz5wBQm0jRPPtDKpbfnPgs0GIlCmSoXHeKhiJ58CzFvcI5Nl_TasHZx2Ne0ihhl8nW2ztG7PodYQAXWHYWjlVquM8mWYPdxJceAxGwfOs\">1</a>, <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESqgEB6zswFfVDdcA_ZNda1SgXRicKl3Tf4ZY1Y5rvv3duImxP6fvFsF3DWpS5ONnGeHO7eIc-Lhnudei-zBm3yE7nALXz3aYFdxOP3532fE5CuL1RrZ8F_mWIm6TXG-Kbq0C6mmk0L-WHLogdxRGkmAm6awdb0Rg4NaXZwUwhfQLVenKWEY6SlQFXXwX77mHoCvHJR4-qZJxQGWLyJ8GA0bUF-SFDGekxB3uaYQ\">2</a>]</p><p></p><p><strong>Cielo</strong> in Spanish translates literally to \"sky\" or \"heaven\", and the phrase <strong>miracielo</strong> or <strong>mira cielo</strong> can refer to a few different things depending on the context: [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAEShwEB6zswFTNdkGD-t9Ii8SkSLoJdTvEBQTE0qiS2r3P1lM3WttcvRJs6SLdH1lmuOUfSQqWdyK5tDWFeeTpPWBnis_8WL2yBiFvX5F5KBLW2E80gdx7Mj53APUk0g2bhzCIX691N_bINBzK4FzUPDGiUJLN4QCSaqfG1o2Rd32F9lxLUmNQv-iU\">1</a>]</p><p>1. Literal Phrase: \"Mira el cielo\" (Look at the sky)</p><ul><li><p><strong>Meaning:</strong> An imperative command meaning \"look at the sky\" or \"look up\".</p></li><li><p><strong>Usage:</strong> <em>\"¡Mira el cielo!\"</em> (\"Just look at the sky!\"). [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESbwHrOzAVRyqEInoxzx604rWxrZv-yE8SOZnB4CfxnbqwP0lgFw3iGAzy5lECCmFgFcKBpYf6FppU_OJXMtovFytRaC0BQNupAoakQhlL0tA7l2HU0T7-5gF3-6_Fg4HJGcxQh2lc6B3-nJqFDMp6Kw\">1</a>, <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAEScgHrOzAVBXMv9SSVKWk7pjaWq1et3H4W1kSr9_HjX_Jj-tZPyE_GBftxFB1DJe6FD99f3q1osfw4NQab1eZR8tUbHAC0ScfCbK6HgLE_Cmm1buu6tHpzw_haFuQ3GO_KFt2r1dYbs4zJJ-Zm6qQYswo80w\">2</a>]</p></li></ul><p>2. Term of Endearment: \"Mi cielo\" (My sky / My heaven)</p><ul><li><p><strong>Meaning:</strong> A common Spanish term of endearment meaning \"my darling,\" \"my sweet,\" or \"honey\".</p></li><li><p><strong>Usage:</strong> Used affectionately among romantic partners, family members (parents to children), or close acquaintances. [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAEShwEB6zswFe6fjeBGGU5pt5OGO8O7i1IUsKd_abOoxrWUFVF3RZp2pzx9bJNy1mvGTHQd8704CEQhUp6rdCWN1P0nTKy9b_LXYrUIxO-eJjqZauV-oI2ywC6rKGkJjuJGAdHlzouUSyVdMWg7s_FERYfyo8EM4TjDR0dhh9maKWjxp-IimZ9QgKU\">1</a>, <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAEShQEB6zswFaYq1JfoVwpnKBMOUBY8xBtFdQQZprA2bjcHYvIZABisUkHgtZhp0p66qOwqI6s7h_HLAZT6UC5I7_qlmJ-OUQOg2bKmY5xlgvc6RWzeh1_9TrlszOpu3GcA8oo5A5WYAmI7Wri1rPq7s39Xo9jNwH3Ra2D1Htze7gQHBmYE-Iiy\">2</a>, <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAEShwEB6zswFTNdkGD-t9Ii8SkSLoJdTvEBQTE0qiS2r3P1lM3WttcvRJs6SLdH1lmuOUfSQqWdyK5tDWFeeTpPWBnis_8WL2yBiFvX5F5KBLW2E80gdx7Mj53APUk0g2bhzCIX691N_bINBzK4FzUPDGiUJLN4QCSaqfG1o2Rd32F9lxLUmNQv-iU\">3</a>]</p></li></ul><p>3. Regional Slang: <em>Miracielo</em> (El Salvador and Nicaragua)</p><ul><li><p><strong>Meaning:</strong> According to the Diccionario de americanismos (ASALE), it is a popular or colloquial term used in El Salvador (<em>ES</em>) and Nicaragua (<em>Ni</em>) to describe a person who is cross-eyed (<em>persona bizca</em>). [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESXQHrOzAVgAJm39BXxRrvaYw3mlza6bj9WDSPOYjKnkUu94jlDsaAxzYylulm3LsMPyCVr5fbOpcRG-W7om0905DAFrgNo2lhr_H2roa-GUmftWB1y61Z5Zjyzy8rRA\">1</a>]</p></li></ul><p>4. Botany: <em>Chile miracielo</em></p><ul><li><p><strong>Meaning:</strong> A type of chili pepper (also known as <em>mirasol</em> or the Chinese <em>Chaotián</em> pepper) that grows pointing straight up toward the sky rather than hanging downward. [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESbAHrOzAVlFbOcHkqBki68uQa3JnNPec5k5eXY4OUnN2MgUn_ytUIuSyHlgBS7pWQeDRHfJgp4I1BniEnNbLbssAUf0tRCplU1mQxL9Frg6LLi5Dcj7xn14-dXQ3Lz3sL_G3B67IkG4J9pytVfg\">1</a>, <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESiQEB6zswFY6w5w_mUaLlj-kXxPtcO3qCHpwuzzJBuw2zKMXWWEkrm-0eOAZJLsZbmE2FspWF36rHhzNsc542oFlODdVAs-VvOwJ5atzHdsjQcBRkCvE2RT4mKzy-x6klH5NB4zxU0-kANJDDvJNTCBx14Y9oGA9fSlc_UhGsLPAmLhvVUToaJuRY2A\">2</a>]</p></li></ul><p></p><p>The name <strong>\"</strong><a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/search?q=smooth+stargazer\"><strong><u>smooth stargazer</u></strong></a><strong>\"</strong> is broken down into two parts that describe the fish's unique physical anatomy and hunting behavior:</p><ul><li><p><strong>\"Smooth\":</strong> Unlike many other stargazer species that are covered in small, rough scales, members of the <em>Kathetostoma</em> genus—including <em>Kathetostoma averruncus</em>—have a <strong>completely scaleless, smooth body</strong>. [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESdAHrOzAV1b6LOmxpNxbUS9UE3hcWIcXEL-eJ5K1RK3HK532HdLYSN0K5fP4HLmF1WVWybU_hTsQduBlSpqbR6SV3rOFLWc84-jk0qlOtoap9w7vufQG4kIoc8FVB-ONYHvP4pEE7fi4U1ETAvDm--HzkuGmG\">1</a>, <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESaQHrOzAVqX-Uu53siI0NrbJK6ajV8Ri1IZCVHmPvpblSpwBXz6_40RNzL5xIYUGCnBy9gre3e2M8VEAmuQ8rX49HmkvaTabv7ytyiIVVnEIeVWKpSCVHOSIzmVIcbt7hDZhhcGQP1tU86w\">2</a>, <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESiwEB6zswFefC2kxdCuafjNiEWKtsE8AV8jnzi3CgpVFoFh2IpXljH94vWlETULhyWp_w05m-U7xTpAMmLpH4YSn1vnVD9J9mxES0Sw7pGPfNYPPzdRlKvhe1MzgEHuDZih-C2XPMtjin8v6Vn7_ipnRynB3glC1Fmr9PEJyi3O_XMXIIwz1NoPwze8wO\">3</a>]</p></li><li><p><strong>\"Stargazer\":</strong> This is the common name for all fish in the family <em>Uranoscopidae</em>. It refers to their large, upward-pointing eyes positioned on the very top of their flat, square heads. Because they spend their lives buried in the sand waiting to ambush prey, they constantly look straight up, giving the permanent impression that they are <strong>gazing at the stars</strong>. [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESYgHrOzAVZwY2qLXPLWjAjSBojgy4m4_dldTwe64xQps13dukaEhbIB702s15CHD493AyYzSCDuJa_k6nKZuI2UXIZEdcwKlN3vNZCZlzf3Isa0uusuR8U702daksbJZA71__\">1</a>, <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESdgHrOzAV6jQAjzneLkts9hJLY_q3G79lNrdsm4a7LDp7DAlde5XXlGdGQnSLA9_Nr-exFADf8AOkP41roWrn0qxo7EpzoFlJBm0oS1VZRWhhR6Zhrf2t1FkEg077HKa_bxfZlajH8_9lJxZ60KTO5NLIzfAF_-8\">2</a>, <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESdAHrOzAV1b6LOmxpNxbUS9UE3hcWIcXEL-eJ5K1RK3HK532HdLYSN0K5fP4HLmF1WVWybU_hTsQduBlSpqbR6SV3rOFLWc84-jk0qlOtoap9w7vufQG4kIoc8FVB-ONYHvP4pEE7fi4U1ETAvDm--HzkuGmG\">3</a>]</p></li></ul><p>Would you like to explore how its <strong>smooth, scaleless skin</strong> helps it burrow into the ocean floor, or see how its appearance differs from other species like the <strong>Pacific stargazer</strong>?</p><p></p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/search?kgmid=%2Fm%2F084456&amp;q=Averruncus\"><u>Averruncus</u></a> (also spelled Auruncus) is the ancient Roman god of <strong>averting harm and warding off disaster</strong>. [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESYAHrOzAVMXYarEBtCcG7sp_a7vwqZK2XDF7IqxiDegz_JGbicrbyPtIGLpLu5WqgVA64lePoo0Mmpz8TCkQUlz7mu1900cYLgWq47JiMTBqGF_ISL0jSfqA3ko326CZnaQ\">1</a>, <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESZQHrOzAVLVsqfo3RlF2j5JCOAN2pnAcCGqSGIYozO7ghynLgdHrfo9sdllPr6Bjvarobm7oU_OgMexkhjd7BLG7OLTqi6uUFbxDkQLZtuOsgofF1QbdY5okiWgV830AJpr4Po70m\">2</a>]</p><p>Key Details</p><ul><li><p><strong>Primary Role:</strong> He was invoked to turn away potential calamities, bad luck, or danger affecting people and agricultural harvests. [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESYAHrOzAVMXYarEBtCcG7sp_a7vwqZK2XDF7IqxiDegz_JGbicrbyPtIGLpLu5WqgVA64lePoo0Mmpz8TCkQUlz7mu1900cYLgWq47JiMTBqGF_ISL0jSfqA3ko326CZnaQ\">1</a>, <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESbAHrOzAVQPMhyUVGrjOrKn7Sbw86BuNFMjKiHN1lQadKNpYU09dQDcbGB0kbPezsoEF5MNDAsUm_hLzzhIJConG1ZnM0pvqaS8mCxkiG24E6SPOpjVhBOgYwxrHngB4EbDe6FTQDyrPadud6kw\">2</a>]</p></li><li><p><strong>Etymology:</strong> His name derives from the Latin verb <em>āverruncāre</em> (\"to ward off\" or \"to sweep away\"), rather than just <em>āvertō</em> (\"to turn away\"). [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESYAHrOzAVMXYarEBtCcG7sp_a7vwqZK2XDF7IqxiDegz_JGbicrbyPtIGLpLu5WqgVA64lePoo0Mmpz8TCkQUlz7mu1900cYLgWq47JiMTBqGF_ISL0jSfqA3ko326CZnaQ\">1</a>]</p></li><li><p><strong>Nature of the Deity:</strong> According to writers like Aulus Gellius, he belonged to a class of potentially malignant or powerful deities who had the dual capacity to either inflict or withhold disaster, requiring careful appeasement. [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESYAHrOzAVMXYarEBtCcG7sp_a7vwqZK2XDF7IqxiDegz_JGbicrbyPtIGLpLu5WqgVA64lePoo0Mmpz8TCkQUlz7mu1900cYLgWq47JiMTBqGF_ISL0jSfqA3ko326CZnaQ\">1</a>]</p></li><li><p><strong>Indigitamenta:</strong> Scholars suggest Averruncus may have functioned as an <em>indigitamenta</em>—a specific epithet or functional name attached to a major god like Apollo or Mars during a prayer formulary to fix and direct their power. [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESZQHrOzAVLVsqfo3RlF2j5JCOAN2pnAcCGqSGIYozO7ghynLgdHrfo9sdllPr6Bjvarobm7oU_OgMexkhjd7BLG7OLTqi6uUFbxDkQLZtuOsgofF1QbdY5okiWgV830AJpr4Po70m\">1</a>, <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESYAHrOzAVMXYarEBtCcG7sp_a7vwqZK2XDF7IqxiDegz_JGbicrbyPtIGLpLu5WqgVA64lePoo0Mmpz8TCkQUlz7mu1900cYLgWq47JiMTBqGF_ISL0jSfqA3ko326CZnaQ\">2</a>]</p></li><li><p><strong>Alternative Associations:</strong> Some historical sources also connect him with the protection of childbirth. [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.com/goto?url=CAESZQHrOzAVLVsqfo3RlF2j5JCOAN2pnAcCGqSGIYozO7ghynLgdHrfo9sdllPr6Bjvarobm7oU_OgMexkhjd7BLG7OLTqi6uUFbxDkQLZtuOsgofF1QbdY5okiWgV830AJpr4Po70m\">1</a>]</p></li></ul><p></p><p></p>",
     "DateAdded": "2026-10-19 15:05:12",
     "DateModified": "2026-10-19 15:09:03",
     "ftextSize": "12639",
@@ -56896,6 +56959,422 @@
     "DictSize": "0",
     "VidTitle": "Blackeyed Hermit 7 | Salish Sea Marine Wildlife",
     "VidAuthor": "@CaptainEelgrass",
+    "Mode": "L",
+    "ftext": "",
+    "cell": ""
+  },
+  {
+    "UID": "2645",
+    "show": "1",
+    "link": "https://vimeo.com/725336016",
+    "VidTitle": "Wrist Flexion Eccentrics - Golfer’s Elbow, Medial Epicondylitis",
+    "VidAuthor": "Dereck Steffe",
+    "vidLength": "0:30",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-19 20:53:50",
+    "DateModified": "2026-10-20 04:07:44",
+    "tags": [
+      "medial-epicondylitis"
+    ],
+    "Mute": "0",
+    "Mode": "L",
+    "attribution": "Dereck Steffe",
+    "comment": "e",
+    "ftext": "",
+    "ftextSize": "301",
+    "FtextJunk": "25",
+    "DictSize": "0",
+    "cell": ""
+  },
+  {
+    "UID": "2646",
+    "show": "1",
+    "link": "https://www.youtube.com/watch?v=xa4op1Hv-L8",
+    "VidTitle": "Lateral Epicondylitis Tests",
+    "VidAuthor": "MSK Medicine",
+    "vidLength": "0:30",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-19 20:53:59",
+    "DateModified": "2026-10-20 04:07:47",
+    "tags": [
+      "medial-epicondylitis"
+    ],
+    "Mute": "0",
+    "attribution": "MSK Medicine",
+    "ftext": "",
+    "ftextSize": "308",
+    "FtextJunk": "25",
+    "DictSize": "0",
+    "cell": ""
+  },
+  {
+    "UID": "2647",
+    "show": "1",
+    "link": "https://www.youtube.com/watch?v=T3j485B6fkk",
+    "VidTitle": "Inner elbow stress? Try this stretch",
+    "VidAuthor": "Fares Soliman",
+    "vidLength": "0:29",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-19 20:54:48",
+    "DateModified": "2026-10-20 04:07:48",
+    "tags": [
+      "medial-epicondylitis"
+    ],
+    "Mute": "0",
+    "ftext": "",
+    "ftextSize": "1971",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "cell": ""
+  },
+  {
+    "UID": "2648",
+    "show": "1",
+    "link": "https://www.youtube.com/watch?v=e6kFuETRAms",
+    "VidTitle": "3 Gentle Exercises to for Inner Elbow Pain",
+    "VidAuthor": "Fares Soliman",
+    "vidLength": "0:19",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-19 20:55:02",
+    "DateModified": "2026-10-20 04:07:50",
+    "tags": [
+      "medial-epicondylitis"
+    ],
+    "Mute": "0",
+    "ftext": "",
+    "ftextSize": "1976",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "cell": ""
+  },
+  {
+    "UID": "2649",
+    "show": "1",
+    "link": "https://www.youtube.com/watch?v=gLcCuTz_cas",
+    "VidTitle": "3 Inner Elbow Rehab Exercises (Medial Epicondylitis)",
+    "VidAuthor": "Fares Soliman",
+    "vidLength": "0:18",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-19 20:55:10",
+    "DateModified": "2026-10-20 04:07:51",
+    "tags": [
+      "medial-epicondylitis"
+    ],
+    "Mute": "0",
+    "ftext": "",
+    "ftextSize": "1973",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "cell": ""
+  },
+  {
+    "UID": "2650",
+    "show": "1",
+    "link": "https://www.youtube.com/watch?v=fAV4R6P1UDQ",
+    "VidTitle": "Spiny Brittle Star (Ophiothrix spiculata) traverses Rainbow Leaf",
+    "VidAuthor": "yawnthensnore",
+    "vidLength": "4:20",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-19 20:56:26",
+    "DateModified": "2026-10-20 04:09:32",
+    "tags": [
+      "ophiothrix-ophiothrix-spiculata"
+    ],
+    "Mute": "0",
+    "attribution": "yawnthensnore",
+    "ftext": "",
+    "ftextSize": "1131",
+    "FtextJunk": "7",
+    "DictSize": "697",
+    "cell": ""
+  },
+  {
+    "UID": "2651",
+    "show": "1",
+    "link": "https://www.youtube.com/watch?v=GM9WPgtU8yA",
+    "VidTitle": "Okeanos Explorer Video Bite: Spiny Brittle Star",
+    "VidAuthor": "Inner Space Center",
+    "vidLength": "4:19",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-19 20:56:37",
+    "DateModified": "2026-10-20 04:10:57",
+    "tags": [
+      "ophiothrix-ophiothrix-spiculata"
+    ],
+    "Mute": "0",
+    "attribution": "Inner Space Center",
+    "ftext": "",
+    "ftextSize": "392",
+    "FtextJunk": "19",
+    "DictSize": "697",
+    "cell": ""
+  },
+  {
+    "UID": "2652",
+    "show": "1",
+    "link": "https://www.youtube.com/watch?v=7-ORt_57rw0",
+    "VidTitle": "Esmark's Brittle Star (Ophioplocus esmarki) Moss Beach",
+    "VidAuthor": "yawnthensnore",
+    "vidLength": "2:19",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-19 20:56:53",
+    "DateModified": "2026-10-20 04:11:54",
+    "tags": [
+      "ophioplocus-esmarki"
+    ],
+    "Mute": "0",
+    "attribution": "yawnthensnore",
+    "ftext": "",
+    "ftextSize": "1791",
+    "FtextJunk": "4",
+    "DictSize": "697",
+    "cell": ""
+  },
+  {
+    "UID": "2653",
+    "show": "1",
+    "link": "https://www.youtube.com/watch?v=2Ixhb7juBk0",
+    "VidTitle": "Spiny brittle star (Ophiothrix spiculata) Fitzgerald Marine Reserve",
+    "VidAuthor": "yawnthensnore",
+    "vidLength": "1:54",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-19 20:57:14",
+    "DateModified": "2026-10-20 04:11:00",
+    "tags": [
+      "ophiothrix-ophiothrix-spiculata"
+    ],
+    "Mute": "0",
+    "attribution": "yawnthensnore",
+    "ftext": "",
+    "ftextSize": "1806",
+    "FtextJunk": "4",
+    "DictSize": "697",
+    "cell": ""
+  },
+  {
+    "UID": "2654",
+    "show": "1",
+    "link": "https://www.youtube.com/watch?v=6P_F83bIWvQ",
+    "VidTitle": "Bright Spiny Brittle Star (Ophiothrix spiculata) Traverses Seaweed",
+    "VidAuthor": "yawnthensnore",
+    "vidLength": "1:30",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-19 20:57:36",
+    "DateModified": "2026-10-20 04:11:01",
+    "tags": [
+      "ophiothrix-ophiothrix-spiculata"
+    ],
+    "Mute": "0",
+    "attribution": "yawnthensnore",
+    "ftext": "",
+    "ftextSize": "439",
+    "FtextJunk": "17",
+    "DictSize": "697",
+    "cell": "3c"
+  },
+  {
+    "UID": "2655",
+    "show": "1",
+    "link": "https://www.youtube.com/watch?v=AsiY6H4f8jw",
+    "VidTitle": "ophiothrix",
+    "VidAuthor": "RamLata Bharti",
+    "vidLength": "1:11",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-19 20:57:52",
+    "DateModified": "2026-10-19 20:57:55",
+    "tags": [],
+    "Mute": "0",
+    "attribution": "RamLata Bharti",
+    "ftext": "",
+    "ftextSize": "399",
+    "FtextJunk": "19",
+    "DictSize": "0",
+    "cell": "3b"
+  },
+  {
+    "UID": "2656",
+    "show": "1",
+    "link": "https://www.youtube.com/watch?v=69OmwdQnGfk",
+    "VidTitle": "Spiny Brittle Star (Ophiothrix spiculata) at Steinhart Aquarium",
+    "VidAuthor": "yawnthensnore",
+    "vidLength": "0:55",
+    "MPix": "V",
+    "VidRange": "",
+    "DateAdded": "2026-10-19 20:58:05",
+    "DateModified": "2026-10-20 04:11:04",
+    "tags": [
+      "ophiothrix-ophiothrix-spiculata"
+    ],
+    "Mute": "0",
+    "attribution": "yawnthensnore",
+    "ftext": "",
+    "ftextSize": "960",
+    "FtextJunk": "8",
+    "DictSize": "697",
+    "cell": "3a"
+  },
+  {
+    "UID": "2657",
+    "link": "https://youtu.be/EQLqujsQHt0",
+    "show": "1",
+    "DateAdded": "2026-10-20 04:07:34",
+    "DateModified": "2026-10-20 04:34:04",
+    "tags": [
+      "grimothea-planipes"
+    ],
+    "Mute": "0",
+    "ftextSize": "1218",
+    "FtextJunk": "6",
+    "DictSize": "623",
+    "VidTitle": "Tuna Crabs are Both Friendly and Creepy || ViralHog",
+    "VidAuthor": "@viralhog",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "0:58",
+    "VidRange": "14.025 44",
+    "VidComment": "",
+    "cell": "2c"
+  },
+  {
+    "UID": "2658",
+    "link": "https://youtu.be/uB7Bm-bn2fo",
+    "show": "1",
+    "DateAdded": "2026-10-20 04:22:39",
+    "DateModified": "2026-10-20 04:37:42",
+    "tags": [
+      "grimothea-planipes"
+    ],
+    "Mute": "0",
+    "ftextSize": "1989",
+    "FtextJunk": "4",
+    "DictSize": "623",
+    "VidTitle": "Submerged Symphony: Diving Among Millions of Tuna Crabs with my Rebreather",
+    "VidAuthor": "@cadiveguy",
+    "Mode": "L",
+    "ftext": "",
+    "cell": "2b"
+  },
+  {
+    "UID": "2659",
+    "link": "https://youtu.be/xCW5nJ0b1XU",
+    "show": "1",
+    "DateAdded": "2026-10-20 04:25:27",
+    "DateModified": "2026-10-20 04:37:44",
+    "tags": [
+      "grimothea-planipes"
+    ],
+    "Mute": "0",
+    "ftextSize": "2359",
+    "FtextJunk": "3",
+    "DictSize": "623",
+    "VidTitle": "Tiny ‘Tuna Crabs’ Swarm California Beaches Beyond ‘Normal’ Range | Nat Geo Wild",
+    "VidAuthor": "@NatGeoAnimals",
+    "Mode": "L",
+    "ftext": "",
+    "cell": "2a"
+  },
+  {
+    "UID": "2660",
+    "link": "https://youtu.be/GSwL3Lgw6zI",
+    "show": "1",
+    "DateAdded": "2026-10-20 04:27:44",
+    "DateModified": "2026-10-20 04:28:11",
+    "tags": [
+      "medial-epicondylitis"
+    ],
+    "Mute": "0",
+    "ftextSize": "5163",
+    "FtextJunk": "1",
+    "DictSize": "0",
+    "VidTitle": "It's Weird, But It Re-Builds Your Tendons In 30 Days",
+    "VidAuthor": "@JeremyEthier",
+    "Mode": "L",
+    "ftext": "",
+    "cell": "1c"
+  },
+  {
+    "UID": "2661",
+    "link": "https://youtu.be/uM5uLdaVnUg",
+    "show": "1",
+    "DateAdded": "2026-10-20 04:29:14",
+    "DateModified": "2026-10-20 04:29:25",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "1698",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "VidTitle": "The Only Way To Cook Mushrooms Without Losing 80% Antioxidants!",
+    "VidAuthor": "@PlantBasedScienceLondon",
+    "Mode": "L",
+    "ftext": "",
+    "cell": "1b"
+  },
+  {
+    "UID": "2662",
+    "link": "https://youtu.be/JYaYDdmWMDo",
+    "show": "1",
+    "DateAdded": "2026-10-20 04:31:05",
+    "DateModified": "2026-10-20 04:31:08",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "1941",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "VidTitle": "Incredible & Unlikely Benefit Of Eating Mushrooms!",
+    "VidAuthor": "@PlantBasedScienceLondon",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "2:26",
+    "cell": "1a"
+  },
+  {
+    "UID": "2663",
+    "link": "https://youtu.be/QZmUb7c3QiM",
+    "show": "1",
+    "DateAdded": "2026-10-20 15:54:00",
+    "DateModified": "2026-10-20 15:55:27",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "4490",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "This Forgotten Vitamin INSTANTLY Stops Sugar From Destroying Your Body | Dr. Leana",
+    "VidAuthor": "@DoctorLeana",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2664",
+    "link": "https://youtu.be/0BFl_xB56bk",
+    "show": "1",
+    "DateAdded": "2026-10-20 16:01:06",
+    "DateModified": "2026-10-20 16:02:32",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "1867",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "VidTitle": "If You Eat 100g Protein Daily, You Need to See What They Discovered",
+    "VidAuthor": "@ThomasDeLauerOfficial",
     "Mode": "L",
     "ftext": ""
   }

@@ -9,6 +9,7 @@
       "rank",
       "parents",
       "aliases",
+      "formerly",
       "common",
       "def",
       "extinct"
@@ -20,6 +21,7 @@
       "rank": 80,
       "parents": 200,
       "aliases": 220,
+      "formerly": 170,
       "common": 140,
       "def": 320,
       "extinct": 60
@@ -4296,7 +4298,8 @@
     "parents": [
       "acanthosepion"
     ],
-    "aliases": [
+    "aliases": [],
+    "formerly": [
       "Sepia pharaonis"
     ],
     "def": "",
@@ -7473,7 +7476,8 @@
     "parents": [
       "eupyxidicula"
     ],
-    "aliases": [
+    "aliases": [],
+    "formerly": [
       "Stephanopyxis grunowii"
     ],
     "def": "",
@@ -7678,7 +7682,8 @@
     "parents": [
       "ascarosepion"
     ],
-    "aliases": [
+    "aliases": [],
+    "formerly": [
       "Sepia latimanus"
     ],
     "def": "",
@@ -8693,7 +8698,8 @@
     "parents": [
       "grimothea"
     ],
-    "aliases": [
+    "aliases": [],
+    "formerly": [
       "Pleuroncodes planipes"
     ],
     "def": "",
@@ -8938,5 +8944,86 @@
     "def": "",
     "rank": "species",
     "common": "grainyhand hermit"
+  },
+  {
+    "id": "amphilepidida",
+    "label": "Amphilepidida",
+    "kind": "taxon",
+    "parents": [
+      "ophiuroidea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "ophiotrichidae",
+    "label": "Ophiotrichidae",
+    "kind": "taxon",
+    "parents": [
+      "amphilepidida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "ophiothrix",
+    "label": "Ophiothrix",
+    "kind": "taxon",
+    "parents": [
+      "ophiotrichidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "ophiothrix-ophiothrix-spiculata",
+    "label": "Ophiothrix spiculata",
+    "kind": "taxon",
+    "parents": [
+      "ophiothrix"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "western spiny brittle star",
+    "extinct": false
+  },
+  {
+    "id": "ophioplocus-esmarki",
+    "label": "Ophioplocus esmarki",
+    "kind": "taxon",
+    "parents": [
+      "ophioplocus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "hemieuryalidae",
+    "label": "Hemieuryalidae",
+    "kind": "taxon",
+    "parents": [
+      "amphilepidida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "ophioplocus",
+    "label": "Ophioplocus",
+    "kind": "taxon",
+    "parents": [
+      "hemieuryalidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]
