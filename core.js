@@ -9494,7 +9494,10 @@ function _checkImportedRows(rows) {
   for (const r of rows) { const i = data.indexOf(r); if (i >= 0) checkedRows.add(i); }
 }
 
-async function _importBareLinks(lines) {
+async function _importBareLinks(lines, opts) {
+  // (dev1120) opts.quiet = the Firefox hotkey add (d_yt.js _slamInboxAdd): nobody is
+  // looking at this tab, so no confirm() and the checked rows are left alone.
+  opts = opts || {};
   // Normalize (YouTube → youtu.be/<id>) then de-dup within paste.
   // (dev0506) A line pasted in /shorts/ form identifies a portrait Short — record its
   // normalized link so makeRow can stamp Mode=P (orientation → Mode, not the URL).
@@ -9677,7 +9680,7 @@ async function _importBareLinks(lines) {
     ).join('\n');
     const more = dupRecords.length > 12
       ? '\n…and ' + (dupRecords.length - 12) + ' more' : '';
-    const addAnyway = confirm(
+    const addAnyway = !opts.quiet && confirm(
       'Already there — ' + dupRecords.length + ' link(s) already in your data'
       + ' (YouTube matched by video id, any URL form):\n\n'
       + preview + more
@@ -9708,7 +9711,7 @@ async function _importBareLinks(lines) {
   sortCol = 'DateAdded';
   sortDir = 'desc';
   buildSort();
-  _checkImportedRows(newRows);
+  if (!opts.quiet) _checkImportedRows(newRows);
   render();
 
   // Kick off async metadata fetch for new rows (title/author/Mpix/P/S).
