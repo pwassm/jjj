@@ -2861,7 +2861,8 @@ function _tOpenTagEditor(row, anchorEl) {
       render();
       updateAncestors();
     },
-    placeholder: 'add tag… (species, common name, topic, technique)'
+    placeholder: 'add tag… (species, common name, topic, technique)',
+    autoCheckTaxonomy: true   // (dev1115) new two-word tag → D + 🔎 Check taxonomy
   });
   updateAncestors();
 

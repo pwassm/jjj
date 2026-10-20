@@ -796,6 +796,16 @@
       if (dd) { dd.remove(); dd = null; ddIdx = -1; }
     }
 
+    // (dev1115) opts.autoCheckTaxonomy: a NEW tag typed as exactly two words
+    // (a binomial, e.g. "Pleuroncodes planipes") goes straight to the
+    // Dictionary with 🔎 Check taxonomy running — the R-click → Check taxonomy
+    // steps done for you. A two-word common name lands there too; Esc leaves.
+    function afterCreate(id, typed) {
+      if (!opts.autoCheckTaxonomy) return;
+      if (String(typed || '').trim().split(/\s+/).length !== 2) return;
+      checkTaxonomyForTag(id);
+    }
+
     function showDd() {
       closeDd();
       const q = input.value.trim().toLowerCase();
@@ -932,6 +942,7 @@
                 : '\n(set kind/parent in Dictionary: D)';
               toast('Created new tag: ' + (created ? created.label : q) + guessNote, 1800);
             }
+            afterCreate(r.id, q);
           } else {
             if (typeof toast === 'function') toast('Could not create: ' + r.err);
           }
@@ -995,7 +1006,8 @@
           } else if (e.key !== 'Tab') {
             // Create new tag
             e.preventDefault();
-            const r = createTag({ label: input.value.trim() });  // let createTag guess kind/rank
+            const typed = input.value.trim();
+            const r = createTag({ label: typed });  // let createTag guess kind/rank
             if (r.ok) {
               addTag(r.id);
               input.value = '';
@@ -1007,6 +1019,7 @@
                   : '\n(set kind/parent in Dictionary: D)';
                 toast('Created new tag: ' + (created ? created.label : r.id) + guessNote, 1800);
               }
+              afterCreate(r.id, typed);
             }
           }
         }
@@ -1084,6 +1097,16 @@
   }
   // Expose for outside callers (e.g. the table chip-click in renderBody)
   window.openDictForTag = openDictForTag;
+
+  // Open the Dictionary on a tag and press its 🔎 Check taxonomy button. Used by
+  // the chip menu's "g" item and (dev1115) by a chip input with autoCheckTaxonomy.
+  function checkTaxonomyForTag(tagId) {
+    openDictForTag(tagId);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const btn = document.getElementById('de-gbif');
+      if (btn) btn.click();
+    }));
+  }
 
   // (dev0575) The T-view chip right-click menu was removed: R-click now copies
   // the tag and Ctrl+R-click deletes it from the row directly (see core.js
@@ -1210,13 +1233,7 @@
     items.push({
       key: 'g',
       labelHtml: isTaxon ? 'Check taxonomy (<u>g</u>)' : 'Check taxonomy (<u>g</u>) — verify as taxon',
-      action: () => {
-        openDictForTag(tagId);
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-          const btn = document.getElementById('de-gbif');
-          if (btn) btn.click();
-        }));
-      }
+      action: () => checkTaxonomyForTag(tagId)
     });
     items.push({ sep: true });
     items.push({
