@@ -18,7 +18,10 @@
  * Storage:
  *   tags.json is an array: [meta, ...tagRecords] (SAL-style)
  *   Each tag record:
- *     { id, label, kind, rank?, parents:[], aliases?:[], def?:"", common?:"", extinct?:false }
+ *     { id, label, kind, rank?, parents:[], aliases?:[], formerly?:[], def?:"", common?:"", extinct?:false }
+ *   formerly (dev1116) = older scientific names the label replaced (Pleuroncodes
+ *   planipes on Grimothea planipes). Searched and matched exactly like aliases,
+ *   but shown as "formerly" so an old name is told apart from a common-name variant.
  *   Rules:
  *     - id is a slug (lowercase, a-z 0-9 and hyphens)
  *     - kind === "taxon" → at most ONE parent of kind taxon/root (its single
@@ -122,7 +125,7 @@
     tagsArr.forEach(t => {
       const lbl = salFold(t.label || '');
       const com = salFold(t.common || '');
-      const ali = (t.aliases || []).map(a => salFold(a));
+      const ali = (t.aliases || []).concat(t.formerly || []).map(a => salFold(a));
       const inLabel   = lbl.includes(lq);
       const inCommon  = com.includes(lq);
       const inAlias   = ali.some(a => a.includes(lq));
@@ -159,6 +162,7 @@
     tagsArr.forEach(t => {
       if (!Array.isArray(t.parents)) t.parents = t.parents ? [t.parents] : [];
       if (!Array.isArray(t.aliases)) t.aliases = [];
+      if (t.formerly != null && !Array.isArray(t.formerly)) t.formerly = [String(t.formerly)];
       if (t.def == null) t.def = '';
     });
     buildIndex();
@@ -195,7 +199,7 @@
     tagsArr.forEach(t => {
       if (t.label) aliasToId.set(t.label.toLowerCase().trim(), t.id);
       if (t.common) aliasToId.set(t.common.toLowerCase().trim(), t.id);
-      (t.aliases || []).forEach(a => {
+      (t.aliases || []).concat(t.formerly || []).forEach(a => {
         const k = String(a).toLowerCase().trim();
         if (k) aliasToId.set(k, t.id);
       });
@@ -267,6 +271,28 @@
       out.push(s);
     });
     return out;
+  }
+
+  // (dev1116) Keep `formerly` clean: same comma rule as aliases, never the
+  // label itself, and a name listed there is not ALSO an alias (moving it to
+  // Formerly takes it out of Aliases). An empty list is dropped from the record.
+  function tidyFormerly(rec) {
+    if (!rec) return;
+    const lbl = String(rec.label || '').toLowerCase().trim();
+    const f = cleanAliasList(rec.formerly).filter(s => s.toLowerCase() !== lbl);
+    if (!f.length) { delete rec.formerly; return; }
+    rec.formerly = f;
+    const fl = new Set(f.map(s => s.toLowerCase()));
+    rec.aliases = (rec.aliases || []).filter(a => !fl.has(String(a).toLowerCase().trim()));
+  }
+
+  // (dev1116) Record `name` as a former name of tag `id` (used when a taxon is
+  // renamed to the accepted name). No-op when it is blank or already the label.
+  function addFormerly(id, name) {
+    const t = byId.get(id);
+    const s = stripAuthorship(name);
+    if (!t || !s) return;
+    updateTag(id, { formerly: (t.formerly || []).concat([s]) });
   }
 
   // ── graph operations ─────────────────────────────────────────────────────
@@ -459,6 +485,7 @@
     if (rank) rec.rank = rank;
     if (partial.common) rec.common = formatTagLabel(partial.common);
     if (partial.extinct) rec.extinct = true;
+    if (Array.isArray(partial.formerly)) { rec.formerly = partial.formerly; tidyFormerly(rec); }
     enforceParentRule(rec);
     tagsArr.push(rec);
     buildIndex();
@@ -475,11 +502,15 @@
         t.parents = patch.parents.filter(Boolean);
       } else if (k === 'aliases' && Array.isArray(patch.aliases)) {
         t.aliases = cleanAliasList(patch.aliases);
+      } else if (k === 'formerly') {
+        t.formerly = Array.isArray(patch.formerly) ? patch.formerly : [];
       } else {
         t[k] = patch[k];
       }
     });
-    // Run after every key is applied — `kind` may have changed in this patch.
+    // Run after every key is applied — `kind` may have changed in this patch,
+    // and a new label or new aliases change what Formerly may hold.
+    if (t.formerly) tidyFormerly(t);
     enforceParentRule(t);
     buildIndex();
     saveTags();
@@ -518,7 +549,11 @@
   //   - `from`'s common/def copied to `to` if `to` lacks them
   //   - `from` is then deleted
   // Refuses if toId is a descendant of fromId (would create a cycle).
-  function mergeTag(fromId, toId) {
+  // (dev1116) opts.asFormerly: `from` is an out-of-date name for `to`, so its
+  // label goes to `to`'s Formerly list instead of its aliases. Either way any
+  // Formerly names `from` already had stay Formerly on `to`.
+  function mergeTag(fromId, toId, opts) {
+    opts = opts || {};
     if (fromId === toId) return { ok: false, err: 'cannot merge a tag into itself' };
     const from = byId.get(fromId);
     const to   = byId.get(toId);
@@ -532,7 +567,7 @@
     const existingLc = new Set([
       to.label, to.common || '', ...(to.aliases || [])
     ].map(s => String(s).toLowerCase().trim()).filter(Boolean));
-    const toAdd = [from.label, from.common || '', ...(from.aliases || [])]
+    const toAdd = [opts.asFormerly ? '' : from.label, from.common || '', ...(from.aliases || [])]
       .filter(Boolean);
     const mergedAliases = [...(to.aliases || [])];
     let aliasesAdded = 0;
@@ -545,6 +580,8 @@
       }
     });
     to.aliases = cleanAliasList(mergedAliases);
+    const formerly = (to.formerly || []).concat(from.formerly || [], opts.asFormerly ? [from.label] : []);
+    if (formerly.length) { to.formerly = formerly; tidyFormerly(to); }
 
     // 2. Fill in common/def on target if missing
     if (!to.common && from.common) to.common = from.common;
@@ -739,6 +776,7 @@
         const missing = !t;
         span.title = t
           ? (t.kind === 'taxon' && t.rank ? t.rank + ' · ' + label : (t.kind + ' · ' + label)) + (t.common ? ' (' + t.common + ')' : '')
+            + ((t.formerly || []).length ? ' — formerly ' + t.formerly.join(', ') : '')
           : '⚠ orphan tag: ' + id;
         span.style.cssText = 'display:inline-flex;align-items:center;padding:2px 6px;'
           + 'background:' + (missing ? 'rgba(255,80,80,0.15)' : 'rgba(255,255,255,0.05)') + ';'
@@ -827,6 +865,9 @@
         (t.aliases || []).forEach(a => {
           if (a) haystacks.push({ s: String(a).toLowerCase(), field: 1 });
         });
+        (t.formerly || []).forEach(a => {
+          if (a) haystacks.push({ s: String(a).toLowerCase(), field: 1, formerly: true });
+        });
         // Also search the tag's id (dashes → spaces). A tag can have an id like
         // "halichoeres-burekae" whose label/common/aliases don't literally spell
         // out the scientific name (e.g. label is a common name). Without this,
@@ -852,7 +893,7 @@
           else if (h.s.startsWith(q)) s = 1;
           else if (h.s.includes(q))   s = 2;
           else continue;
-          const cand = { score: s, field: h.field, len: h.s.length, via: h.s };
+          const cand = { score: s, field: h.field, len: h.s.length, via: h.s, formerly: !!h.formerly };
           if (!best
               || cand.score < best.score
               || (cand.score === best.score && cand.field < best.field)
@@ -895,7 +936,11 @@
         item.className = 'tag-dd-item';
         item.dataset.idx = i;
         const t = m.t;
-        const via = (m.via && m.via !== t.label.toLowerCase()) ? ' <span style="color:#666;font-size:10px;">(via "' + escapeHtml(m.via) + '")</span>' : '';
+        const via = (m.via && m.via !== t.label.toLowerCase())
+          ? (m.formerly
+              ? ' <span style="color:#9a8;font-size:10px;">(formerly <i>' + escapeHtml(formatTagLabel(m.via)) + '</i>)</span>'
+              : ' <span style="color:#666;font-size:10px;">(via "' + escapeHtml(m.via) + '")</span>')
+          : '';
         const rankBadge = t.rank
           ? '<span style="color:#666;font-size:10px;margin-left:5px;">' + t.rank + '</span>'
           : (t.kind && t.kind !== 'taxon' ? '<span style="color:#666;font-size:10px;margin-left:5px;">' + t.kind + '</span>' : '');
@@ -1379,7 +1424,7 @@
       let filtered = tagsArr.slice();
       if (q) {
         filtered = filtered.filter(t => {
-          const hay = [t.label, t.id, t.common || '', t.def || '', ...(t.aliases || [])]
+          const hay = [t.label, t.id, t.common || '', t.def || '', ...(t.aliases || []), ...(t.formerly || [])]
             .map(s => String(s).toLowerCase()).join(' ');
           return hay.includes(q);
         });
@@ -1452,6 +1497,7 @@
               : (t.kind === 'taxon'
                   ? '<div style="color:#b87;font-size:10px;margin-top:2px;">⚠ unplaced — no parent, so no broader group finds it</div>'
                   : ''))
+          + ((t.formerly || []).length ? '<div style="color:#9a8;font-size:10px;margin-top:2px;">formerly: <i>' + escapeHtml(t.formerly.join(', ')) + '</i></div>' : '')
           + ((t.aliases || []).length ? '<div style="color:#777;font-size:10px;margin-top:2px;">also: ' + escapeHtml((t.aliases || []).join(', ')) + '</div>' : '');
         row.addEventListener('click', () => selectTag(t.id));
         listEl.appendChild(row);
@@ -1480,7 +1526,7 @@
       const matchedIds = new Set();
       if (q) {
         tagsArr.forEach(t => {
-          const hay = [t.label, t.id, t.common || '', t.def || '', ...(t.aliases || [])]
+          const hay = [t.label, t.id, t.common || '', t.def || '', ...(t.aliases || []), ...(t.formerly || [])]
             .map(s => String(s).toLowerCase()).join(' ');
           if (hay.includes(q)) matchedIds.add(t.id);
         });
@@ -1653,6 +1699,9 @@
       const aliasHint = (t.aliases || []).length
         ? ' <span style="color:#666;font-size:10px;">also: ' + escapeHtml((t.aliases || []).slice(0,3).join(', ')) + '</span>'
         : '';
+      const formerlyHint = (t.formerly || []).length
+        ? ' <span style="color:#9a8;font-size:10px;">formerly <i>' + escapeHtml(t.formerly.slice(0,2).join(', ')) + '</i></span>'
+        : '';
       const commonHint = t.common ? ' <span style="color:#678;font-size:10px;">(' + escapeHtml(t.common) + ')</span>' : '';
       const useHint = use ? ' <span style="color:#4af;font-size:10px;">· ' + use + 'v</span>' : '';
       const kidsCount = kids.length ? ' <span style="color:#555;font-size:10px;">· ' + kids.length + '▾</span>' : '';
@@ -1667,7 +1716,7 @@
 
       row.innerHTML = chevron
         + '<span class="tree-label" style="color:' + color + ';font-weight:' + (t.kind === 'root' ? 'bold' : 'normal') + ';">' + escapeHtml(labelFor(t.id)) + '</span>'
-        + commonHint + rankBadge + extinct + multiParent + cutBadge + kidsCount + useHint + aliasHint;
+        + commonHint + rankBadge + extinct + multiParent + cutBadge + kidsCount + useHint + formerlyHint + aliasHint;
 
       // Chevron click → toggle expand
       const chevEl = row.querySelector('.tree-chev');
@@ -2010,6 +2059,7 @@
           <span style="font-size:17px;color:${kindColor(t)};font-weight:bold;">${escapeHtml(labelFor(t.id))}</span>
           <span style="color:#555;font-size:11px;">id=${escapeHtml(t.id)}</span>
         </div>
+        ${(t.formerly || []).length ? `<div style="margin:-8px 0 10px;color:#9a8;font-size:12px;">formerly <i>${escapeHtml(t.formerly.join(', '))}</i></div>` : ''}
         <div style="font-size:11px;color:#666;margin-bottom:10px;">
           Directly tagged on <b style="color:#4af;">${use}</b> videos · total (with descendants): <b style="color:#4af;">${effUse}</b> · descendants: <b style="color:#4af;">${descCount}</b>
         </div>
@@ -2038,6 +2088,11 @@
           <input id="de-aliases" type="text" value="${escapeAttr((t.aliases || []).join(', '))}"
             placeholder="comma-separated synonyms, e.g. skeleton shrimp, caprellid"
             style="padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#fff;border-radius:4px;font-family:monospace;font-size:12px;outline:none;">
+
+          <label style="color:#6af;padding-top:5px;" title="Older scientific names this label replaced. Typing one still finds this tag.">Formerly</label>
+          <input id="de-formerly" type="text" value="${escapeAttr((t.formerly || []).join(', '))}"
+            placeholder="older scientific names, e.g. Pleuroncodes planipes"
+            style="padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#cdb;border-radius:4px;font-family:monospace;font-size:12px;font-style:italic;outline:none;">
 
           <label style="color:#6af;padding-top:5px;">Common name</label>
           <input id="de-common" type="text" value="${escapeAttr(t.common || '')}"
@@ -2086,6 +2141,7 @@
           rank:     editEl.querySelector('#de-rank').value || undefined,
           parents:  curParents.slice(),
           aliases:  editEl.querySelector('#de-aliases').value.split(',').map(s => s.trim()).filter(Boolean),
+          formerly: editEl.querySelector('#de-formerly').value.split(',').map(s => s.trim()).filter(Boolean),
           common:   editEl.querySelector('#de-common').value.trim(),
           def:      editEl.querySelector('#de-def').value,
           extinct:  editEl.querySelector('#de-extinct').checked
@@ -2616,7 +2672,7 @@
       data.forEach(r => { if (Array.isArray(r.tags) && r.tags.includes(fromId)) recordCount++; });
     }
     // Source aliases that will be carried over
-    const carryOver = [from.label, from.common || '', ...(from.aliases || [])].filter(Boolean);
+    const carryOver = [from.label, from.common || '', ...(from.aliases || []), ...(from.formerly || [])].filter(Boolean);
     const childCount = tagsArr.filter(t => (t.parents || []).includes(fromId)).length;
 
     // Descendants set — cannot pick any of these as target (would create a cycle)
@@ -3325,7 +3381,7 @@
         plan.renames.forEach(r => {
           const i = actions.push(r.mergeInto
             ? { kind: 'merge', id: r.t.id, into: r.mergeInto, label: r.t.label,
-                intoLabel: labelFor(r.mergeInto) }
+                intoLabel: labelFor(r.mergeInto), asFormerly: true }
             : { kind: 'rename', id: r.t.id, to: r.to, label: r.t.label }) - 1;
           html += '<div style="' + ROW + '">' + box(i) + nameOf(r.t) + viaTag(r.via)
             + ' <span style="color:#556;">' + (r.mergeInto ? 'merge into' : 'rename to') + '</span> '
@@ -3333,8 +3389,8 @@
             + '<div style="color:#889;font-size:10px;padding-left:26px;">'
             + escapeHtml(r.t.label) + ' is <b>' + escapeHtml(r.was) + '</b> in WoRMS. '
             + (r.mergeInto
-                ? 'You already have the accepted name, so the records move across and the old name survives as an alias.'
-                : 'The old name is kept as an alias, so searching it still works.')
+                ? 'You already have the accepted name, so the records move across and the old name is kept as Formerly.'
+                : 'The old name is kept as Formerly, so searching it still works.')
             + '</div></div>';
         });
       }
@@ -3485,14 +3541,12 @@
           if (r.ok) log.push(['✓', a.label, 'rank set to ' + a.rank]);
         } else if (a.kind === 'rename') {
           // Keep the superseded name searchable — it is what the sources, the
-          // captions and half the internet still call it.
-          const aliases = (t.aliases || []).slice();
-          const lc = String(a.label || '').toLowerCase();
-          if (a.label && !aliases.some(x => String(x).toLowerCase() === lc)) aliases.push(a.label);
-          r = updateTag(a.id, { label: a.to, aliases: aliases });
-          if (r.ok) log.push(['✓', a.label, 'renamed to ' + a.to + ' (old name kept as an alias)']);
+          // captions and half the internet still call it. (dev1116) It goes in
+          // Formerly, not aliases, so D shows it as the old name it is.
+          r = updateTag(a.id, { label: a.to, formerly: (t.formerly || []).concat(a.label ? [a.label] : []) });
+          if (r.ok) log.push(['✓', a.label, 'renamed to ' + a.to + ' (old name kept as Formerly)']);
         } else if (a.kind === 'merge') {
-          r = mergeTag(a.id, a.into);
+          r = mergeTag(a.id, a.into, { asFormerly: !!a.asFormerly });
           if (r.ok) log.push(['✓', a.label, 'merged into ' + a.intoLabel]);
         }
         if (r && r.ok) ok++; else { failed++; log.push(['✗', a.label || a.id, (r && r.err) || 'failed']); }
@@ -3914,7 +3968,15 @@
     if (matchType === 'EXACT' || matchType === 'FUZZY') {
       const sciAlias = stripAuthorship(res.canonicalName || res.scientificName);
       const sciAliasLc = sciAlias.toLowerCase();
-      if (sciAlias && sciAliasLc !== String(t.label || '').toLowerCase()
+      // (dev1116) An out-of-date name is renamed in place — the accepted name
+      // becomes the label and the old one goes to Formerly — rather than
+      // gaining the NEW name as an alias. Only when no other tag already holds
+      // the accepted name; that case is a merge, which Apply All does.
+      const heldBy = res._supersededFrom && sciAlias ? resolveInput(sciAlias) : null;
+      if (res._supersededFrom && sciAlias && sciAliasLc !== String(t.label || '').toLowerCase()
+          && (!heldBy || heldBy === tagId)) {
+        individualBtns.push({ id:'apply-rename', label:'Rename to "' + sciAlias + '" (old name → Formerly)' });
+      } else if (sciAlias && sciAliasLc !== String(t.label || '').toLowerCase()
           && sciAliasLc !== String(t.common || '').toLowerCase()
           && !(t.aliases || []).some(a => a.toLowerCase() === sciAliasLc)) {
         individualBtns.push({ id:'apply-alias', label:'Add "' + sciAlias + '" as alias' });
@@ -4013,6 +4075,10 @@
         if (action === 'apply-rank')  patch.rank  = rank;
         if (action === 'apply-alias') {
           patch.aliases = [...(t.aliases || []), stripAuthorship(res.canonicalName || res.scientificName)];
+        }
+        if (action === 'apply-rename') {
+          patch.label = stripAuthorship(res.canonicalName || res.scientificName);
+          patch.formerly = (t.formerly || []).concat([t.label]);
         }
         const rr = updateTag(tagId, patch);
         if (rr.ok) {
@@ -4352,7 +4418,20 @@
         // Add the original's label as alias of the species (so common-name
         // searches still work) and delete the now-redundant original.
         const target = byId.get(mostSpecific);
-        if (target && t.label) {
+        // (dev1116) The register says the name you had is out of date — WoRMS
+        // followed it to the accepted name, or GBIF matched it as a synonym. It
+        // is the species' former name: it goes in Formerly. Before this it fell
+        // through to the test below and, on a species with no English common
+        // name, was saved AS the common name (the old binomial shown as the
+        // vernacular). Formerly names the original already had come along too.
+        const supersededName = !!res._supersededFrom
+          || String(res.status || '').toUpperCase() === 'SYNONYM';
+        if (target && (t.formerly || []).length) {
+          updateTag(mostSpecific, { formerly: (target.formerly || []).concat(t.formerly) });
+        }
+        if (target && t.label && supersededName) {
+          addFormerly(mostSpecific, t.label);
+        } else if (target && t.label) {
           const existingAliases = target.aliases || [];
           const lc = t.label.toLowerCase();
           if (!existingAliases.some(a => String(a).toLowerCase() === lc)
@@ -4448,8 +4527,8 @@
   function seedDictionary() {
     const T = [];
     T.push({ _salMeta: true, _tagsVersion: 1,
-      _salColOrder: ['id','label','kind','rank','parents','aliases','common','def','extinct'],
-      _salColWidths: { id:140, label:170, kind:70, rank:80, parents:200, aliases:220, common:140, def:320, extinct:60 }
+      _salColOrder: ['id','label','kind','rank','parents','aliases','formerly','common','def','extinct'],
+      _salColWidths: { id:140, label:170, kind:70, rank:80, parents:200, aliases:220, formerly:170, common:140, def:320, extinct:60 }
     });
     // Roots
     T.push({ id:'life',     label:'Life',     kind:'root', parents:[] });

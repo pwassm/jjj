@@ -3370,7 +3370,7 @@ function rowMatchesFilter(row) {
             // planipes on Grimothea planipes). The tag picker and menu Search already
             // read aliases; Anywhere was the one search that didn't.
             if (t && (fold(t.label||'').includes(fq) || fold(t.common||'').includes(fq)
-                      || (t.aliases || []).some(a => fold(a).includes(fq)))) {
+                      || (t.aliases || []).concat(t.formerly || []).some(a => fold(a).includes(fq)))) {
               found = true; break;
             }
           }
@@ -3797,7 +3797,7 @@ function _tFindTaxonTag(sci) {
   const want = String(sci).toLowerCase();
   const all = L.all();
   return all.find(t => String(t.label || '').toLowerCase() === want)
-      || all.find(t => (t.aliases || []).some(a => String(a).toLowerCase() === want))
+      || all.find(t => (t.aliases || []).concat(t.formerly || []).some(a => String(a).toLowerCase() === want))
       || all.find(t => String(t.common || '').toLowerCase() === want)
       || null;
 }

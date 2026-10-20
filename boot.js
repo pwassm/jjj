@@ -1146,6 +1146,7 @@ async function _showShareableMenu() {
       if (!t) return;
       tb += ' ' + (t.label || '') + ' ' + (t.common || '')
           + ' ' + (Array.isArray(t.aliases) ? t.aliases.join(' ') : '')
+          + ' ' + (Array.isArray(t.formerly) ? t.formerly.join(' ') : '')
           + ' ' + (t.def || '');
       if (t.kind === 'taxon') taxon = true;
     });
