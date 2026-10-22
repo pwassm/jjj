@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1792534555635,
+    "_salPushTime": 1792537326033,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1792534555635
+    "_salSavedAt": 1792537326034
   },
   {
     "UID": "1",
@@ -57415,12 +57415,12 @@
     "link": "https://youtu.be/W7WVjontEmk",
     "show": "1",
     "DateAdded": "2026-10-20 22:11:25",
-    "DateModified": "2026-10-20 22:12:48",
+    "DateModified": "2026-10-20 22:56:56",
     "tags": [
       "transcribed"
     ],
     "Mute": "0",
-    "ftextSize": "16059",
+    "ftextSize": "20408",
     "FtextJunk": "0",
     "DictSize": "0",
     "VidTitle": "Members-Only: Two Key Details Every Beginner Needs for Backhand Power",
@@ -57428,5 +57428,42 @@
     "Mode": "L",
     "ftext": "",
     "VQ": "9"
+  },
+  {
+    "UID": "2668",
+    "link": "https://youtu.be/bNYj-mtYiQs",
+    "show": "1",
+    "DateAdded": "2026-10-20 22:46:54",
+    "DateModified": "2026-10-20 22:47:25",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "6384",
+    "FtextJunk": "1",
+    "DictSize": "0",
+    "VidTitle": "Zhang Yudong: Wrong Elbow Movement Kills Your Forehand Power",
+    "VidAuthor": "@kakaluser",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2669",
+    "link": "https://youtu.be/IuIITZN0ojk",
+    "show": "1",
+    "DateAdded": "2026-10-20 22:59:53",
+    "DateModified": "2026-10-20 22:59:59",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "935",
+    "FtextJunk": "8",
+    "DictSize": "0",
+    "VidTitle": "Master the Backhand Flick in 3 Steps | Former China National Team Player Zhang Yudong",
+    "VidAuthor": "@kakaluser",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "13:57"
   }
 ]
