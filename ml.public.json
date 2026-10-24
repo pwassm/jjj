@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1792537326033,
+    "_salPushTime": 1792809216792,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1792537326034
+    "_salSavedAt": 1792809216792
   },
   {
     "UID": "1",
@@ -57465,5 +57465,39 @@
     "Mode": "L",
     "ftext": "",
     "vidLength": "13:57"
+  },
+  {
+    "UID": "2670",
+    "link": "https://youtu.be/P7dyyhxj84E",
+    "show": "1",
+    "DateAdded": "2026-10-24 02:27:39",
+    "DateModified": "2026-10-24 02:27:42",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "626",
+    "FtextJunk": "12",
+    "DictSize": "0",
+    "VidTitle": "Finger Dragonet",
+    "VidAuthor": "@AndrewWilner",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2671",
+    "link": "https://youtu.be/_jElMv5sRhY",
+    "show": "1",
+    "DateAdded": "2026-10-24 02:29:24",
+    "DateModified": "2026-10-24 02:29:27",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "513",
+    "FtextJunk": "15",
+    "DictSize": "0",
+    "VidTitle": "Zebra Moray",
+    "VidAuthor": "@AndrewWilner",
+    "Mode": "L",
+    "ftext": ""
   }
 ]
