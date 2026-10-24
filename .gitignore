@@ -327,6 +327,13 @@ ig-cuts.json.tmp-*
 # (dev1102) Ids removed with 🗑 Delete sel / 🤖 AI delete, so no harvest re-adds them. Local only.
 ig-deleted.json
 ig-deleted.json.tmp-*
+# (dev1127) Japanese caption translation: the name glossary, the queue of new names,
+# the per-line translation cache, and the per-author advert rules. Local curation
+# beside ig.json, read and written by proxy.js /ig/translate. Local only.
+ig-jp-*.json
+ig-jp-*.json.tmp-*
+ig-adrules.json
+ig-adrules.json.tmp-*
 
 # (dev0961) YouTube transcript + local-Ollama summary output, written by proxy
 # /ytt/run from a T row: <uid>~<videoId>~<title>.{transcript,summary}.txt. DEV-ONLY
