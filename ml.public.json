@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1792856698397,
+    "_salPushTime": 1792875439339,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1792856698397
+    "_salSavedAt": 1792875439339
   },
   {
     "UID": "1",
@@ -57497,6 +57497,43 @@
     "DictSize": "0",
     "VidTitle": "Zebra Moray",
     "VidAuthor": "@AndrewWilner",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2672",
+    "link": "https://youtu.be/Km3lllxQi1s",
+    "show": "1",
+    "DateAdded": "2026-10-24 16:33:26",
+    "DateModified": "2026-10-24 16:33:33",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "3899",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "‘Scientists discovered a Supplement that Rejuvenates Mitochondria!’",
+    "VidAuthor": "@Physionic",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "14:04"
+  },
+  {
+    "UID": "2673",
+    "link": "https://youtu.be/1UAPjmFD6Go",
+    "show": "1",
+    "DateAdded": "2026-10-24 20:56:52",
+    "DateModified": "2026-10-24 20:56:59",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "273",
+    "FtextJunk": "28",
+    "DictSize": "0",
+    "VidTitle": "True Facts: The Bizarre Ways Cephalopods Make Bebes",
+    "VidAuthor": "@zefrank",
     "Mode": "L",
     "ftext": ""
   }

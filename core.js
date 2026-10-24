@@ -3981,9 +3981,11 @@ function showCtx(x, y, target) {
         const _yChk = [...checkedRows].filter(i => data[i] && yttVideoId(data[i].link));
         if (_yChk.length >= 2) {
           addCI(menu, 'Brief summary — ' + _yChk.length + ' checked rows', () => yttRunBriefRows(_yChk));
-          // (dev1024) Transcript only (captions, else whisper; no AI summary) — seconds a row.
+          // (dev1024) Transcript only (no AI summary) — seconds a row. (dev1129) Captions
+          // only, retried; whisper (speech recognition on the audio) is its own pick.
           if (typeof yttRunTranscriptRows === 'function') {
             addCI(menu, 'Transcribe only — ' + _yChk.length + ' checked rows', () => yttRunTranscriptRows(_yChk));
+            addCI(menu, 'Transcript — whisper — ' + _yChk.length + ' checked rows', () => yttRunTranscriptRows(_yChk, { whisper: true }));
           }
           if (!yttVideoId(data[di] && data[di].link)) addCS(menu);
         }
@@ -4006,8 +4008,15 @@ function showCtx(x, y, target) {
         if (typeof yttRunTranscriptRows === 'function') {
           // (dev1025) No "add to ftext": the transcript stays in ytsummaries/, and `e`
           // with the mouse over this row's ftext cell edits it there.
-          addCI(menu, _yHave && _yHave.transcript ? 'Read transcript' : 'Transcribe only',
-                () => (_yHave && _yHave.transcript) ? yttShowText(_yUid, 'transcript') : yttRunTranscriptRows([di]));
+          // (dev1129) A failed caption fetch no longer falls back to whisper: the row gets
+          // the TranscriptFailed chip, and these two are the ways on from it.
+          if (_yHave && _yHave.transcript) {
+            addCI(menu, 'Read transcript', () => yttShowText(_yUid, 'transcript'));
+          } else {
+            const _yFailed = typeof yttRowFailed === 'function' && yttRowFailed(data[di]);
+            addCI(menu, _yFailed ? 'Transcript — retry download' : 'Transcribe only', () => yttRunTranscriptRows([di]));
+            addCI(menu, 'Transcript — whisper', () => yttRunTranscriptRows([di], { whisper: true }));
+          }
         }
         addCS(menu);
       }
