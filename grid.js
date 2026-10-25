@@ -1186,7 +1186,7 @@ function gridTogglePauseCell(cellStr) {
 // harmless, since only text/quiz rows have a double-click action at all.
 function _gridClickPlayPause(cellStr) {
   const p = (window.seeLearnVideoPlayers || {})['grid-vid-' + cellStr];
-  if (!p) return;
+  if (!p || p._salFrozen) return;   // (dev1131) a SingleFrame freeze has nothing to play
   if (typeof gridTogglePauseCell === 'function') gridTogglePauseCell(cellStr);
 }
 
@@ -1199,7 +1199,8 @@ function _gridClickPlayPause(cellStr) {
 // YT's own paused-state chrome and can't be removed cross-origin.
 function gridToggleAllPause() {
   const players = window.seeLearnVideoPlayers || {};
-  const ids = Object.keys(players).filter(k => k.indexOf('grid-vid-') === 0);
+  const ids = Object.keys(players).filter(k => k.indexOf('grid-vid-') === 0
+    && !(players[k] && players[k]._salFrozen));   // (dev1131) SingleFrame freezes stay put
   if (!ids.length) { if (typeof toast === 'function') toast('No videos in grid', 800); return; }
   const pauseAll = ids.some(id => players[id] && players[id]._gridPaused !== true);
   ids.forEach(id => {
@@ -2402,6 +2403,14 @@ function _gridSingleFrameCell(cell, row, fit) {
 // when enabled+eligible, else the normal per-platform mounts. Shared by the
 // full-grid build (gridShow) and the single-cell update (gridUpdateCell).
 function _gridMountVideo(vidHost, row, segs, muted) {
+  // (dev1131) A SingleFrame row with no local still (the live site) freezes its
+  // own player on the frame — video.js mountVideoFreeze. Vimeo answers false
+  // and plays as before.
+  const sfT = window.salSingleFrameT ? window.salSingleFrameT(row) : null;
+  if (sfT != null && window.mountVideoFreeze && window.mountVideoFreeze(vidHost, row.link, sfT)) {
+    _gridCoverFitHost(vidHost);
+    return;
+  }
   const useBuffer = _gridBufferMode() !== 'off'
     && _gridBufferEligible()
     && window.mountYouTubeClipBuffered

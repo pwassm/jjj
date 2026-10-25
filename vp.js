@@ -875,7 +875,13 @@ function gridOpenFullscreen(row, contained) {
   // not a player — see video.js salSingleFrameSrc. Local only: elsewhere it is
   // '' and the row plays as before.
   const _sfSrc = window.salSingleFrameSrc ? window.salSingleFrameSrc(row) : '';
-  const isVid = !_sfSrc && isVideoRow(row);
+  // (dev1131) …and with no still (the live site), a YouTube or video-file
+  // SingleFrame row opens there too, as its player frozen on the frame
+  // (video.js mountVideoFreeze). Vimeo still plays.
+  const _sfT = window.salSingleFrameT ? window.salSingleFrameT(row) : null;
+  const _sfFreeze = !_sfSrc && _sfT != null && !!window.mountVideoFreeze
+    && (window.isYouTubeLink(row.link) || !!(window.isDirectVideoLink && window.isDirectVideoLink(row.link)));
+  const isVid = !_sfSrc && !_sfFreeze && isVideoRow(row);
 
   if (isVid && row.link) {
     // VIDEO PLAYER
@@ -2783,13 +2789,21 @@ function gridOpenFullscreen(row, contained) {
       + 'display:flex;align-items:center;justify-content:center;';
     content.appendChild(ivWrap);
 
-    const img = document.createElement('img');
+    // (dev1131) A frozen SingleFrame player takes the picture's place: a div the
+    // zoom/pan transforms below move exactly as they would an <img>.
+    const img = document.createElement(_sfFreeze ? 'div' : 'img');
     img.setAttribute('draggable', 'false');
     img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;'
       + 'transform-origin:center center;will-change:transform;'
       + 'user-select:none;-webkit-user-drag:none;pointer-events:none;';
     ivWrap.appendChild(img);
-    if (_sfSrc) {
+    if (_sfFreeze) {
+      img.id = 'vp-sf-host';
+      img.style.position = 'relative';
+      img.style.width = '100%';
+      img.style.height = '100%';
+      window.mountVideoFreeze(img, row.link, _sfT);
+    } else if (_sfSrc) {
       // (dev1130) The SingleFrame still, grabbed on the spot if it isn't on disk.
       window.salSingleFrameWire(img, row, {
         grabbing: () => { if (typeof toast === 'function') toast('⏳ Grabbing the frame…', 2500); },
@@ -3079,6 +3093,8 @@ function vpClose() {
 
   // Stop interval
   if (_vpState && _vpState.interval) clearInterval(_vpState.interval);
+  // (dev1131) A SingleFrame freeze still warming up stops with the viewer.
+  if (window.stopCellVideoLoop) window.stopCellVideoLoop('vp-sf-host');
 
   // (dev0741) Drop the toolbar-height observer with the toolbar it watched.
   if (_vpState && _vpState.toolbarRO) {

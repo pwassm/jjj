@@ -1419,7 +1419,10 @@ const _salSfFresh = Object.create(null);
 const _salSfGrabbing = Object.create(null);   // name → in-flight grab Promise
 
 // The still's URL for a SingleFrame row, or '' (not one, or not on localhost).
+// (dev1131) window._salSfLive = true (console) answers '' on localhost too, so
+// the live site's freeze path (mountVideoFreeze below) can be tried locally.
 window.salSingleFrameSrc = function(row) {
+  if (window._salSfLive) return '';
   if (!window._salIsLocalHost || !window._salIsLocalHost()) return '';
   const name = window.salSingleFrameName(row);
   return name ? (_salSfFresh[name] || 'frames/' + name) : '';
@@ -1471,6 +1474,148 @@ window.salSingleFrameWire = function(img, row, on) {
   };
   img.src = window.salSingleFrameSrc(row);
 };
+
+// (dev1131) ── SingleFrame on the live site: the player IS the still ──────────
+// Off localhost there is no grabbed jpg (salSingleFrameSrc ''), so a SingleFrame
+// row freezes its own player on the frame. Measured 2026-10-25 on UID 5:
+//  • pauseVideo() paints YouTube's ▶, title bar, share and "More videos".
+//    seekTo(t, false) — YouTube's SCRUB seek — doesn't: ~10 ms later the player
+//    is PAUSED on exactly t with none of it, holds there, and stays clean when
+//    the cell is shrunk afterwards.
+//  • …provided it has PLAYED about 4 s first. YouTube's start-up title bar fades
+//    after 3.3–4.2 s of play; freeze before that and it stays for good. A scrub
+//    seek in the first moments of play is ignored outright (it plays on and
+//    stalls a second later on the wrong frame). Real time, not video time.
+// So: play muted from ~5 s before t with the picture invisible, and once it has
+// played SAL_FREEZE_MIN_MS and reached t, scrub to t, check it landed, reveal.
+// Direct video files need none of this: a <video> with no controls, parked on
+// t, has no button to hide. Vimeo isn't handled (returns false: plays as usual).
+// The host is registered under its id as a stand-in player whose play/pause do
+// nothing (_salFrozen), so G's tap, Space and cleanup paths find a player but
+// can't unfreeze it. opts.onReady fires once the frame is showing, and the host
+// gets data-sf-frozen. Returns true when it took the row.
+window.SAL_FREEZE_MIN_MS = 4500;
+window.mountVideoFreeze = function(hostEl, url, t, opts) {
+  if (!hostEl || !hostEl.id || !(t >= 0)) return false;
+  if (window.isYouTubeLink(url) && getYouTubeId(url)) { _mountYouTubeFreeze(hostEl, url, t, opts || {}); return true; }
+  if (window.isDirectVideoLink && window.isDirectVideoLink(url)) { _mountDirectFreeze(hostEl, url, t, opts || {}); return true; }
+  return false;
+};
+
+function _salFrozenStandIn(t, destroy) {
+  var nop = function() {};
+  return {
+    _salFrozen: true, _gridPaused: true, _salPaused: true,
+    getPlayerState: function() { return 2; },
+    getCurrentTime: function() { return t; },
+    playVideo: nop, pauseVideo: nop, play: nop, pause: nop, seekTo: nop, mute: nop, unMute: nop,
+    destroy: destroy
+  };
+}
+
+function _salFreezeShown(hostEl, opts) {
+  hostEl.dataset.sfFrozen = '1';
+  if (opts.onReady) { try { opts.onReady(); } catch (_) {} }
+}
+
+async function _mountYouTubeFreeze(hostEl, url, t, opts) {
+  await loadYouTubeApiOnce();
+  var cellId = hostEl.id;
+  stopCellVideoLoop(cellId);
+  hostEl.innerHTML = '';
+  delete hostEl.dataset.sfFrozen;
+
+  // Invisible while it warms up, but full size and in the page: YouTube won't
+  // start a player that is hidden or rendered small (see the tile-spinner note).
+  var layer = document.createElement('div');
+  layer.style.cssText = 'position:absolute;inset:0;opacity:0;transition:opacity .35s;pointer-events:none;';
+  var div = document.createElement('div');
+  div.id = 'ytf_' + cellId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  div.style.cssText = 'width:100%;height:100%;pointer-events:none;';
+  layer.appendChild(div);
+  hostEl.appendChild(layer);
+
+  var _ytHost = ((typeof window.getSetting === 'function') && window.getSetting('ytPrivacy') === 'nocookie')
+    ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com';
+  var done = false, timer = null, playingSince = 0, checkAt = 0, misses = 0;
+  var deadline = Date.now() + 25000;
+  var player = new YT.Player(div.id, {
+    videoId: getYouTubeId(url),
+    host: _ytHost,
+    playerVars: {
+      autoplay: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, playsinline: 1,
+      start: Math.max(0, Math.floor(t) - 5),
+      iv_load_policy: 3, cc_load_policy: 0,
+      origin: window.location.origin || window.location.hostname || 'localhost'
+    },
+    events: {
+      onReady: function(e) { e.target.mute(); e.target.playVideo(); },
+      onStateChange: function(e) {
+        if (e.data !== 1 || playingSince) return;
+        playingSince = Date.now();
+        // The still shouldn't carry subtitles. Best effort: the captions module
+        // only exists once playback starts.
+        try { e.target.unloadModule('captions'); } catch (_) {}
+        try { e.target.unloadModule('cc'); } catch (_) {}
+      }
+    }
+  });
+  function finish() {
+    if (done) return;
+    done = true;
+    clearInterval(timer);
+    layer.style.opacity = '1';
+    _salFreezeShown(hostEl, opts);
+  }
+  window.seeLearnVideoPlayers[cellId] = _salFrozenStandIn(t, function() {
+    done = true;
+    clearInterval(timer);
+    try { player.destroy(); } catch (_) {}
+  });
+  timer = setInterval(function() {
+    if (done) return;
+    if (!hostEl.isConnected) { window.stopCellVideoLoop(cellId); return; }
+    var st, ct;
+    try { st = player.getPlayerState(); ct = player.getCurrentTime(); } catch (_) { return; }
+    if (Date.now() > deadline) { finish(); return; }   // best effort beats a black cell
+    if (checkAt) {
+      if (Date.now() < checkAt) return;
+      checkAt = 0;
+      if (st === 2 && Math.abs(ct - t) < 0.05) { finish(); return; }
+      // Missed (still playing): let it run on and scrub again. Three strikes
+      // and whatever is showing is shown.
+      if (++misses >= 3) { finish(); return; }
+      return;
+    }
+    if (st !== 1 || !playingSince) return;
+    if (Date.now() - playingSince < window.SAL_FREEZE_MIN_MS || ct < t) return;
+    try { player.seekTo(t, false); } catch (_) {}
+    checkAt = Date.now() + 300;
+  }, 100);
+}
+
+function _mountDirectFreeze(hostEl, url, t, opts) {
+  var cellId = hostEl.id;
+  stopCellVideoLoop(cellId);
+  hostEl.innerHTML = '';
+  delete hostEl.dataset.sfFrozen;
+  var vid = document.createElement('video');
+  vid.muted = true;
+  vid.playsInline = true;
+  vid.setAttribute('playsinline', '');
+  vid.preload = 'auto';
+  vid.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;pointer-events:none;';
+  if (window.salLockDownVideo) window.salLockDownVideo(vid);
+  vid.addEventListener('loadedmetadata', function() {
+    try { vid.currentTime = t; } catch (_) {}
+  }, { once: true });
+  vid.addEventListener('seeked', function() { _salFreezeShown(hostEl, opts); }, { once: true });
+  vid.src = url;
+  hostEl.appendChild(vid);
+  window.seeLearnVideoPlayers[cellId] = _salFrozenStandIn(t, function() {
+    try { vid.removeAttribute('src'); vid.load(); } catch (_) {}
+  });
+}
 
 // (dev0416) Route G "Play steps" by link type. Vimeo and direct-link cells step
 // in place (gridPlaySteps above). YouTube cells open V instead and play in at

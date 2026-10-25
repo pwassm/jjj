@@ -204,7 +204,11 @@ function _slideshowCellSlides(row, frame) {
   // player a video slide hands off to — already mounts all of these, so detect the
   // full set via isVideoRow (falls back to the direct-file test if it's unavailable).
   else if (typeof isVideoRow === 'function' ? isVideoRow(row) : _slideshowIsDirectVideoLink(row.link)) {
-    out.push({ url: row.link, row, kind: 'video' });
+    // (dev1131) sfFreeze: no still here, so V freezes the player on the frame
+    // (video.js mountVideoFreeze) and _slideshowPlayVideo gives it a dwell.
+    const sfFreeze = !!(window.salSingleFrameT && window.salSingleFrameT(row) != null
+      && (window.isYouTubeLink(row.link) || (window.isDirectVideoLink && window.isDirectVideoLink(row.link))));
+    out.push({ url: row.link, row, kind: 'video', sfFreeze });
   }
   if (row.ftext) {
     _slideshowExtractImgs(row.ftext).forEach(u => out.push({ url: u, row, kind: 'image' }));
@@ -1503,6 +1507,27 @@ function _slideshowPlayVideo(slide) {
       if (typeof vpClose === 'function') vpClose();
     };
     st._videoCapTimer = setTimeout(fire, capMs);
+  }
+  // (dev1131) A SingleFrame row frozen in V never ends, so it gets a picture's
+  // dwell, counted from the moment its frame shows (the warm-up before that
+  // doesn't eat the slide). Pause holds it like an image; dwell 0 = HOLD waits
+  // for the viewer. The close observer then advances the show as usual.
+  clearTimeout(st._sfTimer);
+  if (slide.sfFreeze) {
+    const startDwell = () => {
+      if (!_slideshowState || _slideshowState !== st || !st._videoActive) return;
+      const host = document.getElementById('vp-sf-host');
+      if (!host || !host.dataset.sfFrozen) { st._sfTimer = setTimeout(startDwell, 250); return; }
+      const ms = _ssDwellMs(st);
+      if (!ms) return;
+      const fire = () => {
+        if (!_slideshowState || _slideshowState !== st || !st._videoActive) return;
+        if (st.paused || st._cropHold) { st._sfTimer = setTimeout(fire, 1000); return; }
+        if (typeof vpClose === 'function') vpClose();
+      };
+      st._sfTimer = setTimeout(fire, ms);
+    };
+    st._sfTimer = setTimeout(startDwell, 250);
   }
   // (dev0302/0303) Review mode: paint our bottom filename+resolution+path
   // overlay over V, paint the corner tally, and tell V to skip its own
