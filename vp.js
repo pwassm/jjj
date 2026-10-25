@@ -871,8 +871,12 @@ function gridOpenFullscreen(row, contained) {
   const _armLoop = (_pendLoop && window.salLoops
                     && window.salLoops.matchRow(_pendLoop, row)) ? _pendLoop : null;
 
-  const isVid = isVideoRow(row);
-  
+  // (dev1130) A SingleFrame row opens as the PICTURE of its frame (Iu below),
+  // not a player — see video.js salSingleFrameSrc. Local only: elsewhere it is
+  // '' and the row plays as before.
+  const _sfSrc = window.salSingleFrameSrc ? window.salSingleFrameSrc(row) : '';
+  const isVid = !_sfSrc && isVideoRow(row);
+
   if (isVid && row.link) {
     // VIDEO PLAYER
     // Default to playing from start if no VidRange defined
@@ -2780,12 +2784,18 @@ function gridOpenFullscreen(row, contained) {
     content.appendChild(ivWrap);
 
     const img = document.createElement('img');
-    img.src = row.link;
     img.setAttribute('draggable', 'false');
     img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;'
       + 'transform-origin:center center;will-change:transform;'
       + 'user-select:none;-webkit-user-drag:none;pointer-events:none;';
     ivWrap.appendChild(img);
+    if (_sfSrc) {
+      // (dev1130) The SingleFrame still, grabbed on the spot if it isn't on disk.
+      window.salSingleFrameWire(img, row, {
+        grabbing: () => { if (typeof toast === 'function') toast('⏳ Grabbing the frame…', 2500); },
+        fail: why => { if (typeof toast === 'function') toast('▣ No still: ' + why + '\n(proxy on 8081? off VPN?)', 5000); }
+      });
+    } else img.src = row.link;
 
     // ✕ always accessible at top-right regardless of zoom
     const closeBtn = document.createElement('button');

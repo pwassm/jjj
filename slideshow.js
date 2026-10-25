@@ -194,7 +194,11 @@ function _slideshowFilterByShow(list, mode) {
 function _slideshowCellSlides(row, frame) {
   if (!row) return [];
   const out = [];
-  if (_slideshowIsImageLink(row.link)) out.push({ url: row.link, row, kind: 'image' });
+  // (dev1130) A SingleFrame video row is a PICTURE slide of its frame (video.js
+  // salSingleFrameSrc; '' off localhost, where it stays a video slide).
+  const sfSrc = window.salSingleFrameSrc ? window.salSingleFrameSrc(row) : '';
+  if (sfSrc) out.push({ url: sfSrc, row, kind: 'image', sf: true });
+  else if (_slideshowIsImageLink(row.link)) out.push({ url: row.link, row, kind: 'image' });
   // (dev0530) Any video ROW joins the show, not just direct .mp4 links: YT/Vimeo/
   // IG/TikTok were silently dropped (only images played). gridOpenFullscreen — the
   // player a video slide hands off to — already mounts all of these, so detect the
@@ -2387,6 +2391,24 @@ function _slideshowShow(i, opts) {
   };
   targetEl.onerror = () => {
     if (!_slideshowState || _slideshowState.idx !== myIdx) return;
+    // (dev1130) A SingleFrame still that isn't on disk yet: grab it, then show
+    // it. The dwell clock starts in onload, so the wait doesn't eat the slide.
+    if (slide.sf && !slide._sfTried && window.salSingleFrameGrab) {
+      slide._sfTried = true;
+      window.salSingleFrameGrab(slide.row).then(url => {
+        if (!_slideshowState || _slideshowState.idx !== myIdx) return;
+        if (url) {
+          slide.url = url;
+          targetEl.src = url;
+          if (targetBg) targetBg.src = url;
+          return;
+        }
+        if (typeof toast === 'function') toast('▣ No still: ' + (window._salSfLastError || '?'), 3000);
+        slide.status = 'error';
+        _slideshowAdvance(+1);
+      });
+      return;
+    }
     slide.status = 'error';
     _slideshowAdvance(+1);
   };

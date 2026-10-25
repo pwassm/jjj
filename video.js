@@ -1381,6 +1381,97 @@ window.stepClipName = function(row) {
   return base + '.' + String(row.steps).trim().replace(/,/g, '_') + '.mp4';
 };
 
+// (dev1130) ── SINGLEFRAME: a video row shown as ONE frame, as a picture ─────
+// E's "▣ SingleFrame" chip stores the frame time on the row (row.SingleFrame,
+// seconds to 3 decimals; '' = off). G, V and the slideshow then show that frame
+// as a still image instead of mounting a player: no YouTube centre play button,
+// no pause wall, and nothing replays each time the row comes round. A YT iframe
+// can't be read into a canvas (cross-origin), so the still comes from the
+// proxy: /frame/still → yt-dlp -g + ffmpeg → frames/<salSingleFrameName>.jpg,
+// served by the :8080 static server. frames/ is gitignored and the proxy is
+// local, so this is LOCAL ONLY: on the live site salSingleFrameSrc answers ''
+// and the row plays as the video it always was (grabbed YT material is never
+// served publicly; see the steps/ note in .gitignore).
+window.salSingleFrameT = function(row) {
+  if (!row || row.SingleFrame == null || row.SingleFrame === '') return null;
+  const t = parseFloat(row.SingleFrame);
+  return (isFinite(t) && t >= 0) ? t : null;
+};
+
+// "sf-<UID>-<ms>-<link hash>.jpg". The time and the link are both in the name,
+// so a re-picked frame or an edited link can never show the old file; the proxy
+// deletes the row's older sf-<UID>-*.jpg when it writes a new one. SINGLE
+// SOURCE OF TRUTH: the proxy validates this name, never transforms it.
+window.salSingleFrameName = function(row) {
+  const t = window.salSingleFrameT(row);
+  if (t == null || !/^https?:\/\//i.test(String(row.link || ''))) return '';
+  const uid = String(row.UID == null ? '' : row.UID);
+  if (!/^[A-Za-z0-9_.-]{1,40}$/.test(uid) || uid.includes('..')) return '';
+  const s = String(row.link);
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return 'sf-' + uid + '-' + Math.round(t * 1000) + '-' + h.toString(36) + '.jpg';
+};
+
+// name → the cache-busted URL of a still grabbed in this session (a plain src
+// could get a 404 the browser remembered from before the grab).
+const _salSfFresh = Object.create(null);
+const _salSfGrabbing = Object.create(null);   // name → in-flight grab Promise
+
+// The still's URL for a SingleFrame row, or '' (not one, or not on localhost).
+window.salSingleFrameSrc = function(row) {
+  if (!window._salIsLocalHost || !window._salIsLocalHost()) return '';
+  const name = window.salSingleFrameName(row);
+  return name ? (_salSfFresh[name] || 'frames/' + name) : '';
+};
+
+// Grab the row's still through the proxy. Resolves to its URL, or '' with the
+// reason in window._salSfLastError. One grab per name at a time.
+window.salSingleFrameGrab = function(row) {
+  const name = window.salSingleFrameName(row);
+  if (!name || !window._salIsLocalHost || !window._salIsLocalHost()) return Promise.resolve('');
+  if (_salSfGrabbing[name]) return _salSfGrabbing[name];
+  const base = (typeof PROXY_BASE !== 'undefined') ? PROXY_BASE : 'http://127.0.0.1:8081';
+  const p = fetch(base + '/frame/still', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: row.link, name: name, t: window.salSingleFrameT(row) })
+  }).then(function(r) {
+    return r.json().catch(function() { return {}; }).then(function(j) {
+      if (!r.ok || !j.ok) {
+        const msg = String(j.error || ('HTTP ' + r.status));
+        throw new Error(/unknown frame action/.test(msg)
+          ? 'restart node proxy.js (dev1130) to grab stills' : msg);
+      }
+      return (_salSfFresh[name] = 'frames/' + name + '?t=' + Date.now());
+    });
+  }).catch(function(e) {
+    window._salSfLastError = String(e && e.message ? e.message : e).slice(0, 160);
+    console.warn('[SingleFrame]', name, window._salSfLastError);
+    return '';
+  }).finally(function() { delete _salSfGrabbing[name]; });
+  _salSfGrabbing[name] = p;
+  return p;
+};
+
+// Point an <img> at the row's still. A 404 (never grabbed, or the proxy was
+// down when E set it) grabs it once and swaps it in. on.grabbing() fires when
+// that grab starts, on.fail(reason) if it can't be had, on.load() when shown.
+window.salSingleFrameWire = function(img, row, on) {
+  on = on || {};
+  let tried = false;
+  img.onload = function() { if (on.load) on.load(); };
+  img.onerror = function() {
+    if (tried) { if (on.fail) on.fail(window._salSfLastError || 'the still would not load'); return; }
+    tried = true;
+    if (on.grabbing) on.grabbing();
+    window.salSingleFrameGrab(row).then(function(url) {
+      if (url) img.src = url;
+      else if (on.fail) on.fail(window._salSfLastError || 'grab failed');
+    });
+  };
+  img.src = window.salSingleFrameSrc(row);
+};
+
 // (dev0416) Route G "Play steps" by link type. Vimeo and direct-link cells step
 // in place (gridPlaySteps above). YouTube cells open V instead and play in at
 // normal speed from 4s before `s`, then drop the fsc at `s` (_vpPlayStepsInV) —
@@ -1489,6 +1580,9 @@ window.openVideoEditor = function(it) {
     + '<button id="v2toggle" title="Toggle Selected/Full playback (S)" '
     + 'style="padding:6px 11px;background:rgba(80,0,80,0.3);color:#f8f;border:1px solid #f8f;'
     + 'border-radius:5px;cursor:pointer;font-size:13px;">● Sel</button>'
+    // (dev1130) SingleFrame chip — painted by paintSingleFrameChip()
+    + '<button id="v2b-sf" title="SingleFrame: G, V and the slideshow show the frame on screen now as a still picture, with no player. Click again to turn it off. Right-click while on = use the frame on screen now." '
+    + 'style="padding:6px 11px;border-radius:14px;cursor:pointer;font-size:12px;white-space:nowrap;"></button>'
     // Mute (M key)
     + '<button id="v2b-mute" title="Mute/Unmute (M)" '
     + 'style="padding:6px 11px;border-radius:5px;border:1px solid #888;background:rgba(40,40,60,0.6);'
@@ -3102,6 +3196,83 @@ window.openVideoEditor = function(it) {
     refreshRowMuteButton();
     if (!applyMuteToLivePlayer()) mountLoop();
   });
+
+  // (dev1130) ▣ SingleFrame chip — see salSingleFrameT. ON stores the frame E
+  // is showing (the paused frame; the active segment's start when the player
+  // can't say), freezes E on it and grabs its still for G/V/the slideshow. OFF
+  // clears the field. Right-click while ON re-picks the frame on screen now.
+  var bSF = document.getElementById('v2b-sf');
+  function paintSingleFrameChip() {
+    if (!bSF) return;
+    var t = window.salSingleFrameT(it);
+    bSF.textContent = t == null ? '▣ SingleFrame' : '▣ SingleFrame ' + fmt(t) + 's';
+    bSF.style.border     = '1px solid ' + (t == null ? '#666' : '#fd4');
+    bSF.style.color      = t == null ? '#999' : '#fd4';
+    bSF.style.background = t == null ? 'rgba(40,40,40,0.6)' : 'rgba(90,70,0,0.45)';
+    bSF.style.fontWeight = t == null ? 'normal' : 'bold';
+  }
+  function persistSingleFrame(val) {
+    var _nowISO = (typeof isoNow === 'function') ? isoNow()
+      : new Date().toISOString().slice(0, 19).replace('T', ' ');
+    it.SingleFrame  = val;
+    it.DateModified = _nowISO;
+    var idx = linksData.indexOf(it);
+    if (idx === -1) idx = linksData.findIndex(function(r) {
+      return r.link === it.link && r.cell === it.cell;
+    });
+    if (idx !== -1) { linksData[idx].SingleFrame = val; linksData[idx].DateModified = _nowISO; }
+    if (window._salTab) {
+      try {
+        var rows = window._salTab.getRows();
+        for (var ri = 0; ri < rows.length; ri++) {
+          var rd = rows[ri].getData();
+          if (rd.link === it.link && rd.cell === it.cell) {
+            rows[ri].update({ SingleFrame: val, DateModified: _nowISO });
+            break;
+          }
+        }
+      } catch (ex) {}
+    }
+    if (window.saveData) window.saveData(true);
+  }
+  // The frame on screen: the player's time (a number, or a Promise on Vimeo).
+  function withShownTime(cb) {
+    var seg = segs[activeSegIdx];
+    var fallback = seg ? seg.start : 0;
+    var p = getEditorPlayer(), t = null;
+    try { t = (p && typeof p.getCurrentTime === 'function') ? p.getCurrentTime() : null; } catch (_) {}
+    if (t && typeof t.then === 'function') {
+      t.then(function(v) { cb(typeof v === 'number' && v > 0 ? v : fallback); },
+             function() { cb(fallback); });
+    } else cb(typeof t === 'number' && t > 0 ? t : fallback);
+  }
+  function pickSingleFrame() {
+    withShownTime(function(t) {
+      t = fmt(Math.max(0, t));
+      editorSeekFreeze(t);
+      persistSingleFrame(String(t));
+      paintSingleFrameChip();
+      if (!window._salIsLocalHost || !window._salIsLocalHost()) return;
+      if (window.toast) window.toast('▣ SingleFrame at ' + t + 's — grabbing the still…', 2500);
+      window.salSingleFrameGrab(it).then(function(url) {
+        if (!window.toast) return;
+        if (url) window.toast('▣ SingleFrame still saved (' + t + 's)', 1800);
+        else window.toast('▣ SingleFrame still failed: ' + (window._salSfLastError || '?')
+          + '\n(proxy on 8081? off VPN?) G/V will retry when they show it.', 6000);
+      });
+    });
+  }
+  if (bSF) {
+    paintSingleFrameChip();
+    bSF.addEventListener('click', function() {
+      if (window.salSingleFrameT(it) == null) pickSingleFrame();
+      else { persistSingleFrame(''); paintSingleFrameChip(); }
+    });
+    bSF.addEventListener('contextmenu', function(e) {
+      e.preventDefault(); e.stopPropagation();
+      if (window.salSingleFrameT(it) != null) pickSingleFrame();
+    });
+  }
 
   // Speed slider (single binding — top slider was removed in zip0116)
   if (iSpeed) {
