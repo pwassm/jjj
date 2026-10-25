@@ -1448,6 +1448,7 @@ window.salSingleFrameGrab = function(row) {
         throw new Error(/unknown frame action/.test(msg)
           ? 'restart node proxy.js (dev1130) to grab stills' : msg);
       }
+      window._salSfLastClient = j.client || '';   // (dev1133) 'android-360p' = full size lost the race
       return (_salSfFresh[name] = 'frames/' + name + '?t=' + Date.now());
     });
   }).catch(function(e) {
@@ -1765,11 +1766,7 @@ window.openVideoEditor = function(it) {
     + 'border-left:1px solid #333;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">'
     // Segment tabs
     + '<div><div style="font-size:16px;font-weight:bold;color:#ccc;margin-bottom:8px;">Segment Selection</div>'
-    + '<div id="v2segtabs" style="display:flex;gap:5px;flex-wrap:wrap;"></div>'
-    // (dev1132) SingleFrame chip — painted by paintSingleFrameChip()
-    + '<button id="v2b-sf" title="SingleFrame: set this segment\'s start AND end to the frame on screen (duration 0). G, V and the slideshow then show that frame as a still, with no player. Start ◀ ▶ move the frame; Duration +1 makes it a range again." '
-    + 'style="margin-top:8px;padding:5px 12px;border-radius:14px;cursor:pointer;font-size:12px;white-space:nowrap;"></button>'
-    + '</div>'
+    + '<div id="v2segtabs" style="display:flex;gap:5px;flex-wrap:wrap;"></div></div>'
     // Fine Adjustments title
     + '<div style="font-size:13px;font-weight:bold;color:#ccc;border-bottom:1px solid #444;'
     + 'padding-bottom:5px;">Fine Adjustments</div>'
@@ -1839,6 +1836,10 @@ window.openVideoEditor = function(it) {
     + '<div id="v2vrprev" style="font-size:12px;color:#8ef;word-break:break-all;'
     + 'background:#111;padding:5px;border-radius:4px;border:1px solid #333;'
     + 'font-family:monospace;min-height:20px;"></div></div>'
+    // (dev1133) SingleFrame — the size of Loop / Add segment, under VidRange;
+    // colours set by paintSingleFrameChip()
+    + '<button id="v2b-sf" title="SingleFrame: set this segment\'s start AND end to the frame on screen (duration 0). G, V and the slideshow then show that frame as a still, with no player. Start ◀ ▶ move the frame; Duration +1 makes it a range again." '
+    + 'style="width:100%;padding:7px;border-radius:4px;cursor:pointer;font-size:13px;"></button>'
     + '</div></div>';
 
   document.body.appendChild(overlay);
@@ -1952,6 +1953,15 @@ window.openVideoEditor = function(it) {
       band.textContent = segs[i].comment || ('Seg ' + (i + 1));
       band.title = (segs[i].comment ? segs[i].comment + ' — ' : '')
         + 'Seg ' + (i+1) + ': ' + seg.start.toFixed(1) + 's + ' + seg.dur.toFixed(1) + 's';
+      // (dev1133) A single frame has no duration to show: a thick gold bar on
+      // the frame, full height, no label.
+      if (seg.dur === 0) {
+        band.style.cssText = 'position:absolute;top:0;bottom:0;'
+          + 'left:' + (x - 3) + 'px;width:6px;background:#fd4;border-radius:2px;cursor:pointer;'
+          + (isAct ? 'box-shadow:0 0 0 1px #fff;' : '');
+        band.textContent = '';
+        band.title = 'Single frame at ' + seg.start.toFixed(3) + 's';
+      }
       // Use pointerdown so it fires before the timeline's own pointerdown handler
       band.addEventListener('pointerdown', function(ev) {
         // (dev0980) A plain left-click is NOT handled here any more — it bubbles
@@ -3416,7 +3426,9 @@ window.openVideoEditor = function(it) {
       if (window.toast) window.toast('▣ SingleFrame at ' + t + 's — grabbing the still…', 2500);
       window.salSingleFrameGrab(it).then(function(url) {
         if (!window.toast) return;
-        if (url) window.toast('▣ SingleFrame still saved (' + t + 's)', 1800);
+        if (url && window._salSfLastClient) window.toast('▣ SingleFrame still saved at 360p (' + t + 's).'
+          + '\nFull size was too slow: VPN on? Off the VPN, click SingleFrame again for full size.', 6000);
+        else if (url) window.toast('▣ SingleFrame still saved (' + t + 's)', 1800);
         else window.toast('▣ SingleFrame still failed: ' + (window._salSfLastError || '?')
           + '\n(proxy on 8081? off VPN?) G/V will retry when they show it.', 6000);
       });

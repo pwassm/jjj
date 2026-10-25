@@ -2389,13 +2389,23 @@ function _gridSingleFrameCell(cell, row, fit) {
   hint.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;'
     + 'text-align:center;color:#fd4;font:bold 12px sans-serif;padding:8px;pointer-events:none;z-index:2;';
   const say = msg => { hint.innerHTML = msg; hint.style.display = msg ? 'flex' : 'none'; };
+  // (dev1133) The grab counts its seconds, so a slow one reads as working.
+  let tick = null;
+  const stopTick = () => { clearInterval(tick); tick = null; };
   cell.style.background = '#000';
   cell.appendChild(img);
   cell.appendChild(hint);
   window.salSingleFrameWire(img, row, {
-    grabbing: () => say('⏳ Grabbing the frame…'),
-    load:     () => say(''),
-    fail:     why => say('▣ No still —<br>' + escH(String(why).slice(0, 120)) + '<br>(proxy on 8081? off VPN?)')
+    grabbing: () => {
+      const t0 = Date.now();
+      say('⏳ Grabbing the frame…');
+      tick = setInterval(() => {
+        if (!hint.isConnected) { stopTick(); return; }
+        say('⏳ Grabbing the frame… ' + Math.round((Date.now() - t0) / 1000) + 's');
+      }, 1000);
+    },
+    load:     () => { stopTick(); say(''); },
+    fail:     why => { stopTick(); say('▣ No still —<br>' + escH(String(why).slice(0, 120)) + '<br>(proxy on 8081? off VPN?)'); }
   });
 }
 
