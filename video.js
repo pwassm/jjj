@@ -1382,20 +1382,23 @@ window.stepClipName = function(row) {
 };
 
 // (dev1130) ── SINGLEFRAME: a video row shown as ONE frame, as a picture ─────
-// E's "▣ SingleFrame" chip stores the frame time on the row (row.SingleFrame,
-// seconds to 3 decimals; '' = off). G, V and the slideshow then show that frame
-// as a still image instead of mounting a player: no YouTube centre play button,
-// no pause wall, and nothing replays each time the row comes round. A YT iframe
+// (dev1132) The signal is the VidRange itself: a segment whose start and end are
+// the same frame, i.e. duration 0 ("96.25 0"). E's "▣ SingleFrame" chip under
+// Segment Selection makes the active segment one (it was a separate
+// row.SingleFrame field in dev1130/1131). G, V and the slideshow then show that
+// frame as a still image instead of mounting a player: no YouTube centre play
+// button, no pause wall, and nothing replays each time the row comes round. A YT iframe
 // can't be read into a canvas (cross-origin), so the still comes from the
 // proxy: /frame/still → yt-dlp -g + ffmpeg → frames/<salSingleFrameName>.jpg,
 // served by the :8080 static server. frames/ is gitignored and the proxy is
 // local, so this is LOCAL ONLY: on the live site salSingleFrameSrc answers ''
 // and the row plays as the video it always was (grabbed YT material is never
 // served publicly; see the steps/ note in .gitignore).
+// The frame time of a SingleFrame row (its first zero-length segment), or null.
 window.salSingleFrameT = function(row) {
-  if (!row || row.SingleFrame == null || row.SingleFrame === '') return null;
-  const t = parseFloat(row.SingleFrame);
-  return (isFinite(t) && t >= 0) ? t : null;
+  const segs = row ? window.parseVideoAsset(row.VidRange) : null;
+  const seg = segs && segs.find(function(s) { return s.dur === 0; });
+  return (seg && isFinite(seg.start) && seg.start >= 0) ? seg.start : null;
 };
 
 // "sf-<UID>-<ms>-<link hash>.jpg". The time and the link are both in the name,
@@ -1725,9 +1728,6 @@ window.openVideoEditor = function(it) {
     + '<button id="v2toggle" title="Toggle Selected/Full playback (S)" '
     + 'style="padding:6px 11px;background:rgba(80,0,80,0.3);color:#f8f;border:1px solid #f8f;'
     + 'border-radius:5px;cursor:pointer;font-size:13px;">● Sel</button>'
-    // (dev1130) SingleFrame chip — painted by paintSingleFrameChip()
-    + '<button id="v2b-sf" title="SingleFrame: G, V and the slideshow show the frame on screen now as a still picture, with no player. Click again to turn it off. Right-click while on = use the frame on screen now." '
-    + 'style="padding:6px 11px;border-radius:14px;cursor:pointer;font-size:12px;white-space:nowrap;"></button>'
     // Mute (M key)
     + '<button id="v2b-mute" title="Mute/Unmute (M)" '
     + 'style="padding:6px 11px;border-radius:5px;border:1px solid #888;background:rgba(40,40,60,0.6);'
@@ -1765,7 +1765,11 @@ window.openVideoEditor = function(it) {
     + 'border-left:1px solid #333;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">'
     // Segment tabs
     + '<div><div style="font-size:16px;font-weight:bold;color:#ccc;margin-bottom:8px;">Segment Selection</div>'
-    + '<div id="v2segtabs" style="display:flex;gap:5px;flex-wrap:wrap;"></div></div>'
+    + '<div id="v2segtabs" style="display:flex;gap:5px;flex-wrap:wrap;"></div>'
+    // (dev1132) SingleFrame chip — painted by paintSingleFrameChip()
+    + '<button id="v2b-sf" title="SingleFrame: set this segment\'s start AND end to the frame on screen (duration 0). G, V and the slideshow then show that frame as a still, with no player. Start ◀ ▶ move the frame; Duration +1 makes it a range again." '
+    + 'style="margin-top:8px;padding:5px 12px;border-radius:14px;cursor:pointer;font-size:12px;white-space:nowrap;"></button>'
+    + '</div>'
     // Fine Adjustments title
     + '<div style="font-size:13px;font-weight:bold;color:#ccc;border-bottom:1px solid #444;'
     + 'padding-bottom:5px;">Fine Adjustments</div>'
@@ -1799,7 +1803,7 @@ window.openVideoEditor = function(it) {
     + '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;align-items:center;">'
     // Row 1: number in col 3
     + '<div></div><div></div>'
-    + '<input type="number" id="v2dur" class="v2num" min="0.1" step="0.1" style="width:100%;text-align:center;">'
+    + '<input type="number" id="v2dur" class="v2num" min="0" step="0.1" style="width:100%;text-align:center;">'
     + '<div></div><div></div>'
     // Row 2: carets in col 3
     + '<div></div><div></div>'
@@ -1961,7 +1965,7 @@ window.openVideoEditor = function(it) {
           // with no VidRange; ctrl+click re-adds a segment).
           ev.preventDefault();
           segs.splice(i, 1);
-          setActiveSeg(Math.min(activeSegIdx, segs.length - 1));
+          segsChanged(Math.min(activeSegIdx, segs.length - 1));
         }
       });
 
@@ -2003,6 +2007,7 @@ window.openVideoEditor = function(it) {
     segCount.textContent = '(' + segs.length + ' seg' + (segs.length > 1 ? 's' : '') + ')';
     vrPrev.textContent   = window.serializeSegments(segs);
     updateStats();
+    paintSingleFrameChip();   // (dev1132)
   }
 
   function setActiveSeg(i) {
@@ -2013,6 +2018,14 @@ window.openVideoEditor = function(it) {
     renderSegTabs();
     renderTimeline();
     mountLoop();    // switch loop to new active segment
+  }
+
+  // (dev1132) A segment was added or deleted: make i active AND save it.
+  // setActiveSeg alone never saved, and Esc closes E without saving, so a
+  // deleted segment came back the next time E opened (UID 2679).
+  function segsChanged(i) {
+    setActiveSeg(i);
+    persistEditorState();
   }
 
   // (dev0980) Make segment i active WITHOUT remounting the player (setActiveSeg
@@ -2149,7 +2162,9 @@ window.openVideoEditor = function(it) {
   function readInputs() {
     if (!segs.length) return;
     segs[activeSegIdx].start = fmt(Math.max(0,   parseFloat(iStart.value) || 0));
-    segs[activeSegIdx].dur   = fmt(Math.max(0.1, parseFloat(iDur.value)   || 0.1));
+    // (dev1132) 0 is kept: start = end is the single-frame signal.
+    var _d = parseFloat(iDur.value);
+    segs[activeSegIdx].dur   = fmt(isFinite(_d) && _d >= 0 ? _d : 0.1);
     vrPrev.textContent = window.serializeSegments(segs);
     updateStats();
     renderTimeline();
@@ -2219,6 +2234,15 @@ window.openVideoEditor = function(it) {
     var end = seg.start + seg.dur;
     var k = frameIdx(seg.start) + dir;
     if (k < 0) return;
+    // (dev1132) A single frame (start = end) moves as one: both ends step.
+    if (seg.dur === 0) {
+      if (dir > 0 && totalVideoDur && frameMid(k) > totalVideoDur) return;
+      seg.start = frameMid(k);
+      iStart.value = seg.start;
+      updateSegData();
+      editorSeekFreeze(seg.start);
+      return;
+    }
     if (k >= frameIdx(end)) {
       if (typeof toast === 'function') toast('Start is already on the frame before the end', 1400);
       return;
@@ -2552,12 +2576,12 @@ window.openVideoEditor = function(it) {
     var remaining3 = totalVideoDur ? Math.max(0, totalVideoDur - newStart) : 9999;
     var newDur3 = remaining3 >= 5 ? 5 : remaining3 >= 1 ? 1 : 5;
     segs.push({ start: newStart, dur: newDur3 });
-    setActiveSeg(segs.length - 1);
+    segsChanged(segs.length - 1);
   });
   document.getElementById('v2delseg').addEventListener('click', function() {
     if (!segs.length) return;
     segs.splice(activeSegIdx, 1);
-    setActiveSeg(Math.min(activeSegIdx, segs.length - 1));
+    segsChanged(Math.min(activeSegIdx, segs.length - 1));
   });
 
   // ── Timeline click + drag scrubbing ──────────────────────────────────────
@@ -2582,6 +2606,8 @@ window.openVideoEditor = function(it) {
 
   // Resume loop for the active segment on the existing player
   function resumeLoop(p, segStart, segDur) {
+    // (dev1132) A single frame has nothing to loop: hold it.
+    if (!(segDur > 0)) { editorSeekFreeze(segStart); return; }
     suspendLoop();
     var endT = segStart + segDur;
     if (!p) return;
@@ -2621,6 +2647,13 @@ window.openVideoEditor = function(it) {
     suspendLoop();
     var endT = segStart + segDur;
     if (!p) return;
+    // (dev1132) On a single frame, play on freely (no loop back) so another
+    // frame can be found and taken with the SingleFrame chip.
+    if (!(segDur > 0)) {
+      p._salPaused = false;
+      try { if (typeof p.playVideo === 'function') p.playVideo(); else p.play().catch(function(){}); } catch (ex) {}
+      return;
+    }
     if (typeof p.playVideo === 'function') {
       try { p._salPaused = false; p.playVideo(); } catch(ex) {}
       window.seeLearnVideoTimers['v2host'] = setInterval(function() {
@@ -2773,7 +2806,7 @@ window.openVideoEditor = function(it) {
       var remaining2 = totalVideoDur ? Math.max(0, totalVideoDur - fmt(clickSec)) : 9999;
       var newDur2 = remaining2 >= 5 ? 5 : remaining2 >= 1 ? 1 : 5;
       segs.push({ start: fmt(clickSec), dur: newDur2 });
-      setActiveSeg(segs.length - 1);
+      segsChanged(segs.length - 1);
     }
   });
 
@@ -2811,6 +2844,7 @@ window.openVideoEditor = function(it) {
   // loopSeg=true → normal looped segment playback (start..start+dur then repeat)
   // loopSeg=false → seek to seekSec, play briefly then pause
   function _mountEditorPlayer(segStart, segDur, seekSec, loopSeg, onDurationReady) {
+    if (loopSeg && !(segDur > 0)) loopSeg = false;   // (dev1132) single frame: seek and hold
     window.stopCellVideoLoop('v2host');
     host.innerHTML = '';
 
@@ -3342,43 +3376,21 @@ window.openVideoEditor = function(it) {
     if (!applyMuteToLivePlayer()) mountLoop();
   });
 
-  // (dev1130) ▣ SingleFrame chip — see salSingleFrameT. ON stores the frame E
-  // is showing (the paused frame; the active segment's start when the player
-  // can't say), freezes E on it and grabs its still for G/V/the slideshow. OFF
-  // clears the field. Right-click while ON re-picks the frame on screen now.
-  var bSF = document.getElementById('v2b-sf');
+  // (dev1132) ▣ SingleFrame chip, under Segment Selection — see salSingleFrameT.
+  // Sets the active segment's start AND end to the frame on screen (duration 0,
+  // the single-frame signal; a new segment when there is none), freezes E on it
+  // and grabs the still for G/V/the slideshow. Lit while the active segment is
+  // a single frame. Start ◀ ▶ then move the frame; Duration +1 makes it a range.
   function paintSingleFrameChip() {
-    if (!bSF) return;
-    var t = window.salSingleFrameT(it);
-    bSF.textContent = t == null ? '▣ SingleFrame' : '▣ SingleFrame ' + fmt(t) + 's';
-    bSF.style.border     = '1px solid ' + (t == null ? '#666' : '#fd4');
-    bSF.style.color      = t == null ? '#999' : '#fd4';
-    bSF.style.background = t == null ? 'rgba(40,40,40,0.6)' : 'rgba(90,70,0,0.45)';
-    bSF.style.fontWeight = t == null ? 'normal' : 'bold';
-  }
-  function persistSingleFrame(val) {
-    var _nowISO = (typeof isoNow === 'function') ? isoNow()
-      : new Date().toISOString().slice(0, 19).replace('T', ' ');
-    it.SingleFrame  = val;
-    it.DateModified = _nowISO;
-    var idx = linksData.indexOf(it);
-    if (idx === -1) idx = linksData.findIndex(function(r) {
-      return r.link === it.link && r.cell === it.cell;
-    });
-    if (idx !== -1) { linksData[idx].SingleFrame = val; linksData[idx].DateModified = _nowISO; }
-    if (window._salTab) {
-      try {
-        var rows = window._salTab.getRows();
-        for (var ri = 0; ri < rows.length; ri++) {
-          var rd = rows[ri].getData();
-          if (rd.link === it.link && rd.cell === it.cell) {
-            rows[ri].update({ SingleFrame: val, DateModified: _nowISO });
-            break;
-          }
-        }
-      } catch (ex) {}
-    }
-    if (window.saveData) window.saveData(true);
+    var b = document.getElementById('v2b-sf');
+    if (!b) return;
+    var seg = segs[activeSegIdx];
+    var on = !!(seg && seg.dur === 0);
+    b.textContent = on ? '▣ SingleFrame ' + fmt(seg.start) + 's' : '▣ SingleFrame';
+    b.style.border     = '1px solid ' + (on ? '#fd4' : '#666');
+    b.style.color      = on ? '#fd4' : '#bbb';
+    b.style.background = on ? 'rgba(90,70,0,0.45)' : 'rgba(40,40,40,0.6)';
+    b.style.fontWeight = on ? 'bold' : 'normal';
   }
   // The frame on screen: the player's time (a number, or a Promise on Vimeo).
   function withShownTime(cb) {
@@ -3391,12 +3403,15 @@ window.openVideoEditor = function(it) {
              function() { cb(fallback); });
     } else cb(typeof t === 'number' && t > 0 ? t : fallback);
   }
-  function pickSingleFrame() {
+  function setSingleFrame() {
     withShownTime(function(t) {
       t = fmt(Math.max(0, t));
+      if (!segs.length) { segs.push({ start: t, dur: 0 }); activeSegIdx = 0; }
+      else { segs[activeSegIdx].start = t; segs[activeSegIdx].dur = 0; }
+      iStart.value = t;
+      iDur.value = 0;
+      updateSegData();               // repaints tabs, timeline and the chip, and saves
       editorSeekFreeze(t);
-      persistSingleFrame(String(t));
-      paintSingleFrameChip();
       if (!window._salIsLocalHost || !window._salIsLocalHost()) return;
       if (window.toast) window.toast('▣ SingleFrame at ' + t + 's — grabbing the still…', 2500);
       window.salSingleFrameGrab(it).then(function(url) {
@@ -3407,16 +3422,10 @@ window.openVideoEditor = function(it) {
       });
     });
   }
+  var bSF = document.getElementById('v2b-sf');
   if (bSF) {
     paintSingleFrameChip();
-    bSF.addEventListener('click', function() {
-      if (window.salSingleFrameT(it) == null) pickSingleFrame();
-      else { persistSingleFrame(''); paintSingleFrameChip(); }
-    });
-    bSF.addEventListener('contextmenu', function(e) {
-      e.preventDefault(); e.stopPropagation();
-      if (window.salSingleFrameT(it) != null) pickSingleFrame();
-    });
+    bSF.addEventListener('click', setSingleFrame);
   }
 
   // Speed slider (single binding — top slider was removed in zip0116)
@@ -3438,7 +3447,7 @@ window.openVideoEditor = function(it) {
       var remaining = totalVideoDur ? Math.max(0, totalVideoDur - insertSec) : 9999;
       var insertDur = remaining >= 5 ? 5 : remaining >= 1 ? 1 : 5;
       segs.push({ start: insertSec, dur: insertDur });
-      setActiveSeg(segs.length - 1);
+      segsChanged(segs.length - 1);
       vrPrev.textContent = 'New seg at ' + insertSec + 's — ' + window.serializeSegments(segs);
     }
     if (p && typeof p.getCurrentTime === 'function') {
@@ -3489,7 +3498,7 @@ window.openVideoEditor = function(it) {
       var segStart = Math.min(startSec, endSec);
       var segDur   = Math.abs(endSec - startSec);
       segs.push({ start: fmt(segStart), dur: fmt(segDur) });
-      setActiveSeg(segs.length - 1);
+      segsChanged(segs.length - 1);
       vrPrev.textContent = 'New seg ' + segStart + 's + ' + segDur + 's — ' + window.serializeSegments(segs);
       if (window.toast) window.toast(
         '✓ Segment created: ' + fmt(segStart) + 's + ' + fmt(segDur) + 's',
