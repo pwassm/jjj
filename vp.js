@@ -871,17 +871,13 @@ function gridOpenFullscreen(row, contained) {
   const _armLoop = (_pendLoop && window.salLoops
                     && window.salLoops.matchRow(_pendLoop, row)) ? _pendLoop : null;
 
-  // (dev1130) A SingleFrame row opens as the PICTURE of its frame (Iu below),
-  // not a player — see video.js salSingleFrameSrc. Local only: elsewhere it is
-  // '' and the row plays as before.
-  const _sfSrc = window.salSingleFrameSrc ? window.salSingleFrameSrc(row) : '';
-  // (dev1131) …and with no still (the live site), a YouTube or video-file
-  // SingleFrame row opens there too, as its player frozen on the frame
-  // (video.js mountVideoFreeze). Vimeo still plays.
+  // (dev1131) A YouTube or video-file SingleFrame row (a zero-length segment)
+  // opens as a picture (Iu below): its player frozen on the frame, video.js
+  // mountVideoFreeze. Vimeo still plays.
   const _sfT = window.salSingleFrameT ? window.salSingleFrameT(row) : null;
-  const _sfFreeze = !_sfSrc && _sfT != null && !!window.mountVideoFreeze
+  const _sfFreeze = _sfT != null && !!window.mountVideoFreeze
     && (window.isYouTubeLink(row.link) || !!(window.isDirectVideoLink && window.isDirectVideoLink(row.link)));
-  const isVid = !_sfSrc && !_sfFreeze && isVideoRow(row);
+  const isVid = !_sfFreeze && isVideoRow(row);
 
   if (isVid && row.link) {
     // VIDEO PLAYER
@@ -2803,12 +2799,6 @@ function gridOpenFullscreen(row, contained) {
       img.style.width = '100%';
       img.style.height = '100%';
       window.mountVideoFreeze(img, row.link, _sfT);
-    } else if (_sfSrc) {
-      // (dev1130) The SingleFrame still, grabbed on the spot if it isn't on disk.
-      window.salSingleFrameWire(img, row, {
-        grabbing: () => { if (typeof toast === 'function') toast('⏳ Grabbing the frame…', 2500); },
-        fail: why => { if (typeof toast === 'function') toast('▣ No still: ' + why + '\n(proxy on 8081? off VPN?)', 5000); }
-      });
     } else img.src = row.link;
 
     // ✕ always accessible at top-right regardless of zoom

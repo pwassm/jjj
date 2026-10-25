@@ -2374,48 +2374,13 @@ function _gridApplyConfigZoom(cfg) {
   });
 }
 
-// (dev1130) A SingleFrame row (E's ▣ chip) is one frame of its video shown as a
-// picture: the image branch's <img>, pointed at the local still the proxy
-// grabbed (video.js salSingleFrameSrc), and grabbed on the spot when it isn't on
-// disk yet. No player is mounted, so there is nothing to pause or replay and no
-// YouTube chrome. The caller only takes this branch when the src is non-empty
-// (localhost); on the live site the row stays an ordinary video cell.
-function _gridSingleFrameCell(cell, row, fit) {
-  const img = document.createElement('img');
-  img.className = 'grid-zoom-img';   // (dev0346) wheel-zoom target
-  img.setAttribute('draggable', 'false');
-  img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:' + fit + ';pointer-events:none;z-index:1;transform-origin:center center;';
-  const hint = document.createElement('div');
-  hint.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;'
-    + 'text-align:center;color:#fd4;font:bold 12px sans-serif;padding:8px;pointer-events:none;z-index:2;';
-  const say = msg => { hint.innerHTML = msg; hint.style.display = msg ? 'flex' : 'none'; };
-  // (dev1133) The grab counts its seconds, so a slow one reads as working.
-  let tick = null;
-  const stopTick = () => { clearInterval(tick); tick = null; };
-  cell.style.background = '#000';
-  cell.appendChild(img);
-  cell.appendChild(hint);
-  window.salSingleFrameWire(img, row, {
-    grabbing: () => {
-      const t0 = Date.now();
-      say('⏳ Grabbing the frame…');
-      tick = setInterval(() => {
-        if (!hint.isConnected) { stopTick(); return; }
-        say('⏳ Grabbing the frame… ' + Math.round((Date.now() - t0) / 1000) + 's');
-      }, 1000);
-    },
-    load:     () => { stopTick(); say(''); },
-    fail:     why => { stopTick(); say('▣ No still —<br>' + escH(String(why).slice(0, 120)) + '<br>(proxy on 8081? off VPN?)'); }
-  });
-}
-
 // Single entry point for mounting a video cell — picks the buffered YT path
 // when enabled+eligible, else the normal per-platform mounts. Shared by the
 // full-grid build (gridShow) and the single-cell update (gridUpdateCell).
 function _gridMountVideo(vidHost, row, segs, muted) {
-  // (dev1131) A SingleFrame row with no local still (the live site) freezes its
-  // own player on the frame — video.js mountVideoFreeze. Vimeo answers false
-  // and plays as before.
+  // (dev1131) A SingleFrame row (a zero-length segment) freezes its own player
+  // on the frame — video.js mountVideoFreeze. Vimeo answers false and plays as
+  // before.
   const sfT = window.salSingleFrameT ? window.salSingleFrameT(row) : null;
   if (sfT != null && window.mountVideoFreeze && window.mountVideoFreeze(vidHost, row.link, sfT)) {
     _gridCoverFitHost(vidHost);
@@ -3494,12 +3459,8 @@ function gridShow() {
         const isImgLink = /\.(jpe?g|png|gif|webp|svg|bmp|tiff?)(\?.*)?$/i.test(row.link || '');
         const hasFtextImgs = !!(row.ftext && row.ftext.includes('<img'));
         const isIG = !!(row.link && window.isInstagramLink && window.isInstagramLink(row.link));
-        // (dev1130) SingleFrame row → the still of its frame, no player.
-        const sfSrc = window.salSingleFrameSrc ? window.salSingleFrameSrc(row) : '';
 
-        if (sfSrc) {
-          _gridSingleFrameCell(cell, row, _gridPortraitDims(_layout) ? 'cover' : 'contain');
-        } else if (isIG) {
+        if (isIG) {
           // Live IG embed clipped to fit. Iframe is rendered at its natural
           // 326×620 size, scaled to cell width, and offset upward by the
           // header height — overflow:hidden on the wrap drops the footer.
@@ -3940,11 +3901,8 @@ function gridUpdateCell(cellStr, row) {
     const isImgLink = /\.(jpe?g|png|gif|webp|svg|bmp|tiff?)(\?.*)?$/i.test(row.link || '');
     const hasFtextImgs = !!(row.ftext && row.ftext.includes('<img'));
     const isIG = !!(row.link && window.isInstagramLink && window.isInstagramLink(row.link));
-    const sfSrc = window.salSingleFrameSrc ? window.salSingleFrameSrc(row) : '';   // (dev1130)
 
-    if (sfSrc) {
-      _gridSingleFrameCell(cellEl, row, 'contain');
-    } else if (isIG) {
+    if (isIG) {
       // Live IG embed clipped to fit — see gridShow's matching block for the
       // rationale on scaling + header clip (and dev0604 click-arming).
       const igWrap = document.createElement('div');

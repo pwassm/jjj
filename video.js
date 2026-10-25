@@ -1381,19 +1381,14 @@ window.stepClipName = function(row) {
   return base + '.' + String(row.steps).trim().replace(/,/g, '_') + '.mp4';
 };
 
-// (dev1130) ── SINGLEFRAME: a video row shown as ONE frame, as a picture ─────
-// (dev1132) The signal is the VidRange itself: a segment whose start and end are
-// the same frame, i.e. duration 0 ("96.25 0"). E's "▣ SingleFrame" chip under
-// Segment Selection makes the active segment one (it was a separate
-// row.SingleFrame field in dev1130/1131). G, V and the slideshow then show that
-// frame as a still image instead of mounting a player: no YouTube centre play
-// button, no pause wall, and nothing replays each time the row comes round. A YT iframe
-// can't be read into a canvas (cross-origin), so the still comes from the
-// proxy: /frame/still → yt-dlp -g + ffmpeg → frames/<salSingleFrameName>.jpg,
-// served by the :8080 static server. frames/ is gitignored and the proxy is
-// local, so this is LOCAL ONLY: on the live site salSingleFrameSrc answers ''
-// and the row plays as the video it always was (grabbed YT material is never
-// served publicly; see the steps/ note in .gitignore).
+// (dev1130) ── SINGLEFRAME: a video row shown as ONE frame ────────────────────
+// The signal is the VidRange itself (dev1132): a segment whose start and end
+// are the same frame, i.e. duration 0 ("96.25 0"). E's "▣ SingleFrame" button
+// under the VidRange value makes the active segment one. G, V and the slideshow
+// then show that frame with the player frozen on it (mountVideoFreeze below):
+// no YouTube centre play button, no pause wall. (dev1134) The player itself is
+// the still, locally and on the live site. dev1130-1133 grabbed a jpg through
+// the proxy instead; that was dropped because a grab took far too long.
 // The frame time of a SingleFrame row (its first zero-length segment), or null.
 window.salSingleFrameT = function(row) {
   const segs = row ? window.parseVideoAsset(row.VidRange) : null;
@@ -1401,87 +1396,9 @@ window.salSingleFrameT = function(row) {
   return (seg && isFinite(seg.start) && seg.start >= 0) ? seg.start : null;
 };
 
-// "sf-<UID>-<ms>-<link hash>.jpg". The time and the link are both in the name,
-// so a re-picked frame or an edited link can never show the old file; the proxy
-// deletes the row's older sf-<UID>-*.jpg when it writes a new one. SINGLE
-// SOURCE OF TRUTH: the proxy validates this name, never transforms it.
-window.salSingleFrameName = function(row) {
-  const t = window.salSingleFrameT(row);
-  if (t == null || !/^https?:\/\//i.test(String(row.link || ''))) return '';
-  const uid = String(row.UID == null ? '' : row.UID);
-  if (!/^[A-Za-z0-9_.-]{1,40}$/.test(uid) || uid.includes('..')) return '';
-  const s = String(row.link);
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
-  return 'sf-' + uid + '-' + Math.round(t * 1000) + '-' + h.toString(36) + '.jpg';
-};
-
-// name → the cache-busted URL of a still grabbed in this session (a plain src
-// could get a 404 the browser remembered from before the grab).
-const _salSfFresh = Object.create(null);
-const _salSfGrabbing = Object.create(null);   // name → in-flight grab Promise
-
-// The still's URL for a SingleFrame row, or '' (not one, or not on localhost).
-// (dev1131) window._salSfLive = true (console) answers '' on localhost too, so
-// the live site's freeze path (mountVideoFreeze below) can be tried locally.
-window.salSingleFrameSrc = function(row) {
-  if (window._salSfLive) return '';
-  if (!window._salIsLocalHost || !window._salIsLocalHost()) return '';
-  const name = window.salSingleFrameName(row);
-  return name ? (_salSfFresh[name] || 'frames/' + name) : '';
-};
-
-// Grab the row's still through the proxy. Resolves to its URL, or '' with the
-// reason in window._salSfLastError. One grab per name at a time.
-window.salSingleFrameGrab = function(row) {
-  const name = window.salSingleFrameName(row);
-  if (!name || !window._salIsLocalHost || !window._salIsLocalHost()) return Promise.resolve('');
-  if (_salSfGrabbing[name]) return _salSfGrabbing[name];
-  const base = (typeof PROXY_BASE !== 'undefined') ? PROXY_BASE : 'http://127.0.0.1:8081';
-  const p = fetch(base + '/frame/still', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: row.link, name: name, t: window.salSingleFrameT(row) })
-  }).then(function(r) {
-    return r.json().catch(function() { return {}; }).then(function(j) {
-      if (!r.ok || !j.ok) {
-        const msg = String(j.error || ('HTTP ' + r.status));
-        throw new Error(/unknown frame action/.test(msg)
-          ? 'restart node proxy.js (dev1130) to grab stills' : msg);
-      }
-      window._salSfLastClient = j.client || '';   // (dev1133) 'android-360p' = full size lost the race
-      return (_salSfFresh[name] = 'frames/' + name + '?t=' + Date.now());
-    });
-  }).catch(function(e) {
-    window._salSfLastError = String(e && e.message ? e.message : e).slice(0, 160);
-    console.warn('[SingleFrame]', name, window._salSfLastError);
-    return '';
-  }).finally(function() { delete _salSfGrabbing[name]; });
-  _salSfGrabbing[name] = p;
-  return p;
-};
-
-// Point an <img> at the row's still. A 404 (never grabbed, or the proxy was
-// down when E set it) grabs it once and swaps it in. on.grabbing() fires when
-// that grab starts, on.fail(reason) if it can't be had, on.load() when shown.
-window.salSingleFrameWire = function(img, row, on) {
-  on = on || {};
-  let tried = false;
-  img.onload = function() { if (on.load) on.load(); };
-  img.onerror = function() {
-    if (tried) { if (on.fail) on.fail(window._salSfLastError || 'the still would not load'); return; }
-    tried = true;
-    if (on.grabbing) on.grabbing();
-    window.salSingleFrameGrab(row).then(function(url) {
-      if (url) img.src = url;
-      else if (on.fail) on.fail(window._salSfLastError || 'grab failed');
-    });
-  };
-  img.src = window.salSingleFrameSrc(row);
-};
-
-// (dev1131) ── SingleFrame on the live site: the player IS the still ──────────
-// Off localhost there is no grabbed jpg (salSingleFrameSrc ''), so a SingleFrame
-// row freezes its own player on the frame. Measured 2026-10-25 on UID 5:
+// (dev1131) ── The player IS the still ──────────────────────────────────────
+// A SingleFrame row freezes its own player on the frame. Measured 2026-10-25 on
+// UID 5:
 //  • pauseVideo() paints YouTube's ▶, title bar, share and "More videos".
 //    seekTo(t, false) — YouTube's SCRUB seek — doesn't: ~10 ms later the player
 //    is PAUSED on exactly t with none of it, holds there, and stays clean when
@@ -1838,7 +1755,7 @@ window.openVideoEditor = function(it) {
     + 'font-family:monospace;min-height:20px;"></div></div>'
     // (dev1133) SingleFrame — the size of Loop / Add segment, under VidRange;
     // colours set by paintSingleFrameChip()
-    + '<button id="v2b-sf" title="SingleFrame: set this segment\'s start AND end to the frame on screen (duration 0). G, V and the slideshow then show that frame as a still, with no player. Start ◀ ▶ move the frame; Duration +1 makes it a range again." '
+    + '<button id="v2b-sf" title="SingleFrame: set this segment\'s start AND end to the frame on screen (duration 0). G, V and the slideshow then hold the video on that frame (after a few seconds\' hidden warm-up, so YouTube shows no play button). Start ◀ ▶ move the frame; Duration +1 makes it a range again." '
     + 'style="width:100%;padding:7px;border-radius:4px;cursor:pointer;font-size:13px;"></button>'
     + '</div></div>';
 
@@ -3386,11 +3303,11 @@ window.openVideoEditor = function(it) {
     if (!applyMuteToLivePlayer()) mountLoop();
   });
 
-  // (dev1132) ▣ SingleFrame chip, under Segment Selection — see salSingleFrameT.
-  // Sets the active segment's start AND end to the frame on screen (duration 0,
-  // the single-frame signal; a new segment when there is none), freezes E on it
-  // and grabs the still for G/V/the slideshow. Lit while the active segment is
-  // a single frame. Start ◀ ▶ then move the frame; Duration +1 makes it a range.
+  // (dev1132) ▣ SingleFrame button, under the VidRange value — see
+  // salSingleFrameT. Sets the active segment's start AND end to the frame on
+  // screen (duration 0, the single-frame signal; a new segment when there is
+  // none) and freezes E on it. Lit while the active segment is a single frame.
+  // Start ◀ ▶ then move the frame; Duration +1 makes it a range.
   function paintSingleFrameChip() {
     var b = document.getElementById('v2b-sf');
     if (!b) return;
@@ -3422,16 +3339,6 @@ window.openVideoEditor = function(it) {
       iDur.value = 0;
       updateSegData();               // repaints tabs, timeline and the chip, and saves
       editorSeekFreeze(t);
-      if (!window._salIsLocalHost || !window._salIsLocalHost()) return;
-      if (window.toast) window.toast('▣ SingleFrame at ' + t + 's — grabbing the still…', 2500);
-      window.salSingleFrameGrab(it).then(function(url) {
-        if (!window.toast) return;
-        if (url && window._salSfLastClient) window.toast('▣ SingleFrame still saved at 360p (' + t + 's).'
-          + '\nFull size was too slow: VPN on? Off the VPN, click SingleFrame again for full size.', 6000);
-        else if (url) window.toast('▣ SingleFrame still saved (' + t + 's)', 1800);
-        else window.toast('▣ SingleFrame still failed: ' + (window._salSfLastError || '?')
-          + '\n(proxy on 8081? off VPN?) G/V will retry when they show it.', 6000);
-      });
     });
   }
   var bSF = document.getElementById('v2b-sf');
