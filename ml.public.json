@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1793022469034,
+    "_salPushTime": 1793026601849,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -93,7 +93,7 @@
       "col": "UID",
       "dir": "desc"
     },
-    "_salGsize": 2,
+    "_salGsize": 3,
     "_salViews": {
       "view1": {
         "name": "view1",
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1793022469034
+    "_salSavedAt": 1793026601849
   },
   {
     "UID": "1",
@@ -22317,7 +22317,7 @@
     "link": "https://youtu.be/gQ1YdszFH7Q",
     "show": "1",
     "DateAdded": "2026-10-25 19:06:57",
-    "DateModified": "2026-10-26 00:11:38",
+    "DateModified": "2026-10-26 14:38:25",
     "tags": [
       "cryptochiton-stelleri",
       "radula"
@@ -22327,7 +22327,7 @@
     "FtextJunk": "0",
     "VidTitle": "The Mollusk Hiding Rare Minerals in its Teeth",
     "VidAuthor": "@SciShow",
-    "cell": "1a",
+    "cell": "",
     "vidLength": "3:51",
     "VQ": "8",
     "BQ": "",
@@ -57722,7 +57722,7 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "DictSize": "0",
-    "cell": "2b"
+    "cell": ""
   },
   {
     "UID": "2677",
@@ -57731,7 +57731,7 @@
     "linkpage": "https://www.pinterest.com/pin/liz-mcalpine-caviar-on-instagram-we-had-a-lot-of-candidates-for-fishoftheweekmonday-this-week-since-i-spent-many-hours--481533385139422821/",
     "VidRange": "i",
     "DateAdded": "2026-10-24 21:51:55",
-    "DateModified": "2026-10-24 21:51:55",
+    "DateModified": "2026-10-26 14:39:21",
     "tags": [],
     "Mode": "S",
     "MPix": "1.2",
@@ -57739,14 +57739,14 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "DictSize": "0",
-    "cell": "2a"
+    "cell": ""
   },
   {
     "UID": "2678",
     "link": "https://www.mer-littoral.org/16/photos/nereiphylla-paretti-0m.jpg",
     "show": "1",
     "DateAdded": "2026-10-25 05:39:40",
-    "DateModified": "2026-10-25 05:40:04",
+    "DateModified": "2026-10-26 14:39:17",
     "tags": [
       "nereiphylla-paretti"
     ],
@@ -57756,7 +57756,7 @@
     "DictSize": "1267",
     "MPix": "0.2",
     "Mode": "L",
-    "cell": "1b"
+    "cell": ""
   },
   {
     "UID": "2680",
@@ -57776,46 +57776,49 @@
     ],
     "comment": "Frame 50.649s of UID 2679",
     "DateAdded": "2026-10-26 00:11:38",
-    "DateModified": "2026-10-26 00:11:38",
+    "DateModified": "2026-10-26 14:37:22",
     "ftextSize": "86",
     "FtextJunk": "0",
     "DictSize": "1260",
-    "vidLength": "3:51"
+    "vidLength": "3:51",
+    "cell": ""
   },
   {
     "UID": "2681",
     "link": "https://media.sealifeandmore.com/GIF_unencysted%20digenean%20trematode%20metacercaria%20(question)%20in%20ephyra_crop.gif",
     "show": "1",
     "DateAdded": "2026-10-26 13:42:51",
-    "DateModified": "2026-10-26 13:42:51",
+    "DateModified": "2026-10-26 14:28:43",
     "tags": [],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
     "MPix": "0.9",
     "Mode": "L",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2682",
     "link": "https://media.sealifeandmore.com/GIF2_unencysted%20digenean%20trematode%20metacercaria%20(question)%20in%20ephyra_crop.gif",
     "show": "1",
     "DateAdded": "2026-10-26 13:42:51",
-    "DateModified": "2026-10-26 13:42:51",
+    "DateModified": "2026-10-26 14:28:30",
     "tags": [],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
     "MPix": "0.4",
     "Mode": "L",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2683",
     "link": "https://media.sealifeandmore.com/HermitCrabSugarPlum_Mix6_720p_1m45s_00.00.11.663_piano2_00.00.11.248.mp4",
     "show": "1",
     "DateAdded": "2026-10-26 13:42:51",
-    "DateModified": "2026-10-26 13:42:51",
+    "DateModified": "2026-10-26 14:37:03",
     "tags": [],
     "Mute": "0",
     "ftextSize": "0",
@@ -57823,7 +57826,8 @@
     "MPix": "V",
     "vidLength": "0:11",
     "Mode": "L",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2684",
@@ -57838,14 +57842,15 @@
     "MPix": "V",
     "vidLength": "0:17",
     "Mode": "P",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": "1b"
   },
   {
     "UID": "2685",
     "link": "https://media.sealifeandmore.com/unencysted%20digenean%20trematode%20metacercaria%20(question)%20in%20ephyra.mp4",
     "show": "1",
     "DateAdded": "2026-10-26 13:42:51",
-    "DateModified": "2026-10-26 13:42:51",
+    "DateModified": "2026-10-26 14:56:20",
     "tags": [],
     "Mute": "0",
     "ftextSize": "0",
@@ -57853,6 +57858,83 @@
     "MPix": "V",
     "vidLength": "0:08",
     "Mode": "L",
+    "DictSize": "0",
+    "cell": "1c"
+  },
+  {
+    "UID": "2686",
+    "cell": "2a",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "<p>D<strong>igenean trematode metacercaria</strong>&nbsp;(a parasitic flatworm larva)</p><p></p><ul><li><p><strong>Role of the jellyfish host:</strong>&nbsp;Scyphozoan jellyfish like&nbsp;<em>Aurelia</em>&nbsp;commonly serve as second intermediate hosts (or paratenic hosts) for marine digenean trematodes. The free-swimming larval stage (cercaria) penetrates the gelatinous mesoglea of the ephyra or young medusa, where it transforms into an active or unencysted metacercaria.</p><p></p></li><li><p><strong>Life cycle:</strong>&nbsp;The parasite remains alive and mobile inside the jellyfish tissue without killing it immediately. When a medusivorous or planktivorous fish (the definitive host) eats the infected ephyra or jellyfish, the metacercaria matures into an adult reproductive worm inside the fish's digestive tract.</p><p></p></li><li><p><strong>Size:</strong>&nbsp;At approximately 0.1 mm to 0.2 mm (100–200 µm) in length, it fits within the expected size range of newly penetrated trematode cercariae/metacercariae developing inside cnidarian tissue.</p><p></p></li></ul>",
+    "DateAdded": "2026-10-26 14:31:59",
+    "DateModified": "2026-10-26 14:56:27",
+    "ftextSize": "1084",
+    "FtextJunk": "0",
     "DictSize": "0"
+  },
+  {
+    "UID": "2687",
+    "cell": "2b",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "<p>Digenean flatworms have an obligate, multi-host life cycle:</p><p></p><ol><li><p><strong>First intermediate host:</strong> A marine mollusc (usually a specific gastropod or bivalve snail).<a target=\"_blank\" rel=\"noopener\" href=\"https://www.parasite-journal.org/articles/parasite/full_html/2016/01/parasite150043/parasite150043.html\">parasite-journal</a></p></li><li><p><strong>Second intermediate host:</strong> Gelatinous zooplankton (such as <em>Aurelia</em> ephyrae/medusae).<a target=\"_blank\" rel=\"noopener\" href=\"https://www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2022.942094/full\">frontiersin</a></p></li><li><p><strong>Definitive host:</strong> A vertebrate (typically a teleost fish).</p></li></ol><p></p><p>Survival impact depends on <strong>parasite burden</strong> and <strong>anatomical location</strong>:</p><ul><li><p><strong>Low burden (1–2 worms):</strong> Minimal direct mortality. Digenean metacercariae are adapted to keep intermediate hosts alive so that they can eventually be eaten by a fish. Jellyfish mesoglea is low-cost tissue with high regenerative capacity.</p></li><li><p><strong>Locomotor and sensory impairment:</strong> Because this worm is located immediately adjacent to the rhopalium (the ephyra's primary pacemaker and gravity/light sensory hub), localized tissue disruption can cause asymmetrical pulsation, impaired swimming balance, or delayed bell contraction.</p></li><li><p><strong>Heavy burden:</strong> Multiple penetrating cercariae can cause severe mesogleal lysis, arm deformation, reduced feeding efficiency on plankton, and secondary bacterial infections, significantly lowering the ephyra's chance of reaching the adult medusa stage.</p></li></ul>",
+    "DateAdded": "2026-10-26 14:34:49",
+    "DateModified": "2026-10-26 14:56:34",
+    "ftextSize": "1724",
+    "FtextJunk": "0",
+    "DictSize": "0"
+  },
+  {
+    "UID": "2688",
+    "cell": "2c",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "<h2>Digenean</h2><ul><li><p><strong>Pronunciation:</strong></p><ul><li><p>Phonetic: <strong>dye-JEEN-ee-un</strong> or <strong>dih-JEEN-ee-un</strong><a target=\"_blank\" rel=\"noopener\" href=\"https://www.merriam-webster.com/medical/Digenea\">merriam-webster</a></p></li><li><p>IPA: /<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"http://daɪˈdʒiː.ni\">daɪˈdʒiː.ni</a>.ən/ or /<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"http://dɪˈdʒiː.ni\">dɪˈdʒiː.ni</a>.ən/</p></li></ul></li><li><p><strong>Word Origin:</strong></p><ul><li><p>Formed from the subclass name <strong>Digenea</strong> plus the English suffix <em>-an</em> (denoting belonging or pertaining to).oed+1</p></li><li><p>Ultimately derived from Ancient Greek:</p><ul><li><p><strong>διˊς\\delta\\text{ί}\\varsigmaδιˊς (<em>dis</em>)</strong> = \"twice\" or \"double\"</p></li><li><p><strong>γεˊνoς\\gamma\\text{έ}\\nu\\text{o}\\varsigmaγεˊνoς (<em>genos</em>)</strong> = \"birth,\" \"race,\" or \"generation\"</p></li></ul></li><li><p><strong>Literal meaning:</strong> <em>\"Two generations\"</em> or <em>\"two-born\"</em>, referring to their obligate life cycle that alternates between sexual reproduction in a definitive vertebrate host and asexual reproduction inside a molluscan intermediate host.</p></li></ul></li></ul>",
+    "DateAdded": "2026-10-26 14:37:06",
+    "DateModified": "2026-10-26 14:56:38",
+    "ftextSize": "1283",
+    "FtextJunk": "0",
+    "DictSize": "0"
+  },
+  {
+    "UID": "2689",
+    "cell": "3a",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "<h2>Trematode</h2><ul><li><p><strong>Pronunciation:</strong></p><ul><li><p>Phonetic: <strong>TREM-uh-tohd</strong> (common US/UK) or <strong>TREE-muh-tohd</strong>oed+1</p></li><li><p>IPA: /<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"http://ˈtrɛm.ə.to\">ˈtrɛm.ə.to</a>ʊd/ or /<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"http://ˈtriː.mə.to\">ˈtriː.mə.to</a>ʊd/</p></li></ul></li><li><p><strong>Word Origin:</strong></p><ul><li><p>Borrowed into English in the 1830s via the taxonomic class name <strong>Trematoda</strong> (coined by Johann Karl Wilhelm Illiger in 1811).oed+1</p></li><li><p>Derived from Ancient Greek:</p><ul><li><p><strong>τρη~μα\\tau\\rho\\tilde{\\eta}\\mu\\alphaτρη~​μα (<em>trêma</em>, stem <em>trēmat-</em>)</strong> = \"hole,\" \"perforation,\" or \"orifice\"<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wiktionary.org/wiki/trematode\">wiktionary</a></p></li><li><p><strong>−ωδης-\\omega\\delta\\eta\\varsigma−ωδης (<em>-ōdēs</em>)</strong> / <strong>-ode\\text{-ode}-ode</strong> = \"having the form of,\" \"resembling,\" or \"full of\"<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wiktionary.org/wiki/trematode\">wiktionary</a></p></li></ul></li><li><p><strong>Literal meaning:</strong> <em>\"Having holes\"</em> or <em>\"perforated ones\"</em>, describing the distinct suction discs (the oral and ventral suckers) on their bodies, which early naturalists perceived as hollow apertures or pores.<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wiktionary.org/wiki/trematode\">wiktionary</a></p></li></ul></li></ul>",
+    "DateAdded": "2026-10-26 14:37:25",
+    "DateModified": "2026-10-26 14:56:41",
+    "ftextSize": "1550",
+    "FtextJunk": "0",
+    "DictSize": "0"
+  },
+  {
+    "UID": "2690",
+    "cell": "3b",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "<h2>Metacercaria</h2><ul><li><p><strong>Pronunciation:</strong></p><ul><li><p>Singular: <strong>MET-uh-ser-KAIR-ee-uh</strong>merriam-webster+1</p><ul><li><p>IPA: /ˌmɛt.ə.sərˈkɛər.i.ə/</p></li></ul></li><li><p>Plural (<em>metacercariae</em>): <strong>MET-uh-ser-KAIR-ee-eye</strong> or <strong>MET-uh-ser-KAIR-ee-ee</strong>collinsdictionary+1</p><ul><li><p>IPA: /ˌmɛt.ə.sərˈkɛər.i.aɪ/ or /ˌmɛt.ə.sərˈkɛər.i.iː/</p></li></ul></li></ul></li><li><p><strong>Word Origin:</strong></p><ul><li><p>A 20th-century New Latin scientific compound formed from:</p><ul><li><p><strong>μϵτα-\\mu\\epsilon\\tau\\alpha\\text{-}μϵτα- (<em>meta-</em>)</strong> = \"after,\" \"later,\" or \"beyond\"</p></li><li><p><strong>cercaria</strong> = the preceding, free-swimming larval stage with a tail.merriam-webster+2</p><ul><li><p><em>Cercaria</em> itself comes from Ancient Greek <strong>κεˊρκoς\\kappa\\text{έ}\\rho\\kappa\\text{o}\\varsigmaκεˊρκoς (<em>kérkos</em>)</strong> meaning \"tail\", plus the New Latin diminutive suffix <em>-aria</em>.</p></li></ul></li></ul></li><li><p><strong>Literal meaning:</strong> <em>\"The stage after the tailed larva\"</em>—the post-cercarial stage reached after the parasite penetrates its intermediate host (like the ephyra), sheds its tail, and transforms into the resting or unencysted infective form.</p></li></ul></li></ul>",
+    "DateAdded": "2026-10-26 14:38:29",
+    "DateModified": "2026-10-26 14:56:41",
+    "ftextSize": "1326",
+    "FtextJunk": "0",
+    "DictSize": "0"
+  },
+  {
+    "UID": "2691",
+    "link": "https://media.sealifeandmore.com/trematode%20nodescreen_20261012_112657_crop_00.00.17.189.mp4",
+    "show": "1",
+    "DateAdded": "2026-10-26 14:55:23",
+    "DateModified": "2026-10-26 14:56:11",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "MPix": "V",
+    "vidLength": "0:17",
+    "Mode": "P",
+    "DictSize": "0",
+    "cell": "1a"
   }
 ]
