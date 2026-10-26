@@ -18,8 +18,9 @@ FromCache
 FromCacheOut
 
 
-# AHK
+# AHK — the AHK folder and every .ahk anywhere in the repo
 AHK
+*.ahk
 
 # Backup files
 *.bak
