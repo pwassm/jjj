@@ -1396,6 +1396,93 @@ window.salSingleFrameT = function(row) {
   return (seg && isFinite(seg.start) && seg.start >= 0) ? seg.start : null;
 };
 
+// (dev1135) ── SingleFrame's 'j' row (localhost) ────────────────────────────
+// E's SingleFrame click also files the frame as a NEW row through the local
+// proxy (proxy.js /frame/single has the details; the work runs in the
+// background and /frame/single-wait reports the end): ltype 'j', link = the
+// video, VidRange = that one frame ("t 0", so it is a SingleFrame row itself),
+// ftext = the proxy's local reference, title/names/tags copied. Like a 'w' row
+// it is published without its ftext, and slam.com's Search skips it (boot.js
+// _smPlayable). One row per frame per video. A failure goes on the proxy's
+// to-do list; with the proxy down, the request waits in this browser
+// (SAL_SINGLE_PENDING) and is handed over next time.
+var SAL_SINGLE_PENDING = 'sal-single-pending';
+window.salKeepSingleFrame = function(row, t) {
+  if (!row || !row.link || !window._salIsLocalHost || !window._salIsLocalHost()) return;
+  var base = (typeof PROXY_BASE !== 'undefined') ? PROXY_BASE : 'http://127.0.0.1:8081';
+  var req = { url: row.link, t: t, title: row.VidTitle || row.n1 || '',
+              srcUid: String(row.UID == null ? '' : row.UID) };
+  var post = function(what, body) {
+    return fetch(base + '/frame/' + what, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    }).then(function(r) {
+      return r.json().catch(function() { return {}; }).then(function(j) { j._status = r.status; return j; });
+    });
+  };
+  var readHeld = function() {
+    try { return JSON.parse(localStorage.getItem(SAL_SINGLE_PENDING) || '[]') || []; } catch (_) { return []; }
+  };
+  var hold = function(why) {
+    var q = readHeld();
+    q.push(req);
+    try { localStorage.setItem(SAL_SINGLE_PENDING, JSON.stringify(q.slice(-200))); } catch (_) {}
+    if (window.toast) window.toast('▣ Frame not kept: ' + why, 2500);
+  };
+  post('single', req).then(function(j) {
+    if (!j.ok) {
+      if (/unknown frame action/.test(String(j.error))) hold('restart node proxy.js (dev1135)');
+      else if (window.toast) window.toast('▣ Frame not kept: ' + (j.error || 'HTTP ' + j._status), 2500);
+      return;
+    }
+    var held = readHeld();
+    if (held.length) {
+      post('single-todo', { items: held }).then(function(r) {
+        if (r.ok) { try { localStorage.removeItem(SAL_SINGLE_PENDING); } catch (_) {} }
+      }, function() {});
+    }
+    _salSingleRow(row, t, j.path);
+    post('single-wait', { job: j.job }).then(function(r) {
+      if (!window.toast) return;
+      if (r.ok) window.toast('▣ Frame kept', 1000);
+      else window.toast('▣ Frame → ToDo', 1500);
+    }, function() {});
+  }, function() { hold('proxy not running'); });
+};
+
+// The 'j' row for a kept frame — or the one already filed for that jpg.
+function _salSingleRow(src, t, diskPath) {
+  if (typeof data === 'undefined' || !Array.isArray(data) || !diskPath) return null;
+  var have = data.find(function(r) { return r && r.ltype === 'j' && r.ftext === diskPath; });
+  if (have) return have;
+  var now = (typeof isoNow === 'function') ? isoNow()
+    : new Date().toISOString().slice(0, 19).replace('T', ' ');
+  var yt = window.getYouTubeId ? window.getYouTubeId(src.link) : '';
+  var row = {
+    UID: (typeof nextUID === 'function') ? nextUID() : '',
+    link: yt ? 'https://youtu.be/' + yt : src.link,
+    VidRange: window.serializeSegments([{ start: t, dur: 0 }]),
+    ftext: diskPath,
+    show: '1',
+    ltype: 'j',
+    VidTitle: src.VidTitle || '',
+    VidAuthor: src.VidAuthor || '',
+    n1: src.n1 || '',
+    n2: src.n2 || '',
+    Mode: src.Mode || '',          // a frame has its video's shape
+    tags: Array.isArray(src.tags) ? src.tags.slice() : [],
+    comment: 'Frame ' + t + 's of UID ' + src.UID,
+    DateAdded: now,
+    DateModified: now
+  };
+  data.push(row);
+  try { if (typeof save === 'function') save(); } catch (_) {}
+  try {
+    if (typeof buildSort === 'function') buildSort();
+    if (typeof render === 'function') render();
+  } catch (_) {}
+  return row;
+}
+
 // (dev1131) ── The player IS the still ──────────────────────────────────────
 // A SingleFrame row freezes its own player on the frame. Measured 2026-10-25 on
 // UID 5:
@@ -3306,8 +3393,9 @@ window.openVideoEditor = function(it) {
   // (dev1132) ▣ SingleFrame button, under the VidRange value — see
   // salSingleFrameT. Sets the active segment's start AND end to the frame on
   // screen (duration 0, the single-frame signal; a new segment when there is
-  // none) and freezes E on it. Lit while the active segment is a single frame.
-  // Start ◀ ▶ then move the frame; Duration +1 makes it a range.
+  // none) and freezes E on it. (dev1135) It also keeps the frame as a 'j' row,
+  // in the background (salKeepSingleFrame). Lit while the active segment is a
+  // single frame. Start ◀ ▶ then move the frame; Duration +1 makes it a range.
   function paintSingleFrameChip() {
     var b = document.getElementById('v2b-sf');
     if (!b) return;
@@ -3339,6 +3427,7 @@ window.openVideoEditor = function(it) {
       iDur.value = 0;
       updateSegData();               // repaints tabs, timeline and the chip, and saves
       editorSeekFreeze(t);
+      window.salKeepSingleFrame(it, t);   // (dev1135) background keeper copy + 'j' row
     });
   }
   var bSF = document.getElementById('v2b-sf');

@@ -1084,11 +1084,13 @@ async function _showShareableMenu() {
   //   • Instagram / TikTok rows — their embeds are sandboxed cross-origin
   //     iframes with no seek API, so A→B loops on them are impossible.
   //   • Slides / quizzes / bare web links — no media to play.
+  //   • (dev1135) SingleFrame keeper rows (ltype 'j') — a record of one frame
+  //     of a video whose own row already plays; skipped like web-article rows.
   // Same rule as salLinks.classify (loops.js), so a row found by Search and a
   // URL the viewer pastes on "Add your own" behave identically.
   const _smPlayable = r => {
     const link = String((r && r.link) || '').trim();
-    if (!link) return false;
+    if (!link || r.ltype === 'j') return false;
     if (window.isYouTubeLink && window.isYouTubeLink(link)) return true;
     if (window.isVimeoLink && window.isVimeoLink(link)) return true;
     if (window.isDirectVideoLink && window.isDirectVideoLink(link)) return true;
