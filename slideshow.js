@@ -129,7 +129,7 @@ function _slideshowLoadSettings() {
 // included, so an authored collection plays at the pace it was written for.
 function _ssDwellMs(st) {
   const cur = (st && st.slides && st.idx >= 0) ? st.slides[st.idx] : null;
-  if (cur && cur.kind === 'image' && cur.row && typeof window._salRowLeadNum === 'function') {
+  if (cur && (cur.kind === 'image' || cur.kind === 'text') && cur.row && typeof window._salRowLeadNum === 'function') {
     const own = window._salRowLeadNum(cur.row);
     if (own !== null) return own > 0 ? own * 1000 : 0;
   }
@@ -185,6 +185,19 @@ function _slideshowFilterByShow(list, mode) {
   return list.slice(); // 'both' | 'bothshort'
 }
 
+// (dev1137) A text row the show plays as a TEXT slide: ftext with words in it
+// and no picture/video link (a bare text row, or a web-page row whose ftext is
+// words — _salLinkTextRow). Quiz ftext ([…] / {…}) stays out, and so does ftext
+// that carries <img>: those pictures are already slides of their own below.
+function _slideshowIsTextRow(row) {
+  if (!row) return false;
+  const ft = String(row.ftext || '').trim();
+  if (!ft || ft[0] === '[' || ft[0] === '{') return false;
+  if (/<img[\s>]/i.test(ft)) return false;
+  if (row.link && !(typeof window._salLinkTextRow === 'function' && window._salLinkTextRow(row))) return false;
+  return !!ft.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+}
+
 // Per-cell slides: link image (if image URL) OR a direct-video slide (if the
 // link is a playable video file), then every embedded ftext image.
 // (dev0949) `frame` = {zoom, coi}: what the grid cell this row was sitting in
@@ -206,6 +219,9 @@ function _slideshowCellSlides(row, frame) {
       && (window.isYouTubeLink(row.link) || (window.isDirectVideoLink && window.isDirectVideoLink(row.link))));
     out.push({ url: row.link, row, kind: 'video', sfFreeze });
   }
+  // (dev1137) A TEXT row is a slide of its own — the show used to skip it
+  // because it carries no picture or video. See _slideshowIsTextRow.
+  else if (_slideshowIsTextRow(row)) out.push({ url: '', row, kind: 'text' });
   if (row.ftext) {
     _slideshowExtractImgs(row.ftext).forEach(u => out.push({ url: u, row, kind: 'image' }));
   }
@@ -688,6 +704,9 @@ function _slideshowStart(allOrdered, opts) {
     <img id="slideshowBgB"  style="${bgCSS}"    alt="">
     <img id="slideshowImgA" style="${layerCSS}" alt="">
     <img id="slideshowImgB" style="${layerCSS}" alt="">
+    <div id="slideshowText" style="position:absolute;inset:0;display:flex;
+         overflow:hidden;background:#fbfaf6;color:#111;opacity:0;
+         pointer-events:none;"></div>
     <div id="slideshowLabel" style="position:absolute;top:14px;left:0;right:0;
          text-align:center;color:#fff;font-family:sans-serif;font-size:20px;
          font-weight:bold;text-shadow:0 2px 8px rgba(0,0,0,0.9);
@@ -2250,6 +2269,10 @@ function _slideshowShow(i, opts) {
     _slideshowPlayVideo(slide);
     return;
   }
+  if (slide && slide.kind === 'text') {
+    _slideshowShowText(slide);
+    return;
+  }
 
   // Decide which layer to load into. Initial paint → front layer; otherwise
   // back layer (so old image stays visible until the new one is ready).
@@ -2287,6 +2310,9 @@ function _slideshowShow(i, opts) {
     }
     slide.status = 'ready';
     statusEl.style.display = 'none';
+    // (dev1137) A text slide before this one fades out as the picture fades in.
+    const _tx = st.overlay.querySelector('#slideshowText');
+    if (_tx) _tx.style.opacity = '0';
     // (dev0299–0301) Hide legacy V2 elements if any linger.
     const _vc = st.overlay.querySelector('#slideshowReviewVidCard');
     if (_vc) _vc.style.display = 'none';
@@ -2430,6 +2456,53 @@ function _slideshowShow(i, opts) {
   }
 }
 
+// (dev1137) A TEXT slide: the row's ftext on a full-window page in the
+// #slideshowText layer, which fades in over the picture layers (and they fade
+// out under it). Whole document, lead directives stripped; ══ sections and the
+// other slide commands are not acted on yet. A .te-slide colour wrapper lends
+// its colours to the whole page, as on G. Too tall for the window → the type
+// shrinks until it fits (down to 11px, then it clips).
+function _slideshowShowText(slide) {
+  const st = _slideshowState;
+  const box = st.overlay.querySelector('#slideshowText');
+  if (!box || !slide.row) { slide.status = 'error'; _slideshowAdvance(+1); return; }
+  st.overlay.querySelector('#slideshowStatus').style.display = 'none';
+  const ft = String(slide.row.ftext || '');
+  const html = (typeof window._salFtextLead === 'function') ? window._salFtextLead(ft).html : ft;
+  box.innerHTML = '<div class="ss-text-page" style="margin:auto;width:100%;max-width:960px;'
+    + 'box-sizing:border-box;padding:64px 48px;font-family:sans-serif;line-height:1.45;'
+    + 'overflow-wrap:break-word;">' + html + '</div>';
+  const page = box.firstChild;
+  box.style.background = '#fbfaf6';
+  box.style.color = '#111';
+  const ts = page.querySelector('.te-slide');
+  if (ts) {
+    if (ts.style.background || ts.style.backgroundColor) box.style.background = ts.style.background || ts.style.backgroundColor;
+    if (ts.style.color) box.style.color = ts.style.color;
+  }
+  page.querySelectorAll('hr').forEach(hr => { hr.style.cssText = 'border:none;border-top:2px solid #4a5a7a;margin:16px 0;height:0;'; });
+  page.querySelectorAll('img,video,iframe').forEach(m => { m.style.maxWidth = '100%'; });
+  let fs = Math.max(18, Math.min(32, Math.round(box.clientWidth / 40)));
+  page.style.fontSize = fs + 'px';
+  while (fs > 11 && page.scrollHeight > box.clientHeight) {
+    fs -= 1;
+    page.style.fontSize = fs + 'px';
+  }
+  box.style.transition = 'opacity ' + _ssTransSec(st) + 's';
+  box.style.opacity = '1';
+  ['A', 'B'].forEach(l => {
+    const im = st.overlay.querySelector('#slideshowImg' + l);
+    const bg = st.overlay.querySelector('#slideshowBg' + l);
+    if (im) im.style.opacity = '0';
+    if (bg) bg.style.opacity = '0';
+  });
+  slide.status = 'ready';
+  if (st.mode !== 'review') _slideshowUpdateLabel(slide);
+  _slideshowUpdateDeleteBadge();
+  const dwellMs = _ssDwellMs(st);
+  if (!st.paused && dwellMs > 0) st.timer = setTimeout(() => _slideshowAdvance(+1), dwellMs);
+}
+
 // (dev0265) Size buckets for label/comment overlays. 'largest' = giant text
 // that spans the full screen — pinned to viewport center, wraps if needed.
 function _slideshowSizePx(size, kind) {
@@ -2469,7 +2542,8 @@ function _slideshowUpdateLabel(slide) {
     try { if (oldAnnot._salRO) oldAnnot._salRO.disconnect(); } catch (_) {}
     oldAnnot.remove();
   }
-  if (row && typeof window._salAnnotMount === 'function') {
+  // (dev1137) Not on a text slide: the page already IS that ftext.
+  if (row && slide.kind !== 'text' && typeof window._salAnnotMount === 'function') {
     // (dev1054) The show's pause and this slide's dwell drive a picture's
     // //N// caption windows. _ssDwellMs is 0 on hold, and grid.js falls back then.
     const annot = window._salAnnotMount(st.overlay, row, st.overlay,
@@ -3072,6 +3146,16 @@ function _ssOverThumb(slide) {
     box.appendChild(im);
     return im;
   };
+  if (slide.kind === 'text') {
+    // (dev1137) A text slide's tile is the start of its words on paper.
+    const tx = document.createElement('div');
+    tx.textContent = String((slide.row && slide.row.ftext) || '').replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+    tx.style.cssText = 'position:absolute;inset:0;padding:6px;background:#fbfaf6;color:#222;'
+      + 'font:11px/1.3 sans-serif;overflow:hidden;';
+    box.appendChild(tx);
+    return box;
+  }
   if (slide.kind !== 'video') { mkImg(url); return box; }
 
   const ytId = (typeof window.getYouTubeId === 'function')
