@@ -2735,10 +2735,10 @@
     "DateAdded": "2026-10-26 14:40:42"
   },
   {
-    "gname": "trematode3",
+    "gname": "trematode10",
     "cells": 9,
     "Zoom": 1,
-    "DateModified": "2026-10-26 14:57:02",
+    "DateModified": "2026-10-26 14:59:19",
     "1a": "2691",
     "1b": "2684",
     "1c": "2685",
@@ -2748,6 +2748,9 @@
     "3a": "2689",
     "3b": "2690",
     "3c": "",
-    "DateAdded": "2026-10-26 14:57:02"
+    "DateAdded": "2026-10-26 14:57:02",
+    "ctxt": "trematode10",
+    "Label": "1",
+    "ss": "trematode10"
   }
 ]
