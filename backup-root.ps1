@@ -52,6 +52,17 @@ if (-not (Test-Path -LiteralPath $Source)) {
     Write-Error "Source not found: $Source"; exit 1
 }
 
+# (2026-10-25) More folders can be listed, one per line, in backup-root.local.txt
+# in the source root. That file is local and git-excluded (.git/info/exclude):
+# it is for folders whose names do not belong in this public script. They are
+# carried exactly like $Folders, to every target. Blank lines and # lines skip.
+$localList = Join-Path $Source 'backup-root.local.txt'
+if (Test-Path -LiteralPath $localList) {
+    $extra = @(Get-Content -LiteralPath $localList | ForEach-Object { $_.Trim() } |
+               Where-Object { $_ -and -not $_.StartsWith('#') })
+    $Folders = @($Folders) + @($extra | Where-Object { $Folders -notcontains $_ })
+}
+
 # Drive letters the OS already knows are mounted and ready. Asking this costs
 # nothing and answers for the common case (a drive that is simply not there)
 # without touching the filesystem at all.
