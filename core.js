@@ -5538,11 +5538,9 @@ async function housekeepingWatermarkNew() {
     + '\u2022 It uploads to R2 straight after stamping \u2014 no question to answer.\n'
     + '\u2022 T watches the folder and offers to add the new rows itself —\n'
     + '  it will NOT open a second tab.\n\n'
-    + 'Byline: files loose in originals\\ say "at Monterey Bay Aquarium"; a\n'
-    + '"from <Place>" subfolder says "at <Place>"; a _wm.txt in a folder sets\n'
-    + 'its own text and look; any other subfolder gets the byline alone. Every\n'
-    + 'stamp ends with the date \u2014 "EXIF:" from the photo/mp4 metadata, else\n'
-    + '"Approx:" the file date if over a year old (_wm.txt date=off drops it).\n'
+    // (dev1136) The stamp is just "sealifeandmore.com" (WM_TEXT); no venue, no date.
+    + 'Stamp: "sealifeandmore.com", white at the .bat\'s WM_ALPHA, sized to the\n'
+    + 'shorter side (24px at 1080). Only a _wm.txt in a folder changes it.\n'
     + 'The folder is part of the public URL. Rename or move a file afterwards\n'
     + 'and Housekeeping \u25b8 Sync R2 with Originals moves its link, same row.')) return;
 
