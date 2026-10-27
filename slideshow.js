@@ -198,6 +198,35 @@ function _slideshowIsTextRow(row) {
   return !!ft.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
 }
 
+// (dev1138) A text row's slides, read the way the V reader reads it (vp.js):
+// the displayed copy (salFtext — Spanish when that is on), lead directives off,
+// through renderFtext (links, parked-text cut, tick-box numbers), then split at
+// every ══ divider by the shared _salSplitSections. Each SECTION is a page of
+// the show, so ←/→, swipes, the dwell timer and the overview all page through
+// it like any other slide. A section that is only a cell designation is a
+// pointer page, as in V and Xs: "1b" plays that cell's picture/video (a cell
+// holding text just shows the letters), "G" shows the live grid behind the show.
+// Every slide made here carries `trow` (the text row), `sect` and `sectN`.
+function _slideshowTextSlides(row) {
+  const src = (typeof window.salFtext === 'function') ? window.salFtext(row) : row.ftext;
+  const lead = (typeof window._salFtextLead === 'function') ? window._salFtextLead(src || '').html : (src || '');
+  const html = (typeof renderFtext === 'function') ? renderFtext(lead) : lead;
+  const sects = (typeof window._salSplitSections === 'function') ? window._salSplitSections(html) : [html];
+  const out = [];
+  sects.forEach((sh, i) => {
+    const tag = sl => Object.assign(sl, { trow: row, sect: i, sectN: sects.length });
+    const spec = (typeof window._salSectCellSpec === 'function') ? window._salSectCellSpec(sh) : null;
+    if (spec === 'G') { out.push(tag({ url: '', row, kind: 'text', html: sh, gpage: true })); return; }
+    const dRow = (spec && typeof getRowByCellForGrid === 'function') ? getRowByCellForGrid(spec) : null;
+    if (dRow && dRow !== row && !_slideshowIsTextRow(dRow)) {
+      const media = _slideshowCellSlides(dRow);
+      if (media.length) { media.forEach(m => out.push(tag(m))); return; }
+    }
+    out.push(tag({ url: '', row, kind: 'text', html: sh }));
+  });
+  return out;
+}
+
 // Per-cell slides: link image (if image URL) OR a direct-video slide (if the
 // link is a playable video file), then every embedded ftext image.
 // (dev0949) `frame` = {zoom, coi}: what the grid cell this row was sitting in
@@ -221,7 +250,9 @@ function _slideshowCellSlides(row, frame) {
   }
   // (dev1137) A TEXT row is a slide of its own — the show used to skip it
   // because it carries no picture or video. See _slideshowIsTextRow.
-  else if (_slideshowIsTextRow(row)) out.push({ url: '', row, kind: 'text' });
+  // (dev1138) …one slide per ══ section. Returned as is: a text row has no
+  // ftext pictures, and the text cell's zoom must not reach a "1b" page's media.
+  else if (_slideshowIsTextRow(row)) return _slideshowTextSlides(row);
   if (row.ftext) {
     _slideshowExtractImgs(row.ftext).forEach(u => out.push({ url: u, row, kind: 'image' }));
   }
@@ -316,6 +347,11 @@ function slideshowOpen(source) {
   const ftext = isRow ? (source.ftext || '') : (source || '');
   const row   = isRow ? source : null;
   const urls = _slideshowExtractImgs(ftext);
+  // (dev1138) A text row with no pictures plays its own pages instead.
+  if (!urls.length && row && _slideshowIsTextRow(row)) {
+    _slideshowStart(_slideshowTextSlides(row), { sourceKind: 'ftext' });
+    return;
+  }
   if (!urls.length) {
     if (typeof toast === 'function') toast('No images found in this slide.', 2000);
     return;
@@ -649,7 +685,15 @@ function _slideshowStart(allOrdered, opts) {
   // all -- that falls back to the beginning rather than refusing to play.
   let startIdx = 0;
   if (opts && opts.startCell) {
-    const si = working.findIndex(s => s.cell === opts.startCell);
+    let si = working.findIndex(s => s.cell === opts.startCell);
+    // (dev1138) A sectioned text cell opens on the section the cell is showing
+    // (the page index G and the V reader keep in _salSectIdxByUid).
+    const s0 = working[si];
+    if (s0 && s0.sectN > 1 && s0.trow) {
+      const want = (window._salSectIdxByUid || {})[s0.trow.UID];
+      const sj = working.findIndex(s => s.cell === opts.startCell && s.sect === want);
+      if (sj >= 0) si = sj;
+    }
     if (si > 0) startIdx = si;
   }
   // (dev0988) `startPage` — the 1-based page a ?c=NAME&p=N link asks for, which
@@ -663,7 +707,8 @@ function _slideshowStart(allOrdered, opts) {
         toast('Page ' + opts.startPage + ' — this grid only has ' + inOrder.length, 2600);
       }
     } else {
-      const pi = working.findIndex(s => s.url === want.url && (s.cell || '') === (want.cell || ''));
+      const pi = working.findIndex(s => s.url === want.url && (s.cell || '') === (want.cell || '')
+        && (s.sect || 0) === (want.sect || 0));   // (dev1138) a text cell's pages share url+cell
       if (pi > 0) startIdx = pi;
     }
   }
@@ -705,8 +750,11 @@ function _slideshowStart(allOrdered, opts) {
     <img id="slideshowImgA" style="${layerCSS}" alt="">
     <img id="slideshowImgB" style="${layerCSS}" alt="">
     <div id="slideshowText" style="position:absolute;inset:0;display:flex;
-         overflow:hidden;background:#fbfaf6;color:#111;opacity:0;
+         overflow-x:hidden;overflow-y:auto;background:#fbfaf6;color:#111;opacity:0;
          pointer-events:none;"></div>
+    <div id="slideshowSect" style="position:absolute;bottom:10px;left:50%;
+         transform:translateX(-50%);font-family:monospace;font-size:12px;
+         opacity:0.5;pointer-events:none;display:none;"></div>
     <div id="slideshowLabel" style="position:absolute;top:14px;left:0;right:0;
          text-align:center;color:#fff;font-family:sans-serif;font-size:20px;
          font-weight:bold;text-shadow:0 2px 8px rgba(0,0,0,0.9);
@@ -838,6 +886,12 @@ function _slideshowStart(allOrdered, opts) {
     // (dev0949) …or while the dwell is 0, which is the same standing-still
     // state by another route: nothing is counting down, so the wheel is free.
     if (!st || st._videoActive) return;
+    // (dev1138) A text page taller than the window scrolls under the wheel
+    // first; only at its end does the wheel go back to moving the show.
+    if (_ssOnText()) {
+      const b = st.overlay.querySelector('#slideshowText');
+      if (b && (e.deltaY > 0 ? b.scrollTop + b.clientHeight < b.scrollHeight - 1 : b.scrollTop > 0)) return;
+    }
     if (!st.paused && _ssDwellMs(st) > 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -937,6 +991,9 @@ function _slideshowStart(allOrdered, opts) {
       // mode — otherwise preventDefault below blocks the native play/scrub.
       if (e.target.closest('#slideshowReviewVid')) return;
       if (_slideshowState._touchActive) return;
+      // (dev1138) A summary line, link, ▼▼/▶▶ or tick box on a text page takes
+      // its own click: no swipe tracking, and no "click resumes the show".
+      if (_ssTextHot(e)) return;
       e.preventDefault();
       // (dev1088) A press stops a ⇧ zoom still running on its own — and that
       // press is a zoom press, not the click that resumes a paused show.
@@ -947,7 +1004,8 @@ function _slideshowStart(allOrdered, opts) {
                at: _rxy(e),                          // (dev1087) the zoom's fixed point
                mode: e.shiftKey ? 'shift' : e.ctrlKey ? 'ctrl' : 'plain' };   // (dev1088)
       zoomStarted = stoppedRun; // (dev0268) reset per press
-      zoomDelay = setTimeout(_startZoom, HOLD_MS);
+      // (dev1138) No hold-zoom on a text page — there is no picture to magnify.
+      zoomDelay = _ssOnText() ? null : setTimeout(_startZoom, HOLD_MS);
     });
     overlay.addEventListener('mousemove', e => {
       if (!down) return;
@@ -1019,6 +1077,13 @@ function _slideshowStart(allOrdered, opts) {
       if (e.target.closest('#slideshowCloseBtn')) return;
       // (dev0301) V2 video element handles its own double-click (fullscreen).
       if (e.target.closest('#slideshowReviewVid')) return;
+      // (dev1138) On a text page a double click opens or shuts every
+      // collapsible — the V reader's gesture (dev0888). A summary or link owns
+      // its own double click.
+      if (_ssOnText()) {
+        if (!e.target.closest(_SS_TEXT_HOT)) _ssTextSetAll();
+        return;
+      }
       _stopZoom();
       _slideshowState._mouseZoom = { scale: 1, tx: 0, ty: 0 };
       _slideshowState._manualZoom = null;
@@ -1102,6 +1167,9 @@ function _slideshowStart(allOrdered, opts) {
       if (e.target.closest('#slideshowCloseBtn')) return;
       // (dev0301) Let V2's inline video receive touch on its native controls.
       if (e.target.closest('#slideshowReviewVid')) return;
+      // (dev1138) See the mousedown twin: a tap on a summary/link/▼▼ is its own.
+      // No pointer capture either — that would retarget the click to the overlay.
+      if (_ssTextHot(e)) return;
       const st = _slideshowState; if (!st) return;
       st._touchActive = true;
       try { overlay.setPointerCapture(e.pointerId); } catch(_) {}
@@ -1129,7 +1197,7 @@ function _slideshowStart(allOrdered, opts) {
         // second finger (it becomes pinch), or on pointercancel.
         _longPressZoomStarted = false;
         _stopLongPressZoom();
-        _longPressDelay = setTimeout(_startLongPressZoom, 180);
+        if (!_ssOnText()) _longPressDelay = setTimeout(_startLongPressZoom, 180);   // (dev1138)
       }
     }, true);
 
@@ -1156,7 +1224,7 @@ function _slideshowStart(allOrdered, opts) {
       // (dev0268) Pinch was previously gated on `st.paused` (user had to
       // pause first). Now pinch zoom triggers _slideshowPause itself via
       // _applyManual's scale check, so we can let it run any time.
-      if (_ptrs.size >= 2 && _pinch) {
+      if (_ptrs.size >= 2 && _pinch && !_ssOnText()) {   // (dev1138) no pinch on text
         const [a, b] = [..._ptrs.values()];
         const dist = Math.hypot(b.x - a.x, b.y - a.y);
         const mx   = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
@@ -2209,6 +2277,12 @@ function _slideshowKey(e) {
   } else if (e.key === 'ArrowLeft') {
     e.preventDefault();
     _slideshowAdvance(-1);             // previous
+  } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && _ssOnText()) {
+    // (dev1138) On a text page ↓ opens every collapsible and ↑ shuts them —
+    // the G 1a rule (dev0617). There is nothing to mark for deletion here.
+    if (inSelect) return;
+    e.preventDefault();
+    _ssTextSetAll(e.key === 'ArrowDown');
   } else if (e.key === 'ArrowUp') {
     if (inSelect) return;               // let the dropdown change its option
     e.preventDefault();
@@ -2265,7 +2339,12 @@ function _slideshowShow(i, opts) {
   // markers aren't set (vp.js:1458), and slideshow's _slideshowKey is
   // registered first in document capture phase so it pre-empts with
   // stopImmediatePropagation when in review mode.
+  // (dev1138) Whatever comes next, a "G" page's see-through overlay and a text
+  // page's section counter are over. _slideshowShowText puts back what it needs.
+  st.overlay.style.background = '#000';
+  st.overlay.querySelector('#slideshowSect').style.display = 'none';
   if (slide && slide.kind === 'video') {
+    _ssTextHide();
     _slideshowPlayVideo(slide);
     return;
   }
@@ -2311,8 +2390,7 @@ function _slideshowShow(i, opts) {
     slide.status = 'ready';
     statusEl.style.display = 'none';
     // (dev1137) A text slide before this one fades out as the picture fades in.
-    const _tx = st.overlay.querySelector('#slideshowText');
-    if (_tx) _tx.style.opacity = '0';
+    _ssTextHide();
     // (dev0299–0301) Hide legacy V2 elements if any linger.
     const _vc = st.overlay.querySelector('#slideshowReviewVidCard');
     if (_vc) _vc.style.display = 'none';
@@ -2456,40 +2534,158 @@ function _slideshowShow(i, opts) {
   }
 }
 
-// (dev1137) A TEXT slide: the row's ftext on a full-window page in the
-// #slideshowText layer, which fades in over the picture layers (and they fade
-// out under it). Whole document, lead directives stripped; ══ sections and the
-// other slide commands are not acted on yet. A .te-slide colour wrapper lends
-// its colours to the whole page, as on G. Too tall for the window → the type
-// shrinks until it fits (down to 11px, then it clips).
+// (dev1137) A TEXT slide: one ══ section of the row's ftext on a full-window
+// page in the #slideshowText layer, which fades in over the picture layers (and
+// they fade out under it). A .te-slide colour wrapper lends its colours to the
+// whole page, as on G.
+// (dev1138) The slide commands, as the V reader has them:
+//   collapsibles  start SHUT (G's rule) — tap a summary line to open one; the
+//                 Show all pill + ▼▼ / ▶▶ above any page that has some; double
+//                 click off a summary, or ↓ / ↑, opens / shuts them all.
+//                 Opening one PAUSES the show (the zoom rule, dev0765): a reader
+//                 who asked for more should not have the page taken away.
+//   ▼▼ / ▶▶ icons placed by the author, tick boxes, @@@ cites, links — core.js's
+//                 document-level handlers already drive them in this document.
+//                 Tick boxes stay hidden (the reader's default view).
+//   "G" page      the overlay turns see-through onto the live grid.
+// The type is sized so the page fits with every collapsible OPEN (G's dev0729
+// rule), so opening one never needs a re-fit; past the 14px floor it scrolls.
+const _SS_TEXT_HOT = 'summary,a,.te-xall,.te-cb,button,input,select,textarea,label';
+
+function _ssOnText() {
+  const st = _slideshowState;
+  const cur = (st && st.idx >= 0) ? st.slides[st.idx] : null;
+  return !!(cur && cur.kind === 'text' && !cur.gpage && !st._videoActive);
+}
+
+// A pointer aimed at something on a text page that takes its own click.
+function _ssTextHot(e) {
+  return _ssOnText() && !!(e.target && e.target.closest
+    && e.target.closest('#slideshowText') && e.target.closest(_SS_TEXT_HOT));
+}
+
+function _ssTextHide() {
+  const st = _slideshowState;
+  const box = st && st.overlay.querySelector('#slideshowText');
+  if (!box) return;
+  box.style.opacity = '0';
+  box.style.pointerEvents = 'none';
+  box.style.touchAction = '';
+}
+
+// Open (true), shut (false) or flip (undefined) every collapsible on the page,
+// and keep the Show all pill saying what it will do next.
+function _ssTextSetAll(open) {
+  const st = _slideshowState;
+  const box = st && st.overlay.querySelector('#slideshowText');
+  const all = box ? [...box.querySelectorAll('details')] : [];
+  if (!all.length) return;
+  if (open === undefined) open = all.some(d => !d.open);
+  all.forEach(d => { if (open) d.setAttribute('open', ''); else d.removeAttribute('open'); });
+  const btn = box.querySelector('.te-xall[data-xall-toggle]');
+  const L = window._SAL_XALL_LABELS;
+  if (btn && L) {
+    btn.setAttribute('data-xall', open ? 'close' : 'open');
+    const lab = open ? L.close : L.open;
+    btn.textContent = (typeof window.T === 'function') ? window.T(lab) : lab;
+  }
+}
+
+// The reader's look for a text page, scoped to #slideshowText. index.html's
+// rules are scoped to G / Xs / V's own containers, so none of them reach here;
+// this is vp.js _ftStyles (the same white page) restated for this layer.
+function _ssTextCss() {
+  if (document.getElementById('ssTextStyles')) return;
+  const R = '#slideshowText ';
+  const s = document.createElement('style');
+  s.id = 'ssTextStyles';
+  s.textContent = [
+    R + 'a{color:#2563eb;}',
+    R + 'summary{list-style:none;cursor:pointer;color:#2563eb;font-weight:bold;}',
+    R + 'summary::-webkit-details-marker{display:none;}',
+    R + 'summary::before{content:"\\25B6";display:inline-block;font-size:1.6em;line-height:0;'
+      + 'vertical-align:-0.16em;margin-right:0.32em;color:#2563eb;'
+      + 'text-shadow:0 0 3px rgba(255,255,255,0.95);transition:transform 0.15s ease;}',
+    R + 'details[open]>summary::before{transform:rotate(90deg);}',
+    R + '.te-slide[style*="color:"] summary{color:inherit;}',
+    R + 'details{clear:both;overflow:hidden;}',
+    R + 'details:has(> summary[style*="center"]){width:fit-content;max-width:100%;margin:8px auto;text-align:left;}',
+    R + 'h1{font-size:2em;}' + R + 'h2{font-size:1.5em;}' + R + 'h3{font-size:1.25em;}',
+    R + 'h4{font-size:1.1em;}' + R + 'h5{font-size:1em;}' + R + 'h6{font-size:0.9em;}',
+    R + ':is(h1,h2,h3,h4,h5,h6){font-weight:bold;margin:0 0 8px;}',
+    R + 'ul,' + R + 'ol{list-style:none;margin:8px 0;padding-left:0;}',
+    R + 'li{list-style:none;margin:0 0 4px;}',
+    R + 'hr{border:none;border-top:2px solid #4a5a7a;margin:16px 0;height:0;}',
+    R + 'img,' + R + 'video,' + R + 'iframe{max-width:100%;}',
+    R + 'table{border-collapse:collapse;margin:12px 0;max-width:100%;}',
+    R + ':is(th,td){border:1px solid #999;padding:6px 10px;text-align:left;vertical-align:top;}',
+    R + '.sal-xall-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 18px;}',
+    R + '.sal-xall-bar .te-xall[data-xall-toggle]{letter-spacing:normal;padding:5px 13px 6px;'
+      + 'border-radius:999px;font-size:0.78em;font-weight:bold;opacity:0.85;}'
+  ].join('');
+  (document.head || document.documentElement).appendChild(s);
+}
+
 function _slideshowShowText(slide) {
   const st = _slideshowState;
   const box = st.overlay.querySelector('#slideshowText');
   if (!box || !slide.row) { slide.status = 'error'; _slideshowAdvance(+1); return; }
   st.overlay.querySelector('#slideshowStatus').style.display = 'none';
-  const ft = String(slide.row.ftext || '');
-  const html = (typeof window._salFtextLead === 'function') ? window._salFtextLead(ft).html : ft;
-  box.innerHTML = '<div class="ss-text-page" style="margin:auto;width:100%;max-width:960px;'
-    + 'box-sizing:border-box;padding:64px 48px;font-family:sans-serif;line-height:1.45;'
-    + 'overflow-wrap:break-word;">' + html + '</div>';
-  const page = box.firstChild;
-  box.style.background = '#fbfaf6';
-  box.style.color = '#111';
-  const ts = page.querySelector('.te-slide');
-  if (ts) {
-    if (ts.style.background || ts.style.backgroundColor) box.style.background = ts.style.background || ts.style.backgroundColor;
-    if (ts.style.color) box.style.color = ts.style.color;
-  }
-  page.querySelectorAll('hr').forEach(hr => { hr.style.cssText = 'border:none;border-top:2px solid #4a5a7a;margin:16px 0;height:0;'; });
-  page.querySelectorAll('img,video,iframe').forEach(m => { m.style.maxWidth = '100%'; });
-  let fs = Math.max(18, Math.min(32, Math.round(box.clientWidth / 40)));
-  page.style.fontSize = fs + 'px';
-  while (fs > 11 && page.scrollHeight > box.clientHeight) {
-    fs -= 1;
+  if (slide.gpage) {
+    // "G": nothing of the show's own is painted, so the grid behind shows.
+    st.overlay.style.background = 'transparent';
+    _ssTextHide();
+  } else {
+    _ssTextCss();
+    if (!box._ssWired) {
+      box._ssWired = true;
+      // toggle doesn't bubble, but it does pass ancestors in the capture phase.
+      box.addEventListener('toggle', e => {
+        if (e.target.open && _ssOnText()) _slideshowPause();
+      }, true);
+    }
+    const sh = slide.html || '';
+    let xbar = '';
+    if (/<details[\s>]/i.test(sh)) {
+      let lbl = (window._SAL_XALL_LABELS && window._SAL_XALL_LABELS.open) || '▼▼ Show all';
+      if (typeof window.T === 'function') lbl = window.T(lbl);
+      xbar = '<div class="sal-xall-bar"><span class="te-xall" data-xall="open" data-xall-toggle="1">'
+        + _slideshowEsc(lbl) + '</span>'
+        + '<span class="te-xall" data-xall="open" title="Reveal every line">▼▼</span>'
+        + '<span class="te-xall" data-xall="close" title="Hide every line">▶▶</span></div>';
+    }
+    box.innerHTML = '<div class="ss-text-page sal-cb-off" style="margin:auto;width:100%;max-width:960px;'
+      + 'box-sizing:border-box;padding:64px 48px;font-family:sans-serif;line-height:1.45;'
+      + 'overflow-wrap:break-word;">' + xbar + sh + '</div>';
+    box.scrollTop = 0;
+    const page = box.firstChild;
+    box.style.background = '#fbfaf6';
+    box.style.color = '#111';
+    const ts = page.querySelector('.te-slide');
+    if (ts) {
+      if (ts.style.background || ts.style.backgroundColor) box.style.background = ts.style.background || ts.style.backgroundColor;
+      if (ts.style.color) box.style.color = ts.style.color;
+    }
+    const dets = [...page.querySelectorAll('details')];
+    dets.forEach(d => d.setAttribute('open', ''));
+    let fs = Math.max(18, Math.min(32, Math.round(box.clientWidth / 40)));
     page.style.fontSize = fs + 'px';
+    while (fs > 14 && page.scrollHeight > box.clientHeight) {
+      fs -= 1;
+      page.style.fontSize = fs + 'px';
+    }
+    dets.forEach(d => d.removeAttribute('open'));
+    box.style.pointerEvents = 'auto';
+    box.style.touchAction = 'pan-y';   // a long page scrolls under a finger
+    box.style.transition = 'opacity ' + _ssTransSec(st) + 's';
+    box.style.opacity = '1';
+    if (slide.sectN > 1) {
+      const sc = st.overlay.querySelector('#slideshowSect');
+      sc.textContent = (slide.sect + 1) + ' / ' + slide.sectN;
+      sc.style.color = box.style.color;
+      sc.style.display = '';
+    }
   }
-  box.style.transition = 'opacity ' + _ssTransSec(st) + 's';
-  box.style.opacity = '1';
   ['A', 'B'].forEach(l => {
     const im = st.overlay.querySelector('#slideshowImg' + l);
     const bg = st.overlay.querySelector('#slideshowBg' + l);
@@ -3116,7 +3312,8 @@ function _ssPageOf(slide) {
   const st = _slideshowState;
   if (!st || !slide) return 0;
   const list = st._inOrderSnapshot || [];
-  const i = list.findIndex(s => s.url === slide.url && (s.cell || '') === (slide.cell || ''));
+  const i = list.findIndex(s => s.url === slide.url && (s.cell || '') === (slide.cell || '')
+    && (s.sect || 0) === (slide.sect || 0));   // (dev1138) a text cell's pages share url+cell
   return i + 1;
 }
 
@@ -3148,9 +3345,11 @@ function _ssOverThumb(slide) {
   };
   if (slide.kind === 'text') {
     // (dev1137) A text slide's tile is the start of its words on paper.
+    // (dev1138) …of its own section; a "G" page says so.
     const tx = document.createElement('div');
-    tx.textContent = String((slide.row && slide.row.ftext) || '').replace(/<[^>]*>/g, ' ')
-      .replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+    tx.textContent = slide.gpage ? 'G — the grid'
+      : String(slide.html || (slide.row && slide.row.ftext) || '').replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
     tx.style.cssText = 'position:absolute;inset:0;padding:6px;background:#fbfaf6;color:#222;'
       + 'font:11px/1.3 sans-serif;overflow:hidden;';
     box.appendChild(tx);
@@ -4424,6 +4623,16 @@ document.addEventListener('keydown', e => {
       slideshowOpenJpgsFolder();
     }
   }
+}, true);
+
+// (dev1138) An in-app link (?i= / ?c=) on a text page. core.js _salWireLinks
+// opens the item in place, which would mount it UNDER the show — so close the
+// show first. Window capture runs ahead of core's document-capture listener,
+// which then carries on and opens the item as usual.
+window.addEventListener('click', e => {
+  if (!_slideshowState) return;
+  const a = (e.target && e.target.closest) ? e.target.closest('#slideshowText a[href]') : null;
+  if (a && /^\?(i|c)=/.test(a.getAttribute('href') || '')) slideshowClose();
 }, true);
 
 // Window exposure

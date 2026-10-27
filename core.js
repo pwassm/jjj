@@ -8668,8 +8668,11 @@ window._salBlankLines = _salBlankLines;
 // doesn't shut the collapsibles in the card next to it. querySelectorAll only
 // sees descendants, so an icon inside a <details> can never close the block it
 // is sitting in — one tap, one direction, no surprises.
+// (dev1138) #slideshowText — a text page in the slideshow, whose own Show all
+// bar sits outside any .te-slide wrapper; without it the scope was <body> and
+// the pill opened every collapsible in the grid cells under the show too.
 const _XALL_SCOPES = '.te-slide,.grid-html-thumb,#teSlideContent,#gridFsContent,'
-  + '.sm-detcard,.smGreeting,body';
+  + '#slideshowText,.sm-detcard,.smGreeting,body';
 // (dev0888) The reader's auto Show all / Hide all wording, in ONE place. vp.js
 // writes it into the injected control and the toggle below rewrites it on every
 // press, so two copies of the string would drift on the first edit. The label
