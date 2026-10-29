@@ -9071,5 +9071,40 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "peniagone",
+    "label": "Peniagone",
+    "kind": "taxon",
+    "parents": [
+      "elpidiidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus",
+    "common": "sea cucumber",
+    "extinct": false
+  },
+  {
+    "id": "elasipodida",
+    "label": "Elasipodida",
+    "kind": "taxon",
+    "parents": [
+      "holothuroidea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "elpidiidae",
+    "label": "Elpidiidae",
+    "kind": "taxon",
+    "parents": [
+      "elasipodida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
   }
 ]

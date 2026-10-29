@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1793026601849,
+    "_salPushTime": 1793287467790,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -90,7 +90,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "UID",
+      "col": "DateAdded",
       "dir": "desc"
     },
     "_salGsize": 3,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1793026601849
+    "_salSavedAt": 1793287467791
   },
   {
     "UID": "1",
@@ -57904,10 +57904,13 @@
     "VidRange": "text",
     "ftext": "<h2>Trematode</h2><ul><li><p><strong>Pronunciation:</strong></p><ul><li><p>Phonetic: <strong>TREM-uh-tohd</strong> (common US/UK) or <strong>TREE-muh-tohd</strong>oed+1</p></li><li><p>IPA: /<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"http://ˈtrɛm.ə.to\">ˈtrɛm.ə.to</a>ʊd/ or /<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"http://ˈtriː.mə.to\">ˈtriː.mə.to</a>ʊd/</p></li></ul></li><li><p><strong>Word Origin:</strong></p><ul><li><p>Borrowed into English in the 1830s via the taxonomic class name <strong>Trematoda</strong> (coined by Johann Karl Wilhelm Illiger in 1811).oed+1</p></li><li><p>Derived from Ancient Greek:</p><ul><li><p><strong>τρη~μα\\tau\\rho\\tilde{\\eta}\\mu\\alphaτρη~​μα (<em>trêma</em>, stem <em>trēmat-</em>)</strong> = \"hole,\" \"perforation,\" or \"orifice\"<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wiktionary.org/wiki/trematode\">wiktionary</a></p></li><li><p><strong>−ωδης-\\omega\\delta\\eta\\varsigma−ωδης (<em>-ōdēs</em>)</strong> / <strong>-ode\\text{-ode}-ode</strong> = \"having the form of,\" \"resembling,\" or \"full of\"<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wiktionary.org/wiki/trematode\">wiktionary</a></p></li></ul></li><li><p><strong>Literal meaning:</strong> <em>\"Having holes\"</em> or <em>\"perforated ones\"</em>, describing the distinct suction discs (the oral and ventral suckers) on their bodies, which early naturalists perceived as hollow apertures or pores.<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wiktionary.org/wiki/trematode\">wiktionary</a></p></li></ul></li></ul>",
     "DateAdded": "2026-10-26 14:37:25",
-    "DateModified": "2026-10-26 14:56:41",
+    "DateModified": "2026-10-29 06:59:27",
     "ftextSize": "1550",
     "FtextJunk": "0",
-    "DictSize": "0"
+    "DictSize": "1398",
+    "tags": [
+      "peniagone"
+    ]
   },
   {
     "UID": "2690",
@@ -57936,5 +57939,342 @@
     "Mode": "P",
     "DictSize": "0",
     "cell": "1a"
+  },
+  {
+    "UID": "2692",
+    "link": "https://news.mongabay.com/2026/10/patrick-sea-star-went-viral-but-argentine-deep-sea-canyon-held-57-new-species/",
+    "show": "1",
+    "DateAdded": "2026-10-29 05:27:42",
+    "DateModified": "2026-10-29 05:28:30",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "12230",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
+  },
+  {
+    "UID": "2693",
+    "link": "https://imgs.mongabay.com/wp-content/uploads/sites/20/2026/10/13154721/1-_Loki-the-Sea-Cucumber_-Peniagone-sp.jpg",
+    "show": "1",
+    "DateAdded": "2026-10-29 05:28:31",
+    "DateModified": "2026-10-29 05:31:05",
+    "tags": [
+      "peniagone"
+    ],
+    "VidRange": "i",
+    "ftextSize": "4",
+    "FtextJunk": "0",
+    "DictSize": "1398",
+    "MPix": "1.6",
+    "Mode": "L",
+    "ftext": "",
+    "VidTitle": "Loki"
+  },
+  {
+    "UID": "2694",
+    "link": "https://youtu.be/hYmqrRQjCRk",
+    "show": "1",
+    "DateAdded": "2026-10-29 05:32:34",
+    "DateModified": "2026-10-29 05:32:38",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "370",
+    "FtextJunk": "21",
+    "DictSize": "0",
+    "VidTitle": "【フウセンウオ】 ナメダンゴも１匹。かわいい泳ぎ＆食事あり＜短縮版＞ @浅虫水族館（青森県）;Balloon lumpfish",
+    "VidAuthor": "@%E3%82%A2%E3%83%8B%E3%83%9E%E3%83%AB%E3%82%B9%E3%82%AF%E3%82%A8%E3%82%A2",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2695",
+    "link": "https://youtu.be/Gws23XhZViE",
+    "show": "1",
+    "DateAdded": "2026-10-29 05:33:15",
+    "DateModified": "2026-10-29 05:33:22",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "2059",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "VidTitle": "We Were Wrong About Sulforaphane and Astaxanthin?",
+    "VidAuthor": "@DrBradStanfield",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2696",
+    "link": "https://youtu.be/t044LVbnlLw",
+    "show": "1",
+    "DateAdded": "2026-10-29 05:47:46",
+    "DateModified": "2026-10-29 05:47:50",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "3647",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "It’s Weird, But Tendon Training Makes You Stronger Than Lifting! (The Science Explained)",
+    "VidAuthor": "@UsaUser-m1l",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2697",
+    "link": "https://youtu.be/PxQmFT3QEkM",
+    "show": "1",
+    "DateAdded": "2026-10-29 05:51:39",
+    "DateModified": "2026-10-29 05:51:45",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "2314",
+    "FtextJunk": "3",
+    "DictSize": "0",
+    "VidTitle": "I Replaced Stretching With These 5 Isometric Holds",
+    "VidAuthor": "@StrengthMode101",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2698",
+    "link": "https://youtu.be/nyldZ7BB_cE",
+    "show": "1",
+    "DateAdded": "2026-10-29 05:56:10",
+    "DateModified": "2026-10-29 05:56:14",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "1920",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "VidTitle": "MBARI researchers film rarely seen deep-sea barreleye fish in 4K",
+    "VidAuthor": "@MBARIvideo",
+    "Mode": "L",
+    "ftext": "",
+    "FTLsaved": "9"
+  },
+  {
+    "UID": "2699",
+    "link": "https://youtu.be/NlarD_GAgNY",
+    "show": "1",
+    "DateAdded": "2026-10-29 05:58:21",
+    "DateModified": "2026-10-29 05:58:28",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "3789",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "I’m Obsessed with THIS Heart Health Food",
+    "VidAuthor": "@nicknorwitzMDPhD",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2700",
+    "link": "https://youtu.be/hPUazV9f2J4",
+    "show": "1",
+    "DateAdded": "2026-10-29 06:07:09",
+    "DateModified": "2026-10-29 06:07:15",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "1687",
+    "FtextJunk": "5",
+    "DictSize": "0",
+    "VidTitle": "Coconut Crabs Taste Like Lobster. So Why Don’t We Eat Them ?",
+    "VidAuthor": "@VynkoFiles",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2701",
+    "link": "https://youtu.be/d4DIOH86L50",
+    "show": "1",
+    "DateAdded": "2026-10-29 06:10:00",
+    "DateModified": "2026-10-29 06:10:03",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "3449",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "Keith Baar's Tendon Protocol: What's Actually Tested",
+    "VidAuthor": "@andysfieldnotes",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2702",
+    "link": "https://youtu.be/ZRNzYJdA9MQ",
+    "show": "1",
+    "DateAdded": "2026-10-29 06:17:10",
+    "DateModified": "2026-10-29 06:17:14",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "323",
+    "FtextJunk": "24",
+    "DictSize": "0",
+    "VidTitle": "Better Than Emil Abrahamsson’s 'No Hangs': A 3-Minute Alternative Protocol | ft. Keith Baar",
+    "VidAuthor": "@thenuggetclimbing",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2703",
+    "link": "https://youtu.be/IJ_F_icx0vM",
+    "show": "1",
+    "DateAdded": "2026-10-29 06:56:26",
+    "DateModified": "2026-10-29 06:56:31",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "Mode": "P",
+    "ftextSize": "1785",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "VidTitle": "Meet Loki, the Horned Deep-Sea Cucumber #Shorts",
+    "VidAuthor": "@ScienceCornerNews",
+    "ftext": ""
+  },
+  {
+    "UID": "2704",
+    "link": "https://youtu.be/VwQ_cVdrwhg",
+    "show": "1",
+    "DateAdded": "2026-10-29 06:58:02",
+    "DateModified": "2026-10-29 06:59:53",
+    "tags": [
+      "pp"
+    ],
+    "Mute": "0",
+    "Mode": "P",
+    "ftextSize": "251",
+    "FtextJunk": "30",
+    "DictSize": "0",
+    "VidTitle": "The Ending Will Shock You 😮 #shorts",
+    "VidAuthor": "@aucklandttofficial",
+    "ftext": ""
+  },
+  {
+    "UID": "2705",
+    "link": "https://youtu.be/R2SWtsqnzRY",
+    "show": "1",
+    "DateAdded": "2026-10-29 07:01:06",
+    "DateModified": "2026-10-29 07:01:10",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "Mode": "P",
+    "ftextSize": "957",
+    "FtextJunk": "8",
+    "DictSize": "0",
+    "VidTitle": "This Giant Deep-Sea Bug Stopped Eating for 5 Years",
+    "VidAuthor": "@lightlesslab",
+    "ftext": ""
+  },
+  {
+    "UID": "2706",
+    "link": "https://youtu.be/b0k5KQ-ampM",
+    "show": "1",
+    "DateAdded": "2026-10-29 07:01:55",
+    "DateModified": "2026-10-29 07:02:00",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "Mode": "P",
+    "ftextSize": "803",
+    "FtextJunk": "9",
+    "DictSize": "0",
+    "VidTitle": "Çocuklarımız Sağlıklı Büyüsün — Doç. Dr. Ediz Yeşilkaya",
+    "VidAuthor": "@cocukendokrinoloji",
+    "ftext": ""
+  },
+  {
+    "UID": "2707",
+    "link": "https://youtu.be/VHOFQri1Tjw",
+    "show": "1",
+    "DateAdded": "2026-10-29 07:05:21",
+    "DateModified": "2026-10-29 07:11:57",
+    "tags": [
+      "transcribed",
+      "attenborough"
+    ],
+    "Mute": "0",
+    "ftextSize": "1911",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "VidTitle": "Meet the penis-fencing flatworm | The Mating Game – BBC",
+    "VidAuthor": "@BBC",
+    "Mode": "L",
+    "ftext": "",
+    "VQ": "9"
+  },
+  {
+    "UID": "2708",
+    "link": "https://youtu.be/wn3xluIRh1Y",
+    "show": "1",
+    "DateAdded": "2026-10-29 07:13:19",
+    "DateModified": "2026-10-29 07:13:24",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "1968",
+    "FtextJunk": "4",
+    "DictSize": "0",
+    "VidTitle": "Flatworm Penis Fencing | World's Weirdest",
+    "VidAuthor": "@NatGeoAnimals",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2709",
+    "link": "https://youtu.be/s-_58U4yCQc",
+    "show": "1",
+    "DateAdded": "2026-10-29 14:52:09",
+    "DateModified": "2026-10-29 14:52:14",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "2411",
+    "FtextJunk": "3",
+    "DictSize": "0",
+    "VidTitle": "Species Spotlight - Candy-striped flatworm (Prostheceraeus vittatus)",
+    "VidAuthor": "@GHMarineBio",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2710",
+    "link": "https://youtu.be/LNZxPm9m_CE",
+    "show": "1",
+    "DateAdded": "2026-10-29 15:11:57",
+    "DateModified": "2026-10-29 15:12:01",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "2699",
+    "FtextJunk": "3",
+    "DictSize": "0",
+    "VidTitle": "Species Spotlight - St Piran's hermit crab (Clibanarius erythropus)",
+    "VidAuthor": "@GHMarineBio",
+    "Mode": "L",
+    "ftext": "",
+    "FTLsaved": "9"
   }
 ]
