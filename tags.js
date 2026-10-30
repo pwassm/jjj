@@ -105,218 +105,14 @@
     + '<tr><td>k / s</td><td>hard c / soft c (or<b>c</b>a → k, Or<b>c</b>inus → s)</td></tr>'
     + '</table>';
 
-  // (dev1148) Speak a NameSay line with the browser's own voices. Approximate —
-  // the engine reads the respelling as English — but hearing it beats guessing
-  // from the letters. The label picks the accent: GB/UK → en-GB, else en-US.
-  // Lowercased first: an engine may spell a CAPITALISED syllable letter by letter.
-  function sayRespelling(line) {
-    if (!('speechSynthesis' in window)) {
-      if (typeof toast === 'function') toast('This browser has no speech voices', 2000);
-      return;
-    }
-    const m = /^\s*([A-Za-z][A-Za-z .]{0,19}):\s*(.+)$/.exec(line || '');
-    const label = m ? m[1].trim().toLowerCase() : '';
-    const text = (m ? m[2] : String(line || '')).toLowerCase().trim();
-    if (!text) return;
-    const lang = /^(gb|uk|brit)/.test(label) ? 'en-GB' : 'en-US';
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = lang;
-    u.rate = 0.85;
-    const v = window.speechSynthesis.getVoices().find(x => (x.lang || '').replace('_', '-') === lang);
-    if (v) u.voice = v;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
-  }
-
-  // ── autoSay (dev1149) ──────────────────────────────────────────────────────
-  // Respells a scientific name from rules, so NameSay never has to be typed.
-  // Nothing is stored: D and the fact sheet show this whenever NameSay is empty,
-  // so a better rule improves every name at once. A typed NameSay always wins.
-  //   1. Split into syllables: diphthongs (ae oe au eu ei ou, oi in -oid-) are
-  //      one vowel; ch ph th rh qu are one consonant; x is k+s; ps- pt- ct- cn-
-  //      gn- mn- drop their first letter. Between vowels, one consonant starts
-  //      the next syllable, a mute+liquid pair (pr, cl, thr…) stays together,
-  //      anything longer closes the syllable before.
-  //   2. Stress (Latin rule): 2 syllables → first; else the penult when it is
-  //      heavy (diphthong or closed), otherwise the antepenult. Spelling hides
-  //      vowel length, so common endings carry it: -atus -itus -inus -anus
-  //      -osus -alis -otus… have a long penult; -icus -ulus -idae -ilis -mata
-  //      a short one.
-  //   3. Sounds, traditional English as biologists say them: c/g soft before
-  //      e i y ae oe; a stressed open vowel is "long" (ay ee eye oh yoo) except
-  //      in an antepenult; unstressed vowels reduce to uh/ih; set endings
-  //      (-a uh, -ae ee, -i eye, -us uhs, -es eez). US drops the y of "yoo" after
-  //      t d n s z (noo), GB keeps it (nyoo): one line each only when they differ.
-  //      Classical: c=k, g hard, v=w, ae=eye, oe=oy, vowels ah eh ee oh oo.
-  // Weak spots, by design left to a typed override: eponyms and non-Latin
-  // place names (kuroshimae, cousteaui, granrojo), Greek words whose vowel
-  // length the endings cannot see (Enhydra is said en-HY-druh, rules give EN-).
-  const _nsIsV = c => 'aeiouy'.includes(c);
-  const _NS_SOFT = /^(e|i|y|ae|oe|eu|ei)/;
-  const _NS_MUTE = new Set(['b', 'c', 'd', 'g', 'p', 't', 'k', 'f', 'ch', 'ph', 'th', 'kh']);
-  const _NS_LIQ = new Set(['l', 'r']);
-  const _NS_PENULT_LONG = /(atus|ata|atum|atae|ati|itus|ita|itum|itae|iti|utus|uta|utum|otus|ota|otum|inus|ina|inum|inae|ini|anus|ana|anum|anae|ani|osus|osa|osum|osae|osi|alis|ale|ales|aris|are|ares|ura|urus|urum|eter|etes)$/;
-  const _NS_PENULT_SHORT = /(icus|ica|icum|ulus|ula|ulum|olus|ola|olum|idae|ides|ilis|ile|mata|matum)$/;
-  const _NS_YOD_DROP_US = /^(t|d|n|s|th|z)$/;
-  const _NS_NO_YOD = /^(r|l|j|ch|sh|y)$/;
-
-  function _nsUnits(w) {
-    const out = [];
-    let i = 0;
-    const silent = /^(ps|pt|pn|ct|cn|gn|mn|tm|bd|chth|pht)/.exec(w);
-    while (i < w.length) {
-      const c = w[i], n = w[i + 1] || '', n2 = w[i + 2] || '';
-      if (_nsIsV(c)) {
-        const two = c + n, rest = w.slice(i);
-        if (['ae', 'oe', 'au', 'ei', 'ou', 'ai'].includes(two)) { out.push({ v: two }); i += 2; continue; }
-        if (two === 'eu' && !/^eu[ms]$/.test(rest)) { out.push({ v: 'eu' }); i += 2; continue; }
-        if (two === 'oi' && /^oid/.test(rest)) { out.push({ v: 'oi' }); i += 2; continue; }
-        out.push({ v: c }); i += 1; continue;
-      }
-      if (c === 'q' && n === 'u') { out.push({ c: 'qu' }); i += 2; continue; }
-      if (c === 'g' && n === 'u' && _nsIsV(n2) && w[i - 1] === 'n') { out.push({ c: 'gw' }); i += 2; continue; }
-      const dg = c + n;
-      if (['ch', 'ph', 'th', 'rh', 'sh', 'kh'].includes(dg)) { out.push({ c: dg }); i += 2; continue; }
-      if (c === 'x') {
-        if (i === 0) { out.push({ c: 'z' }); i += 1; continue; }
-        out.push({ c: 'k', x: true }); out.push({ c: 's', x: true }); i += 1; continue;
-      }
-      out.push({ c }); i += 1;
-    }
-    if (silent && out[0]) out[0].silent = true;
-    // Soft c/g depend on the very next letter, not the syllable's vowel (gli is hard).
-    out.forEach((u, k) => {
-      if (!u.c) return;
-      u.next = out[k + 1] ? (out[k + 1].v || out[k + 1].c) : '';
-      u.prev = out[k - 1] ? (out[k - 1].c || '') : '';
-    });
-    return out;
-  }
-
-  function _nsSyllables(w) {
-    const syl = [];
-    let pend = [];
-    _nsUnits(w).forEach(x => {
-      if (x.v) { syl.push({ on: pend, v: x.v, co: [] }); pend = []; }
-      else pend.push(x);
-    });
-    if (!syl.length) return [];
-    syl[syl.length - 1].co = pend;
-    for (let i = 1; i < syl.length; i++) {
-      const on = syl[i].on;
-      if (on.length < 2) continue;
-      const a = on[on.length - 2].c, b = on[on.length - 1].c;
-      const keep = (_NS_MUTE.has(a) && _NS_LIQ.has(b)) ? 2 : 1;
-      syl[i - 1].co = syl[i - 1].co.concat(on.slice(0, on.length - keep));
-      syl[i].on = on.slice(on.length - keep);
-    }
-    return syl;
-  }
-
-  function _nsStress(w, syl) {
-    const n = syl.length;
-    if (n <= 2) return 0;
-    if (!_NS_PENULT_SHORT.test(w) && _NS_PENULT_LONG.test(w)) return n - 2;
-    const p = syl[n - 2];
-    return (p.v.length === 2 || p.co.length > 0) ? n - 2 : n - 3;
-  }
-
-  function _nsCons(x, classical) {
-    if (x.silent) return '';
-    const c = x.c;
-    if (classical) return ({ c: 'k', ch: 'k', ph: 'f', th: 't', rh: 'r', qu: 'kw', v: 'w', j: 'y', kh: 'k' })[c] || c;
-    const soft = _NS_SOFT.test(x.next || '');
-    if (c === 'c') return soft ? (x.prev === 's' ? '' : 's') : 'k';     // sc before e/i = s
-    if (c === 'g') return soft ? 'j' : 'g';
-    return ({ ch: 'k', ph: 'f', rh: 'r', qu: 'kw', kh: 'k' })[c] || c;
-  }
-
-  function respellWord(word, mode) {           // mode: 'us' | 'gb' | 'classical'
-    const w = String(word || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]/g, '');
-    if (!w) return '';
-    const syl = _nsSyllables(w);
-    if (!syl.length) return w;
-    const n = syl.length, si = _nsStress(w, syl);
-    const classical = mode === 'classical';
-    const parts = syl.map((s, i) => ({
-      on: s.on.map(x => _nsCons(x, classical)).join(''),
-      co: s.co.map(x => _nsCons(x, classical)).join(''),
-      v: s.v, stress: i === si,
-    }));
-    parts.forEach((p, i) => {
-      const s = syl[i];
-      const open = !s.co.length;
-      const nextHiatus = !!syl[i + 1] && !syl[i + 1].on.length;
-      const lastOn = /(th|sh|ch)$/.test(p.on) ? p.on.slice(-2) : p.on.slice(-1);
-      const yoo = () => (_NS_NO_YOD.test(lastOn) || (mode === 'us' && _NS_YOD_DROP_US.test(lastOn))) ? 'oo' : 'yoo';
-      if (classical) {
-        p.vow = ({ a: 'ah', e: 'eh', i: 'ee', y: 'ee', o: 'oh', u: 'oo', ae: 'eye', oe: 'oy', au: 'ow',
-                   eu: 'ew', ei: 'ay', ou: 'oo', ai: 'eye', oi: 'oy' })[p.v];
-        if (!open && (p.v === 'e' || p.v === 'o')) p.vow = p.v;
-        return;
-      }
-      const D = { ae: 'ee', oe: 'ee', au: 'aw', eu: 'yoo', ei: 'eye', ou: 'oo', ai: 'eye', oi: 'oy' };
-      if (D[p.v]) { p.vow = p.v === 'eu' ? yoo() : D[p.v]; return; }
-      if (i === n - 1 && !p.stress) {
-        const F = { a: 'uh', e: 'ee', i: 'eye', o: 'oh', u: 'oo', y: 'ee',
-          us: 'uhs', um: 'uhm', is: 'is', es: 'eez', os: 'os', on: 'on', er: 'er', or: 'or', ar: 'ar',
-          al: 'uhl', as: 'uhs', aks: 'aks', eks: 'eks', iks: 'iks', yks: 'iks', ys: 'is', ops: 'ops', ul: 'uhl', yr: 'er' };
-        const fin = F[p.v + p.co];
-        if (fin != null) { p.vow = fin; p.co = ''; return; }
-      }
-      if (p.stress) {
-        const ante = n >= 3 && si === n - 3;
-        // An antepenult a/e/o/u stays long before i/e in hiatus (Cnidaria → ny-DAY-ree-uh).
-        const longAnte = ante && !/^[iy]$/.test(p.v) && syl[i + 1] && /^[ie]$/.test(syl[i + 1].v)
-          && syl[i + 2] && !syl[i + 2].on.length;
-        p.vow = (open && (!ante || longAnte || nextHiatus))
-          ? { a: 'ay', e: 'ee', i: 'eye', y: 'eye', o: 'oh', u: yoo() }[p.v]
-          : { a: 'a', e: 'e', i: 'i', y: 'i', o: 'o', u: 'u' }[p.v];
-        return;
-      }
-      if (nextHiatus) { p.vow = { a: 'ay', e: 'ee', i: 'ee', y: 'ee', o: 'oh', u: yoo() }[p.v]; return; }
-      if (i < si) {
-        if (!open) { p.vow = { a: 'a', e: 'e', i: 'i', y: 'i', o: 'o', u: 'u' }[p.v]; return; }
-        p.vow = (p.v === 'i' || p.v === 'y') ? (i === 0 ? 'eye' : 'ih') : { a: 'uh', e: 'eh', o: 'oh', u: yoo() }[p.v];
-        return;
-      }
-      p.vow = open ? { a: 'uh', e: 'uh', i: 'ih', y: 'ih', o: 'uh', u: 'yuh' }[p.v]
-                   : { a: 'uh', e: 'e', i: 'i', y: 'i', o: 'o', u: 'uh' }[p.v];
-    });
-    // A stressed SHORT vowel in an open syllable takes the next consonant (SEF-uh-luhs).
-    parts.forEach((p, i) => {
-      const nx = parts[i + 1];
-      if (classical || !p.stress || p.co || !/^[aeiou]$/.test(p.vow) || !nx || !nx.on) return;
-      const take = /^(th|sh|ch)/.test(nx.on) ? nx.on.slice(0, 2) : (nx.on.startsWith('kw') ? 'k' : nx.on[0]);
-      p.co = take;
-      if (!nx.on.startsWith('kw')) nx.on = nx.on.slice(take.length);
-    });
-    // A doubled consonant across a boundary: keep the copy the stressed side needs.
-    parts.forEach((p, i) => {
-      const nx = parts[i + 1];
-      if (!nx || !p.co || !nx.on || p.co[p.co.length - 1] !== nx.on[0]) return;
-      if (nx.stress) p.co = p.co.slice(0, -1);
-      else nx.on = nx.on.slice(1);
-    });
-    return parts.map(p => {
-      const v = (p.vow === 'eye' && p.on) ? 'y' : p.vow;      // RY, not REYE
-      const t = p.on + v + p.co;
-      return p.stress ? t.toUpperCase() : t;
-    }).join('-');
-  }
-
-  // NameSay lines for a label: one traditional line (or US + GB when they
-  // differ), then Classical. [] for anything that is not a Latin-looking name.
-  function autoSay(label) {
-    const words = String(label || '').trim().split(/\s+/)
-      .filter(x => /^[A-Za-zÀ-ɏ-]+$/.test(x) && !/^(var|subsp|ssp|cf|aff|sp|spp)\.?$/i.test(x));
-    if (!words.length) return [];
-    const us = words.map(x => respellWord(x, 'us')).join(' ');
-    const gb = words.map(x => respellWord(x, 'gb')).join(' ');
-    const cl = words.map(x => respellWord(x, 'classical')).join(' ');
-    const lines = us === gb ? [us] : ['US: ' + us, 'GB: ' + gb];
-    lines.push('Classical: ' + cl);
-    return lines;
+  // (dev1150) NameOrigin is plain text; a credit link is written [Wikipedia](https://…)
+  // so it reads fine in D's textarea. This turns it into HTML for display:
+  // escaped text, <br> per line, and only http(s) links become <a>.
+  function nameOriginHtml(s) {
+    return escapeHtml(String(s || ''))
+      .replace(/\[([^\]\n]{1,80})\]\((https?:\/\/[^\s)]+)\)/g, (m, txt, url) =>
+        '<a href="' + url + '" target="_blank" rel="noopener" style="color:#68a;">' + txt + '</a>')
+      .replace(/\n/g, '<br>');
   }
 
   // ── Name origin lookup (dev1149) ───────────────────────────────────────────
@@ -326,8 +122,9 @@
   //   Wiktionary → what a one-word name is built from (genus, family…), or what
   //     a species epithet means in Latin (following "inflection of" to the lemma);
   //   Wikipedia (per-tag 🔎 only) → sentences about the name, offered to add.
-  // A species gets its OWN part (epithet + who named it); the genus name is
-  // explained on the genus tag — a fact lives at the rank where it is true.
+  // (dev1150) A species draft explains BOTH words: the genus (its Wiktionary
+  // etymology, or for a compound like Rhinomuraena the parts: rhino- “nose” +
+  // Muraena “moray eel”) and the epithet. Phil wants the whole binomial there.
   // Wiktionary and WoRMS are fetched 50 names per request, so 🔎 Fill names over
   // every taxon is a couple of dozen requests, not hundreds — Wikimedia answers
   // a burst of single-page calls with HTTP 429.
@@ -335,8 +132,13 @@
     'la-med': 'Medieval Latin', 'NL.': 'New Latin', 'ML.': 'Medieval Latin', 'LL.': 'Late Latin', mul: '',
     en: 'English', ja: 'Japanese', fr: 'French', de: 'German', es: 'Spanish', pt: 'Portuguese', it: 'Italian',
     haw: 'Hawaiian', ar: 'Arabic', nl: 'Dutch', el: 'Greek', gkm: 'Byzantine Greek', ru: 'Russian', zh: 'Chinese',
-    mi: 'Maori', sv: 'Swedish', da: 'Danish', no: 'Norwegian' };
-  const _wtLang = c => (c in WT_LANG ? WT_LANG[c] : c);
+    mi: 'Maori', sv: 'Swedish', da: 'Danish', no: 'Norwegian', ms: 'Malay', id: 'Indonesian', tpi: 'Tok Pisin',
+    hi: 'Hindi', sa: 'Sanskrit', fa: 'Persian', tr: 'Turkish', ko: 'Korean', pl: 'Polish', fi: 'Finnish',
+    is: 'Icelandic', ga: 'Irish', cy: 'Welsh', he: 'Hebrew', sw: 'Swahili', qu: 'Quechua', nah: 'Nahuatl',
+    tl: 'Tagalog', 'la-cla': 'Latin', 'la-vul': 'Vulgar Latin', 'grc-koi': 'Koine Greek', enm: 'Middle English',
+    ang: 'Old English', fro: 'Old French', frm: 'Middle French', non: 'Old Norse' };
+  // An unlisted code is dropped rather than shown raw ("From ms kakaktua").
+  const _wtLang = c => (c in WT_LANG ? WT_LANG[c] : '');
 
   function _wtTemplate(body) {
     const parts = body.split('|');
@@ -351,7 +153,8 @@
       case 'der': case 'inh': case 'bor': case 'lbor': case 'uder': case 'cal': case 'slbor': case 'obor':
       case 'der+': case 'inh+': case 'bor+': {
         const ln = _wtLang(pos[1] || '');
-        return (ln ? ln + ' ' : '') + gl(pos[3] || pos[2] || '', kv.t || kv.gloss || pos[4] || '');
+        const term = pos[3] || pos[2] || '';                 // "-" = no term given
+        return (ln ? ln + ' ' : '') + gl(term === '-' ? '' : term, kv.t || kv.gloss || pos[4] || '');
       }
       case 'm': case 'l': case 'mention': case 'link': case 'll': case 'm+': case 'l-self':
         return gl(pos[2] || pos[1] || '', kv.t || kv.gloss || pos[3] || '');
@@ -369,6 +172,8 @@
         return '(“' + (pos[0] || '') + '”)';
       case 'q': case 'qualifier': case 'i':
         return '(' + pos.join(', ') + ')';
+      case 'alternative form of': case 'alt form': case 'alt form of': case 'synonym of': case 'syn of':
+        return gl(pos[1] || '', kv.t || kv.gloss || pos[3] || '');
       case 'inflection of': case 'infl of': case 'form of':
         return '\u0001' + (pos[1] || '');                // marker: follow to the lemma
       default:
@@ -441,9 +246,18 @@
     return out;
   }
 
+  // Up to the first . or ; that is outside “quotes” and (brackets), so a gloss
+  // like (“rag; wrinkle”) is not cut in half.
   const _firstSentence = (s, max) => {
-    const m = /^(.+?[.;])(\s|$)/.exec(s);
-    let t = (m ? m[1] : s).replace(/[.;]$/, '');
+    s = String(s || '');
+    let depth = 0, end = s.length;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (c === '“' || c === '(') depth++;
+      else if ((c === '”' || c === ')') && depth > 0) depth--;
+      else if ((c === '.' || c === ';') && depth === 0 && (i + 1 === s.length || /\s/.test(s[i + 1]))) { end = i; break; }
+    }
+    let t = s.slice(0, end).replace(/[.;\s]+$/, '');
     if (t.length > (max || 220)) t = t.slice(0, max || 220).replace(/\s+\S*$/, '') + '…';
     return t;
   };
@@ -469,6 +283,47 @@
       if (s.ety) return { text: _firstSentence(s.ety) };
     }
     return null;
+  }
+
+  // A compound name Wiktionary has no page for (Rhinomuraena): split after a
+  // connecting vowel (o, i) into a prefix entry + a word or suffix entry.
+  function _wtSplits(word) {
+    const lw = String(word || '').toLowerCase(), out = [];
+    for (let i = 3; i <= Math.min(9, lw.length - 3); i++) {         // real prefixes are short
+      if (lw[i - 1] !== 'o' && lw[i - 1] !== 'i') continue;
+      const rest = lw.slice(i);
+      // Suffix entry first (-cephalus “head”), then a genus page — Translingual
+      // only, so Cephalus the myth is not taken for -cephalus — then the word.
+      out.push({ pre: lw.slice(0, i) + '-', forms: [
+        { t: '-' + rest, langs: WT_PART_LANGS },
+        { t: rest[0].toUpperCase() + rest.slice(1), langs: ['Translingual'] },
+        { t: rest, langs: WT_PART_LANGS }] });
+    }
+    return out;
+  }
+  const WT_PART_LANGS = ['Translingual', 'Latin', 'English'];
+  // The short meaning of a word part: the first quoted gloss in its etymology,
+  // else its first real definition. "" when the page says nothing usable.
+  function _wtPartGloss(wikitext, langs) {
+    for (const s of _wtSections(wikitext, langs || WT_PART_LANGS)) {
+      const q = /“([^”]+)”/.exec(s.ety || '') || /“([^”]+)”/.exec(s.defs.join(' '));
+      const d = q ? q[1] : s.defs.find(x => x.charAt(0) !== '\u0001' && !/^(Used |A taxonomic|\()/i.test(x));
+      if (d) return d.replace(/\.$/, '').replace(/^Of (the )?/i, '').replace(/^./, c => c.toLowerCase())
+        .split(',').slice(0, 2).join(',').trim();
+    }
+    return '';
+  }
+  // "rhino- (“nose”) + Muraena (“moray eel”)", or "" when no split is backed by both pages.
+  function _wtCompound(word, pages) {
+    for (const sp of _wtSplits(word)) {
+      const pg = _wtPartGloss(pages.get(sp.pre));
+      if (!pg) continue;
+      for (const f of sp.forms) {
+        const rg = _wtPartGloss(pages.get(f.t), f.langs);
+        if (rg) return sp.pre + ' (“' + pg + '”) + ' + f.t + ' (“' + rg + '”)';
+      }
+    }
+    return '';
   }
 
   // WoRMS authority for many names, 50 per request; a homonym is settled by the
@@ -527,7 +382,8 @@
       const words = String(t.label || '').trim().split(/\s+/).filter(w => /^[A-Za-z-]+$/.test(w));
       const single = words.length === 1;
       return { t, name: words.join(' '), lineage: _lineageLabels(t),
-               word: single ? words[0] : '', epithet: single ? '' : (words[words.length - 1] || '').toLowerCase() };
+               word: single ? words[0] : '', genus: single ? '' : words[0],
+               epithet: single ? '' : (words[words.length - 1] || '').toLowerCase() };
     }).filter(j => j.name);
     step('WoRMS: who named them…');
     const auths = await _wormsAuthorities(jobs.map(j => ({ name: j.name, lineage: j.lineage })), step);
@@ -539,7 +395,24 @@
       step('GBIF for the rest… ' + (++gDone) + '/' + missing.length);
     });
     step('Wiktionary: what the names mean…');
-    const pages = await _wtFetchMany(jobs.map(j => j.word || j.epithet));
+    const pages = await _wtFetchMany(jobs.flatMap(j => [j.word, j.genus, j.epithet]));
+    // Genus / one-word names: their own etymology, else (genera only) built from
+    // their parts — prefixes first, then the rest only where a prefix exists,
+    // so a bulk fill stays a handful of requests.
+    const etys = new Map();
+    const genera = new Set(jobs.map(j => j.genus || (j.t.rank === 'genus' ? j.word : '')).filter(Boolean));
+    const needParts = [];
+    new Set(jobs.map(j => j.word || j.genus).filter(Boolean)).forEach(w => {
+      const e = _wtNameEtymology(pages.get(w));
+      if (e) etys.set(w, e); else if (genera.has(w)) needParts.push(w);
+    });
+    if (needParts.length) {
+      step('Wiktionary: parts of ' + needParts.length + ' genus names…');
+      const pp = await _wtFetchMany(needParts.flatMap(w => _wtSplits(w).map(sp => sp.pre)));
+      const rest = needParts.flatMap(w => _wtSplits(w).filter(sp => _wtPartGloss(pp.get(sp.pre))).flatMap(sp => sp.forms.map(f => f.t)));
+      if (rest.length) (await _wtFetchMany(rest)).forEach((v, k) => pp.set(k, v));
+      needParts.forEach(w => { const c = _wtCompound(w, pp); if (c) etys.set(w, c); });
+    }
     const meanings = new Map(), lemmas = new Map();
     jobs.forEach(j => {
       if (!j.epithet) return;
@@ -557,13 +430,15 @@
     const out = new Map();
     jobs.forEach(j => {
       const a = auths.get(j.name);
-      const ety = j.word ? _wtNameEtymology(pages.get(j.word)) : '';
+      const nameWord = j.word || j.genus;
+      const ety = etys.get(nameWord) || '';
       const meaning = j.epithet ? (meanings.get(j.epithet) || '') : '';
       const lines = [];
       if (a) lines.push(authoritySentence(a.auth));
-      if (ety) lines.push(j.word + ': ' + ety + '.');
+      if (ety) lines.push(nameWord + ': ' + ety + '.');
       if (meaning) lines.push(j.epithet + ': ' + meaning + '.');
-      out.set(j.t.id, { draft: lines.join('\n'), auth: a || null, ety, meaning, word: j.word, epithet: j.epithet });
+      out.set(j.t.id, { draft: lines.map(l => l.replace(/\.{2,}$/, '.')).join('\n'),
+                        auth: a || null, ety, meaning, word: j.word, epithet: j.epithet });
     });
     return out;
   }
@@ -663,9 +538,8 @@
     closeMenu: closeChipContextMenu,
     TEXT_FIELDS,
     factsText,
-    autoSay,
-    respellWord,
     lookupNameOrigins,
+    nameOriginHtml,
   };
 
   // Substring search across label, common name, and aliases.
@@ -2713,9 +2587,7 @@
               <textarea id="de-namesay" rows="2" placeholder="US: or-SY-nuhs OR-kuh&#10;GB: aw-SY-nuhs AW-kuh"
                 style="flex:1;min-width:0;padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#fff;border-radius:4px;font-family:monospace;font-size:12px;outline:none;resize:vertical;">${escapeHtml(t.NameSay || '')}</textarea>
               <button id="de-namesay-key" title="Respelling key" style="padding:4px 9px;border:1px solid #556;background:#14142a;color:#9ab;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;">?</button>
-              ${t.kind === 'taxon' ? `<button id="de-namesay-auto" title="Put the automatic respelling in the box to correct it. Left empty, the automatic one is used everywhere." style="padding:4px 9px;border:1px solid #556;background:#14142a;color:#9ab;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;white-space:nowrap;">↓ auto</button>` : ''}
             </div>
-            <div id="de-namesay-play" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;"></div>
             <div id="de-namesay-keybox" style="display:none;margin-top:6px;padding:7px 10px;background:#0d0d1e;border:1px solid #345;border-radius:5px;color:#aab;font:11px/1.6 system-ui,sans-serif;">${NAMESAY_KEY_HTML}</div>
           </div>
 
@@ -2788,55 +2660,31 @@
       editEl.querySelectorAll('[data-facts-prev]').forEach(el =>
         el.addEventListener('dblclick', () => openFacts(el.dataset.factsPrev)));
 
-      // NameSay: one 🔊 per line, redrawn as you type; ? shows the respelling key.
-      // (dev1149) An empty box shows the automatic respelling instead (autoSay),
-      // greyed and marked "auto"; ↓ auto copies it into the box to correct it.
-      const sayBox = editEl.querySelector('#de-namesay');
-      const sayPlay = editEl.querySelector('#de-namesay-play');
-      const autoLines = t.kind === 'taxon' ? autoSay(t.label) : [];
-      const drawSay = () => {
-        const typed = sayBox.value.split('\n').map(s => s.trim()).filter(Boolean);
-        const isAuto = !typed.length && autoLines.length > 0;
-        const lines = typed.length ? typed : autoLines;
-        sayPlay.innerHTML = (isAuto
-          ? '<div style="width:100%;color:#789;font:11px/1.55 monospace;">' + lines.map(l => 'auto · ' + escapeHtml(l)).join('<br>') + '</div>'
-          : '') + lines.map((l, i) => {
-          const m = /^\s*([A-Za-z][A-Za-z .]{0,19}):/.exec(l);
-          return '<button data-say="' + i + '" title="' + escapeAttr(l) + '" style="padding:2px 8px;border:1px solid #456;'
-            + 'background:#14142a;color:' + (isAuto ? '#89a' : '#cde') + ';border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;">🔊 '
-            + escapeHtml(m ? m[1].trim() : 'say') + '</button>';
-        }).join('');
-        sayPlay.querySelectorAll('[data-say]').forEach(b =>
-          b.addEventListener('click', () => sayRespelling(lines[+b.dataset.say])));
-      };
-      sayBox.addEventListener('input', drawSay);
-      drawSay();
+      // NameSay is typed by hand; ? shows the respelling key. (The dev1149
+      // automatic respelling and the 🔊 speech buttons were removed in dev1150 —
+      // Phil found both poor.)
       editEl.querySelector('#de-namesay-key').addEventListener('click', () => {
         const k = editEl.querySelector('#de-namesay-keybox');
         k.style.display = (k.style.display === 'none') ? 'block' : 'none';
       });
-      const sayAutoBtn = editEl.querySelector('#de-namesay-auto');
-      if (sayAutoBtn) sayAutoBtn.addEventListener('click', () => {
-        sayBox.value = autoLines.join('\n');
-        drawSay();
-        sayBox.focus();
-      });
 
-      // (dev1149) Name origin. Under a species, the genus/family explain their own
-      // names, so show theirs (greyed) rather than repeating them here.
+      // (dev1149) Name origin. Greyed below: the family's (and higher) origins.
+      // The genus is skipped under a species — its draft explains the genus too.
       const originBox = editEl.querySelector('#de-nameorigin');
       if (t.kind === 'taxon') {
+        const lw = String(t.label || '').trim().split(/\s+/);
+        const genusWord = lw.length > 1 ? lw[0] : null;
         const inh = [];
         let cur = t;
         for (let hops = 0; hops < 3 && cur; hops++) {
           const pid = (cur.parents || []).find(p => { const pt = byId.get(p); return pt && pt.kind === 'taxon'; });
           cur = pid ? byId.get(pid) : null;
-          if (cur && cur.NameOrigin) inh.push(cur);
+          if (cur && cur.NameOrigin && cur.label !== genusWord) inh.push(cur);
         }
         editEl.querySelector('#de-origin-inherit').innerHTML = inh.slice(0, 2).map(a =>
-          '<div style="color:#789;font:11px/1.45 system-ui,sans-serif;margin-top:4px;white-space:pre-wrap;">'
+          '<div style="color:#789;font:11px/1.45 system-ui,sans-serif;margin-top:4px;">'
           + '<b style="color:#9ab;">' + escapeHtml((a.rank ? a.rank + ' ' : '') + a.label) + ':</b> '
-          + escapeHtml(a.NameOrigin) + '</div>').join('');
+          + nameOriginHtml(a.NameOrigin) + '</div>').join('');
       }
       // 🔎 Look up: the draft and any Wikipedia sentences land in a box below.
       // ↓ Use / + add only fill the text box — ✓ Save is still what writes.
@@ -2875,12 +2723,16 @@
           html += wiki.map((w, i) => '<div style="' + box + 'color:#aab;">' + escapeHtml(w.text)
             + '<div style="margin-top:3px;font-size:10px;"><a href="' + escapeAttr(w.src) + '" target="_blank" rel="noopener" style="color:#68a;">Wikipedia</a>'
             + '<button data-origin-add="' + i + '" style="' + btn + '">+ add</button></div></div>').join('');
-          html += note('Nothing is saved until ✓ Save. Wikipedia is CC BY-SA — reword before it goes public.');
+          html += note('Nothing is saved until ✓ Save. + add puts a credit link, [Wikipedia](…), after the sentence.');
           out.innerHTML = html;
           const use = out.querySelector('[data-origin-use]');
           if (use) use.addEventListener('click', () => addToBox(r.draft));
+          // Wikipedia is CC BY-SA: a sentence taken as is carries its credit link.
           out.querySelectorAll('[data-origin-add]').forEach(b =>
-            b.addEventListener('click', () => addToBox(wiki[+b.dataset.originAdd].text)));
+            b.addEventListener('click', () => {
+              const w = wiki[+b.dataset.originAdd];
+              addToBox(w.text + ' ([Wikipedia](' + w.src + '))');
+            }));
         } catch (e) {
           if (out.isConnected) out.innerHTML = note('Look-up failed: ' + escapeHtml(String(e && e.message || e)));
         } finally {
