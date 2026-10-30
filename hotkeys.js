@@ -765,6 +765,14 @@ window.HOTKEYS = [
     impl: 'core.js',
     desc: 'Paste the copied tag onto this row (when one is on the clipboard)' },
 
+  { label: 'f  /  Shift+F', group: 'Dictionary', scope: 'D', dev: true,
+    impl: 'tags.js D _navHandler (dev1152)',
+    desc: 'Outside a text box: f jumps to the search (filter) box — the list and tree filter live as you type; Shift+F clears the filter' },
+
+  { label: 'R', group: 'Dictionary', scope: 'D', dev: true,
+    impl: 'tags.js D _navHandler → ↻ Look up (dev1152)',
+    desc: 'Look the open taxon’s Name origin and Name say up again and save them. Opening a taxon already does this once a session; fields flagged “edited” are left alone' },
+
   { label: 'R-click a Dictionary node', group: 'Menus', scope: 'D', dev: true, helpSection: 'Menus',
     impl: 'dictionary context menu',
     desc: 'Node menu — Cut / Paste / Delete / GBIF lookup' },

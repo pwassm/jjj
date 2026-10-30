@@ -19,7 +19,8 @@
  *   tags.json is an array: [meta, ...tagRecords] (SAL-style)
  *   Each tag record:
  *     { id, label, kind, rank?, parents:[], aliases?:[], formerly?:[], common?:"", extinct?:false,
- *       facts1?:"", facts2?:"", facts3?:"", NameOrigin?:"", NameSay?:"" }
+ *       facts1?:"", facts2?:"", facts3?:"", NameOrigin?:"", NameSay?:"",
+ *       NameOriginEdited?:true, NameSayEdited?:true }
  *   formerly (dev1116) = older scientific names the label replaced (Pleuroncodes
  *   planipes on Grimothea planipes). Searched and matched exactly like aliases,
  *   but shown as "formerly" so an old name is told apart from a common-name variant.
@@ -30,6 +31,8 @@
  *   "Label: respelling" line per variant (US / GB / Classical), stress in CAPS.
  *   ABSENT vs '' matters for these five: absent = never written (the tags.json
  *   write guard in core.js may backfill it from disk), '' = deliberately cleared.
+ *   (dev1152) On a taxon the two name fields are looked up and saved by D
+ *   itself; …Edited = Phil changed the looked-up text, so no look-up replaces it.
  *   Rules:
  *     - id is a slug (lowercase, a-z 0-9 and hyphens)
  *     - kind === "taxon" → at most ONE parent of kind taxon/root (its single
@@ -524,10 +527,28 @@
   // "Refers to" counts only next to "name"/"epithet" — fossils that literature
   // "refers to" under a synonym explain nothing.
   const _MEAN_RE = /\b(?:Latin|Greek)\b|\bmeans?\b|\bmeaning\b|\bnamed (?:after|for|in honou?r)|\bhonou?r(?:s|ing|ed)?\b|\bderive[sd]? from\b|\betymolog\w*|\beponym\w*|\b(?:name|epithet)\b.*\b(?:refer(?:s|ring)? to|allud(?:es|ing) to)\b/i;
-  function _wikiClause(text, word) {
+  // (dev1152) Sentences that explain a word without writing it: "The genus name
+  // is a combination of rhino … and op …" (Rhinopias), "The name is derived
+  // from … askaros … and sepion" (Ascarosepion). `implicit` is the phrase that
+  // stands for the word; the caller decides which article may use which phrase.
+  const _IMPL_GENUS = /\b(?:the|its|this) (?:genus|generic) name\b|\bthe name of the genus\b/i;
+  const _IMPL_BARE = /\b(?:the|its|this) (?:scientific |Latin |Greek )?name\b(?! of the (?:species|family|order))/i;
+  const _IMPL_EPITHET = /\b(?:the|its|this) (?:specific|species|trivial) (?:name|epithet)\b/i;
+  function _wikiClause(text, word, implicit) {
     if (!word) return '';
     const wre = new RegExp('(^|[^A-Za-z])' + word.replace(/-/g, '\\-') + '($|[^A-Za-z])', 'i');
-    if (!wre.test(text)) return '';
+    if (!wre.test(text)) {
+      const m = implicit ? implicit.exec(text) : null;
+      if (!m) return '';
+      let t = text.slice(m.index);
+      // "The genus name Metasepia …" is about another name.
+      if (/^\s+["“]?[A-Z][a-z]/.test(t.slice(m[0].length)) || !_MEAN_RE.test(t)) return '';
+      // A tail after ";" that says nothing about the name goes ("…and sepion;
+      // the type species, A. verreauxi, was collected off Sydney…").
+      const semi = t.indexOf('; ');
+      if (semi > 0 && !_MEAN_RE.test(t.slice(semi))) t = t.slice(0, semi) + '.';
+      return t.charAt(0).toUpperCase() + t.slice(1);
+    }
     const starts = [0];
     String(text).replace(/[,;]\s+/g, (m, off) => { starts.push(off + m.length); return m; });
     for (let k = 0; k < starts.length; k++) {
@@ -629,7 +650,9 @@
         const g = j.genus ? _genusTagOf(j.t) : null;
         const titles = [...new Set([_wikiTitleFor(j.t), j.genus ? (g ? _wikiTitleFor(g) : j.genus) : ''].filter(Boolean))];
         const keys = [j.word || j.genus, j.epithet].filter(Boolean);
-        wiki.set(j.t.id, (await Promise.all(titles.map(ti => wikiNamingSentences(ti, keys).catch(() => [])))).flat());
+        // self = the tag's own article; for a species the second is the genus's.
+        wiki.set(j.t.id, (await Promise.all(titles.map((ti, k) => wikiNamingSentences(ti, keys)
+          .then(a => a.map(s => Object.assign(s, { self: k === 0 }))).catch(() => [])))).flat());
       }));
     }
     const out = new Map();
@@ -650,8 +673,27 @@
       // says why (“which the fish resembles…”), Wiktionary only what. Taken
       // as written, so it carries its credit link (CC BY-SA).
       const ws = wiki.get(j.t.id) || [];
-      const wikiFor = word => { for (const s of ws) { const c = _wikiClause(s.text, word); if (c) return { c, src: s.src }; } return null; };
-      const wG = wikiFor(nameWord), wE = j.epithet ? wikiFor(j.epithet) : null;
+      // Words named outright win; then (dev1152) sentences that stand a phrase
+      // in for the word. The genus: "the genus name" in either article, a bare
+      // "the name" only in its own article. The epithet: "the specific name",
+      // only in the species' own article. A paragraph that starts on another
+      // name ("Metasepia was described …") is about that one.
+      const gWord = (j.genus || j.word).toLowerCase();
+      const isGenus = !!j.genus || j.t.rank === 'genus';
+      const wikiFor = (word, epi) => {
+        for (const s of ws) { const c = _wikiClause(s.text, word); if (c) return { c, src: s.src }; }
+        for (const s of ws) {
+          if (s.subject && s.subject.toLowerCase() !== gWord) continue;
+          const own = j.word ? s.self : !s.self;
+          for (const [re, bare] of epi ? [[s.self ? _IMPL_EPITHET : null, false]]
+                                       : [[isGenus ? _IMPL_GENUS : null, false], [own ? _IMPL_BARE : null, true]]) {
+            const c = re ? _wikiClause(s.text, word, re) : '';
+            if (c) return { c: bare && j.genus ? j.genus + ': ' + c.charAt(0).toLowerCase() + c.slice(1) : c, src: s.src };
+          }
+        }
+        return null;
+      };
+      const wG = wikiFor(nameWord, false), wE = j.epithet ? wikiFor(j.epithet, true) : null;
       const wikiLine = x => x.c + ' ([Wikipedia](' + x.src + '))';
       if (wG || wE) sources.push({ name: 'Wikipedia', url: (wG || wE).src });
       const wt = [];                                   // Wiktionary pages the draft used
@@ -694,20 +736,43 @@
     if (!p || !p.extract) return [];
     const keys = (keyWords || []).map(w => String(w).toLowerCase()).filter(Boolean);
     const src = 'https://en.wikipedia.org/wiki/' + encodeURIComponent(String(p.title).replace(/ /g, '_'));
-    return p.extract.replace(/\n=+[^=\n]+=+\n/g, '\n')
-      .split(/(?<=[.!?])\s+(?=[A-Z"“(])/).map(s => s.replace(/\s+/g, ' ').trim())
-      .filter(s => s.length > 25 && s.length < 450 && _NAMING_RE.test(s))
-      .map(s => {
+    // (dev1152) Paragraph by paragraph: `subject` is the name a paragraph opens
+    // on ("Metasepia was described …"), so a "The name …" inside it is that name's.
+    const sents = [];
+    p.extract.split(/\n+/).forEach(par => {
+      par = par.trim();
+      if (!par || /^=+[^=]*=+$/.test(par)) return;
+      const m = /^["“]?([A-Z][a-z]+)\s+(?:was|is|were|are|has|had)\b/.exec(par);
+      const subject = m && !_NOT_SUBJECT.test(m[1]) ? m[1] : '';
+      _sentences(par).forEach(s => sents.push({ s: s.replace(/\s+/g, ' ').trim(), subject }));
+    });
+    return sents
+      .filter(x => x.s.length > 25 && x.s.length < 450 && _NAMING_RE.test(x.s))
+      .map(({ s, subject }) => {
         const ls = s.toLowerCase();
         let score = 0;
         if (keys.some(k => ls.includes(k))) score += 3;
         if (/(generic|specific|genus) name|epithet|etymolog/i.test(s)) score += 3;
         if (/(Latin|Greek) (word )?for|from the (Ancient )?(Greek|Latin)/i.test(s)) score += 2;
         if (/named (after|for|in honou?r)|honou?r/i.test(s)) score += 2;
+        if (/\bderive[sd]? from\b|\bcombination of\b/i.test(s)) score += 2;
         if (/common name/i.test(s)) score -= 1;
-        return { text: s, src, score };
+        return { text: s, src, score, subject };
       })
       .filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 4);
+  }
+  const _NOT_SUBJECT = /^(?:It|Its|This|That|These|Those|There|They|Their|He|She|One|Each|All|Both|Some|Most|Many|Several|Such|Which|What|Who|Here)$/;
+  // Sentences, without breaking after an initial or a short abbreviation
+  // ("R. frondosa", "A. verreauxi", "e.g.").
+  function _sentences(par) {
+    const out = [];
+    par.split(/(?<=[.!?]["”’)]?)\s+(?=[A-Z"“(])/).forEach(p => {
+      const prev = out.length ? out[out.length - 1] : '';
+      if (prev && (/(?:^|[\s(])[A-Z]\.$/.test(prev) || /(?:^|[\s(])(?:st|mt|dr|mrs?|ms|cf|ca|e\.g|i\.e|spp?|var|fig|approx|vol|no)\.$/i.test(prev))) {
+        out[out.length - 1] = prev + ' ' + p;
+      } else out.push(p);
+    });
+    return out;
   }
 
   // ── Name say from published pronunciations (dev1151) ─────────────────────
@@ -1028,9 +1093,11 @@
 
   // D's auto-fill: one look-up per tag per session (keyed by label as well, so
   // a renamed tag is looked up again). A failed look-up is forgotten.
+  // fresh (D's ↻ Look up / R) asks the services again.
   const _autoCache = new Map();
-  function autoNameDraft(kind, t) {
+  function autoNameDraft(kind, t, fresh) {
     const key = kind + '|' + t.id + '|' + t.label;
+    if (fresh) _autoCache.delete(key);
     if (!_autoCache.has(key)) {
       const p = (async () => {
         const ti = window.taxonInfo;
@@ -1617,7 +1684,10 @@
     // 2. Fill in common + the prose fields on target if missing
     if (!to.common && from.common) to.common = from.common;
     TEXT_FIELDS.forEach(f => {
-      if ((!to[f] || isBlankHtml(to[f])) && from[f] && !isBlankHtml(from[f])) to[f] = from[f];
+      if ((!to[f] || isBlankHtml(to[f])) && from[f] && !isBlankHtml(from[f])) {
+        to[f] = from[f];
+        if (from[f + 'Edited']) to[f + 'Edited'] = true;     // (dev1152) Phil's own name text stays his
+      }
     });
 
     // 3. Re-point children: any tag whose parents include fromId → toId
@@ -2393,7 +2463,7 @@
           style="padding:5px 12px;border:1px solid #6c9;background:rgba(0,80,55,0.45);color:#8ec;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">🌳 Normalize tree</button>
         <button id="dictTaxonInfo" title="Taxon info (dev0847) — short Wikipedia notes, common names and IUCN status per taxon, kept in taxoninfo.json. Opens the review panel: see what has been fetched, fetch what is missing, and resolve names that several kingdoms share."
           style="padding:5px 12px;border:1px solid #9bd;background:rgba(20,45,90,0.5);color:#9bd;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">📖 Taxon info</button>
-        <button id="dictFillNames" title="Fill Name origin and Name say on every taxon that has none yet. Name origin: WoRMS/GBIF + Wikidata (who named it, when) and Wiktionary (what the name means). Name say: only pronunciations Wikipedia or Wiktionary have published, in the ? respelling key. About 3–4 minutes for 600 taxa. Never touches one you have written or cleared. Opening a tag fills its own two boxes anyway, with Wikipedia sentences too."
+        <button id="dictFillNames" title="Fill Name origin and Name say on every taxon that has none yet. Name origin: WoRMS/GBIF + Wikidata (who named it, when) and Wiktionary (what the name means). Name say: only pronunciations Wikipedia or Wiktionary have published, in the ? respelling key. About 3–4 minutes for 600 taxa. Never touches one you have written or cleared. Opening a taxon looks its own two up again anyway (with Wikipedia sentences and the original name too) and saves them; R in D does it on demand."
           style="padding:5px 12px;border:1px solid #4af;background:rgba(0,40,100,0.35);color:#8ef;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">🔎 Fill names</button>
         <button id="dictClose" style="padding:5px 12px;border:1px solid #f66;background:rgba(80,0,0,0.4);color:#f88;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">✕ Close (Esc)</button>
       </div>
@@ -2415,6 +2485,15 @@
     let viewMode = _dictState.viewMode || 'tree';
     // Expanded tree nodes (ids) — default-expand the top roots
     const expandedNodes = new Set(_dictState.expandedNodes || ['life','health','activity','other']);
+    // (dev1152) While the search box has text: ancestors of matches, open for
+    // the search only, and the rows the filtered tree draws (null = all).
+    let _searchOpen = new Set(), _searchShow = null;
+    const _searchClosed = new Set();     // search-opened nodes closed by hand
+    const isOpen = id => expandedNodes.has(id) || (_searchOpen.has(id) && !_searchClosed.has(id));
+    const setOpen = (id, open) => {
+      if (open) { expandedNodes.add(id); _searchClosed.delete(id); }
+      else { expandedNodes.delete(id); _searchClosed.add(id); }
+    };
     // Restore prior search text; renderView() picks it up
     if (_dictState.searchText) search.value = _dictState.searchText;
     // (zip0158) Sync the single view-toggle button label/state to the
@@ -2556,6 +2635,7 @@
     // multi-parent, edit the tag directly (list view → edit panel).
     function renderTree() {
       const q = search.value.trim().toLowerCase();
+      _searchOpen = new Set();
 
       // Optional search-match set. If empty query, show everything.
       const matchedIds = new Set();
@@ -2565,12 +2645,13 @@
             .map(s => String(s).toLowerCase()).join(' ');
           if (hay.includes(q)) matchedIds.add(t.id);
         });
-        // When searching, also show all ancestors of matches so you see where they live.
-        const expanded = new Set(matchedIds);
-        matchedIds.forEach(id => tagAncestors(id).forEach(a => expanded.add(a)));
-        // Temporarily expand every ancestor of a match
-        expanded.forEach(id => expandedNodes.add(id));
+        // (dev1152) A real filter, live as you type: only the matches and their
+        // ancestors (dimmed, so you see where they live) are drawn, and those
+        // ancestors open for the search only. They used to be added to
+        // expandedNodes for good, so typing "a" left almost the whole tree open.
+        matchedIds.forEach(id => tagAncestors(id).forEach(a => _searchOpen.add(a)));
       }
+      _searchShow = q ? new Set([...matchedIds, ..._searchOpen]) : null;
 
       const totalTags = tagsArr.length;
       countEl.textContent = (q ? matchedIds.size + ' match / ' : '')
@@ -2679,14 +2760,17 @@
       }
     }
 
-    function renderTreeNode(container, tag, depth, childrenByParent, matchedIds, q) {
+    function renderTreeNode(container, tag, depth, childrenByParent, matchedIds, q, inMatch) {
       const t = tag;
       const row = document.createElement('div');
       row.className = 'tree-node';
       row.dataset.tagId = t.id;
 
-      const kids = childrenByParent.get(t.id) || [];
-      const isExpanded = expandedNodes.has(t.id);
+      // (dev1152) Filtering: under a match everything shows (open it to see its
+      // children); elsewhere only matches and their ancestors.
+      const underMatch = inMatch || (q && matchedIds.has(t.id));
+      const kids = (childrenByParent.get(t.id) || []).filter(k => !_searchShow || underMatch || _searchShow.has(k.id));
+      const isExpanded = isOpen(t.id);
       const isSelected = t.id === selectedId;
       const isKbFocused = t.id === keyboardFocusedId;
       const isMatch = !q || matchedIds.has(t.id);
@@ -2758,7 +2842,7 @@
       if (chevEl) {
         chevEl.addEventListener('click', (e) => {
           e.stopPropagation();
-          if (isExpanded) expandedNodes.delete(t.id); else expandedNodes.add(t.id);
+          setOpen(t.id, !isExpanded);
           renderView();
         });
       }
@@ -2772,7 +2856,7 @@
       row.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         if (kids.length) {
-          if (isExpanded) expandedNodes.delete(t.id); else expandedNodes.add(t.id);
+          setOpen(t.id, !isExpanded);
           renderView();
         }
       });
@@ -2787,7 +2871,7 @@
       container.appendChild(row);
 
       if (isExpanded && kids.length) {
-        kids.forEach(k => renderTreeNode(container, k, depth + 1, childrenByParent, matchedIds, q));
+        kids.forEach(k => renderTreeNode(container, k, depth + 1, childrenByParent, matchedIds, q, underMatch));
       }
     }
 
@@ -3104,6 +3188,12 @@
           .de-auto-note a { color:#68a; }
           .de-auto-note button { margin-left:4px; padding:0 6px; border:1px solid #456; background:#14142a; color:#9ab;
             border-radius:3px; cursor:pointer; font:10px monospace; }
+          .de-name-btn { padding:4px 9px; border:1px solid #4af; background:rgba(0,40,100,0.35); color:#8ef; border-radius:4px;
+            cursor:pointer; font-family:monospace; font-size:11px; white-space:nowrap; }
+          .de-name-btn[hidden] { display:none; }
+          #dictEdit textarea[readonly] { color:#9ab !important; cursor:default; }
+          .de-name-flag { display:inline-block; margin-top:4px; padding:0 6px; border:1px solid #c94; border-radius:8px;
+            background:rgba(120,70,0,0.3); color:#fc8; font:10px/1.6 monospace; cursor:pointer; }
         </style>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
           <span style="font-size:17px;color:${kindColor(t)};font-weight:bold;">${escapeHtml(labelFor(t.id))}</span>
@@ -3155,23 +3245,26 @@
             <button data-facts-edit="${f}" title="Edit Facts ${i + 1} in Xe" style="padding:4px 9px;border:1px solid #4af;background:rgba(0,40,100,0.35);color:#8ef;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;white-space:nowrap;">✎ Xe</button>
           </div>`).join('')}
 
-          <label style="color:#6af;padding-top:5px;" title="How the binomial was given: who named it, when, and what the Latin or Greek means">Name origin</label>
+          <label style="color:#6af;padding-top:5px;" title="How the binomial was given: who named it, when, and what the Latin or Greek means">Name origin<span data-name-flag="origin"></span></label>
           <div style="min-width:0;">
             <div style="display:flex;gap:6px;align-items:flex-start;">
               <textarea id="de-nameorigin" rows="3" placeholder="who named it, when, and what the Latin or Greek means"
                 style="flex:1;min-width:0;padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#ccc;border-radius:4px;font-family:system-ui,sans-serif;font-size:12px;outline:none;resize:vertical;">${escapeHtml(t.NameOrigin || '')}</textarea>
-              ${t.kind === 'taxon' ? `<button id="de-origin-look" title="Look this name up: WoRMS (who named it, when), Wiktionary (what the name means), Wikipedia (sentences about the name). Nothing is written until you use a result and press ✓ Save." style="padding:4px 9px;border:1px solid #4af;background:rgba(0,40,100,0.35);color:#8ef;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;white-space:nowrap;">🔎 Look up</button>` : ''}
+              ${t.kind === 'taxon' ? `<div style="display:flex;flex-direction:column;gap:4px;">
+                <button data-name-edit="origin" title="Change the looked-up text. Once you change it and press ✓ Save it is yours: it is flagged “edited” and no look-up replaces it." class="de-name-btn">✎ Edit</button>
+                <button id="de-names-look" title="R — look Name origin and Name say up again now (WoRMS, GBIF, Wikidata, Wiktionary, Wikipedia) and save what is found. Fields flagged “edited” are left alone." class="de-name-btn">↻ Look up</button>
+              </div>` : ''}
             </div>
             <div id="de-origin-auto" class="de-auto-note"></div>
             <div id="de-origin-inherit"></div>
-            <div id="de-origin-look-out"></div>
           </div>
 
-          <label style="color:#6af;padding-top:5px;" title="Respelled pronunciation, one line per variant">Name say</label>
+          <label style="color:#6af;padding-top:5px;" title="Respelled pronunciation, one line per variant">Name say<span data-name-flag="say"></span></label>
           <div style="min-width:0;">
             <div style="display:flex;gap:6px;align-items:flex-start;">
               <textarea id="de-namesay" rows="2" placeholder="US: or-SY-nuhs OR-kuh&#10;GB: aw-SY-nuhs AW-kuh"
                 style="flex:1;min-width:0;padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#fff;border-radius:4px;font-family:monospace;font-size:12px;outline:none;resize:vertical;">${escapeHtml(t.NameSay || '')}</textarea>
+              ${t.kind === 'taxon' ? `<button data-name-edit="say" title="Change the looked-up pronunciation. Once you change it and press ✓ Save it is flagged “edited” and no look-up replaces it." class="de-name-btn">✎ Edit</button>` : ''}
               <button id="de-namesay-key" title="Respelling key" style="padding:4px 9px;border:1px solid #556;background:#14142a;color:#9ab;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;">?</button>
             </div>
             <div id="de-namesay-auto" class="de-auto-note"></div>
@@ -3247,9 +3340,9 @@
       editEl.querySelectorAll('[data-facts-prev]').forEach(el =>
         el.addEventListener('dblclick', () => openFacts(el.dataset.factsPrev)));
 
-      // NameSay is typed by hand; ? shows the respelling key. (The dev1149
-      // automatic respelling and the 🔊 speech buttons were removed in dev1150 —
-      // Phil found both poor.)
+      // ? shows the respelling key. NameSay is only ever a PUBLISHED
+      // pronunciation or Phil's own (the dev1149 rule respelling and the 🔊
+      // speech buttons were removed in dev1150 — Phil found both poor).
       editEl.querySelector('#de-namesay-key').addEventListener('click', () => {
         const k = editEl.querySelector('#de-namesay-keybox');
         k.style.display = (k.style.display === 'none') ? 'block' : 'none';
@@ -3273,117 +3366,122 @@
           + '<b style="color:#9ab;">' + escapeHtml((a.rank ? a.rank + ' ' : '') + a.label) + ':</b> '
           + nameOriginHtml(a.NameOrigin) + '</div>').join('');
       }
-      // (dev1151) Opening a taxon fills an ABSENT Name origin / Name say with a
-      // sourced draft — never one typed, or one stored as '' (Phil cleared it).
-      // Only the boxes change; ✓ Save is what writes. Starts after 0.4 s on the
-      // same tag, so arrowing down the list doesn't look up every row passed.
+      // (dev1152) Name origin / Name say fill AND SAVE themselves for a taxon:
+      // no ↓ Use / + add, no ✓ Save. The first time a tag is opened in a session
+      // it is looked up again (0.4 s after opening, so arrowing down the list
+      // doesn't look up every row passed) and a better answer replaces the old.
+      // Text Phil changes is his: ✓ Save stores it with NameOriginEdited /
+      // NameSayEdited and no look-up touches it again until he clicks the
+      // "edited ✕" flag. A looked-up box is read-only until ✎ Edit (or a
+      // double-click), so a stray key can't turn it into an edit.
       const sayBox = editEl.querySelector('#de-namesay');
-      const autoFilled = { origin: false, say: false };
-      if (t.kind === 'taxon' && (t.NameOrigin === undefined || t.NameSay === undefined)) {
-        const oNote = editEl.querySelector('#de-origin-auto'), sNote = editEl.querySelector('#de-namesay-auto');
-        const links = srcs => (srcs || []).map(s => '<a href="' + escapeAttr(s.url) + '" target="_blank" rel="noopener">'
-          + escapeHtml(s.name) + '</a>').join(' · ');
-        const live = () => selectedId === id && originBox.isConnected;
-        const run = (kind, box, note, field, apply) => {
-          let typed = false;
-          box.addEventListener('input', () => { typed = true; });
-          note.textContent = '🔎 looking up…';
-          autoNameDraft(kind, t).then(r => {
-            if (!live()) return;
-            const cur = byId.get(id);
-            if (!cur || cur[field] !== undefined || typed || box.value.trim()) { note.textContent = ''; return; }
-            apply(r);
-          }).catch(e => { if (live()) note.textContent = 'Look-up failed: ' + (e && e.message || e); });
-        };
-        setTimeout(() => {
-          if (!live()) return;
-          if (t.NameOrigin === undefined && !originBox.value.trim()) run('origin', originBox, oNote, 'NameOrigin', r => {
-            if (!r || !r.draft) {
-              oNote.textContent = r && r.incomplete ? 'A source didn’t answer — open the tag again to retry.'
-                : 'No source found for this name (WoRMS, GBIF, Wiktionary, Wikipedia).';
-              return;
-            }
-            originBox.value = r.draft;
-            autoFilled.origin = true;
-            if (originBox.scrollHeight > originBox.clientHeight) originBox.style.height = (originBox.scrollHeight + 4) + 'px';
-            oNote.innerHTML = 'Draft from ' + links(r.sources) + ' — ✓ Save keeps it.'
-              + (r.incomplete ? ' (A source didn’t answer; opening the tag again may find more.)' : '');
-          });
-          if (t.NameSay === undefined && !sayBox.value.trim()) run('say', sayBox, sNote, 'NameSay', r => {
-            if (r && r.say) {
-              sayBox.value = r.say;
-              autoFilled.say = true;
-              sayBox.rows = Math.max(2, r.say.split('\n').length);
-              sNote.innerHTML = 'From ' + links(r.sources) + ' — ✓ Save keeps it.';
-            } else if (r && r.partial) {
-              sNote.innerHTML = 'Published for part of the name only (' + links(r.sources) + '): <b>' + escapeHtml(r.partial)
-                + '</b> — nothing for <i>' + escapeHtml(r.missing.join(', ')) + '</i>.<button data-say-use>↓ Use</button>';
-              sNote.querySelector('[data-say-use]').addEventListener('click', () => {
-                sayBox.value = r.partial;
-                autoFilled.say = true;
-                sayBox.focus();
-              });
-            } else if (r && r.incomplete) {
-              sNote.textContent = 'Wikipedia or Wiktionary didn’t answer — open the tag again to retry.';
-            } else {
-              sNote.textContent = 'No published pronunciation (Wikipedia, Wiktionary) — type one with the ? key.';
-            }
-          });
-        }, 400);
-      }
-
-      // 🔎 Look up: the draft and any Wikipedia sentences land in a box below.
-      // ↓ Use / + add only fill the text box — ✓ Save is still what writes.
-      const lookBtn = editEl.querySelector('#de-origin-look');
-      if (lookBtn) lookBtn.addEventListener('click', async () => {
-        const out = editEl.querySelector('#de-origin-look-out');
-        const note = s => '<div style="margin-top:6px;color:#89a;font:11px/1.5 system-ui,sans-serif;">' + s + '</div>';
-        const addToBox = txt => {
-          const curV = originBox.value.replace(/\s+$/, '');
-          originBox.value = curV ? curV + '\n' + txt : txt;
-          originBox.focus();
-        };
-        lookBtn.disabled = true;
-        out.innerHTML = note('🔎 Looking up…');
-        try {
-          if (window.taxonInfo && window.taxonInfo.load && !window.taxonInfo.loaded()) {
-            await window.taxonInfo.load().catch(() => {});
-          }
-          const ti = window.taxonInfo && window.taxonInfo.get ? window.taxonInfo.get(id) : null;
-          const words = String(t.label || '').split(/\s+/);
-          const [res, wiki] = await Promise.all([
-            lookupNameOrigins([t], s => { if (out.isConnected) out.innerHTML = note('🔎 ' + escapeHtml(s)); }, { deep: true }),
-            wikiNamingSentences((ti && ti.wikiTitle) || t.label, words.length > 1 ? words.slice(-1) : words),
-          ]);
-          if (!out.isConnected) return;
-          const r = res.get(id) || { draft: '' };
-          const box = 'margin-top:6px;padding:6px 9px;background:#0d0d1e;border:1px solid #345;border-radius:5px;'
-            + 'color:#cde;font:12px/1.5 system-ui,sans-serif;';
-          const btn = 'margin-left:6px;padding:1px 8px;border:1px solid #4af;background:rgba(0,40,100,0.35);color:#8ef;'
-            + 'border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;';
-          let html = r.draft
-            ? '<div style="' + box + '"><div style="white-space:pre-wrap;">' + escapeHtml(r.draft) + '</div>'
-              + '<div style="margin-top:4px;color:#789;font-size:10px;">WoRMS/GBIF + Wiktionary'
-              + '<button data-origin-use style="' + btn + '">↓ Use</button></div></div>'
-            : note('No authority or meaning found for this name in WoRMS, GBIF or Wiktionary.');
-          html += wiki.map((w, i) => '<div style="' + box + 'color:#aab;">' + escapeHtml(w.text)
-            + '<div style="margin-top:3px;font-size:10px;"><a href="' + escapeAttr(w.src) + '" target="_blank" rel="noopener" style="color:#68a;">Wikipedia</a>'
-            + '<button data-origin-add="' + i + '" style="' + btn + '">+ add</button></div></div>').join('');
-          html += note('Nothing is saved until ✓ Save. + add puts a credit link, [Wikipedia](…), after the sentence.');
-          out.innerHTML = html;
-          const use = out.querySelector('[data-origin-use]');
-          if (use) use.addEventListener('click', () => addToBox(r.draft));
-          // Wikipedia is CC BY-SA: a sentence taken as is carries its credit link.
-          out.querySelectorAll('[data-origin-add]').forEach(b =>
-            b.addEventListener('click', () => {
-              const w = wiki[+b.dataset.originAdd];
-              addToBox(w.text + ' ([Wikipedia](' + w.src + '))');
-            }));
-        } catch (e) {
-          if (out.isConnected) out.innerHTML = note('Look-up failed: ' + escapeHtml(String(e && e.message || e)));
-        } finally {
-          lookBtn.disabled = false;
+      const isTaxon = t.kind === 'taxon';
+      const NF = {
+        origin: { kind: 'origin', field: 'NameOrigin', box: originBox, note: editEl.querySelector('#de-origin-auto') },
+        say:    { kind: 'say',    field: 'NameSay',    box: sayBox,    note: editEl.querySelector('#de-namesay-auto') },
+      };
+      const live = () => selectedId === id && originBox.isConnected;
+      const srcLinks = srcs => (srcs || []).map(s => '<a href="' + escapeAttr(s.url) + '" target="_blank" rel="noopener">'
+        + escapeHtml(s.name) + '</a>').join(' · ');
+      const normName = (st, s) => st.kind === 'say'
+        ? String(s || '').split('\n').map(x => x.trim()).filter(Boolean).join('\n') : String(s || '').trim();
+      const MINE = 'Your text — look-ups leave it alone.';
+      const valueOf = (st, r) => (st.kind === 'origin' ? r && r.draft : r && (r.say || r.partial)) || '';
+      const noteFor = (st, r) => {
+        const v = valueOf(st, r);
+        const retry = r && r.incomplete ? ' (A source didn’t answer — R looks again.)' : '';
+        if (st.kind === 'origin') {
+          return v ? 'Looked up: ' + srcLinks(r.sources) + ' — saved.' + retry
+            : retry ? 'A source didn’t answer — R looks again.'
+            : 'No source found for this name (WoRMS, GBIF, Wiktionary, Wikipedia) — ✎ type one.';
         }
+        if (r && r.say) return 'From ' + srcLinks(r.sources) + ' — saved.';
+        if (v) return 'Published for part of the name only (' + srcLinks(r.sources) + ') — <i>'
+          + escapeHtml(r.missing.join(', ')) + '</i> is left as spelled. Saved.';
+        return retry ? 'Wikipedia or Wiktionary didn’t answer — R looks again.'
+          : 'No published pronunciation (Wikipedia, Wiktionary) — ✎ type one with the ? key.';
+      };
+      const show = (st, v) => {
+        st.box.value = v;
+        if (st.kind === 'say') st.box.rows = Math.max(2, v.split('\n').length);
+        if (st.box.scrollHeight > st.box.clientHeight) st.box.style.height = (st.box.scrollHeight + 4) + 'px';
+      };
+      // A look-up → the tag, saved at once. Never over Phil's own text, and
+      // never a blank over something already there (a source may be down).
+      const applyLook = (st, r) => {
+        const cur = byId.get(id);
+        const v = valueOf(st, r);
+        if (cur && !cur[st.flagKey] && !st.typed && v && cur[st.field] !== v) updateTag(id, { [st.field]: v });
+        if (!live()) return;
+        if (st.edited() || st.typed) { st.note.textContent = st.edited() ? MINE : ''; return; }
+        if (v) show(st, v);
+        st.note.innerHTML = noteFor(st, r);
+        st.paint();
+      };
+      const look = (fresh) => Object.values(NF).forEach(st => {
+        if (st.edited()) { st.note.textContent = MINE; return; }
+        st.note.textContent = '🔎 looking up…';
+        autoNameDraft(st.kind, t, fresh).then(r => applyLook(st, r))
+          .catch(e => { if (live()) st.note.textContent = 'Look-up failed: ' + (e && e.message || e); });
+      });
+      // "edited ✕": drop Phil's text and go back to the look-up.
+      const revert = async (st) => {
+        st.note.textContent = '🔎 looking up…';
+        const r = await autoNameDraft(st.kind, t).catch(() => ({ incomplete: true }));
+        const v = valueOf(st, r);
+        if (!v && r.incomplete) { if (live()) st.note.textContent = 'A source didn’t answer — click ✕ again.'; return; }
+        const cur = byId.get(id);
+        if (!cur) return;
+        delete cur[st.flagKey];
+        updateTag(id, { [st.field]: v });
+        if (!live()) return;
+        st.typed = false;
+        st.unlocked = false;
+        show(st, v);
+        st.note.innerHTML = noteFor(st, r);
+        st.paint();
+      };
+      Object.values(NF).forEach(st => {
+        st.flagKey = st.field + 'Edited';
+        st.typed = false;
+        st.unlocked = false;
+        st.flag = editEl.querySelector('[data-name-flag="' + st.kind + '"]');
+        st.editBtn = editEl.querySelector('[data-name-edit="' + st.kind + '"]');
+        st.edited = () => { const c = byId.get(id); return !!(c && c[st.flagKey]); };
+        st.paint = () => {
+          if (!isTaxon) return;
+          const mine = st.edited() || st.typed;
+          st.box.readOnly = !mine && !st.unlocked && !!st.box.value.trim();
+          if (st.editBtn) st.editBtn.hidden = !st.box.readOnly;
+          st.flag.innerHTML = mine ? '<br><span class="de-name-flag" title="'
+            + (st.edited() ? 'You changed this, so no look-up replaces it. Click to drop your text and use the looked-up one.'
+                           : 'Changed, not saved yet — ✓ Save makes it yours. Click to put the looked-up text back.')
+            + '">edited' + (st.edited() ? '' : ' •') + ' ✕</span>' : '';
+          const f = st.flag.querySelector('.de-name-flag');
+          if (f) f.addEventListener('click', () => revert(st));
+        };
+        st.unlock = () => {
+          st.unlocked = true;
+          st.paint();
+          st.box.focus();
+          st.box.setSelectionRange(st.box.value.length, st.box.value.length);
+        };
+        if (st.editBtn) st.editBtn.addEventListener('click', st.unlock);
+        st.box.addEventListener('dblclick', () => { if (st.box.readOnly) st.unlock(); });
+        st.box.addEventListener('input', () => { if (!st.typed) { st.typed = true; st.paint(); } });
+      });
+      if (isTaxon) {
+        Object.values(NF).forEach(st => { st.paint(); if (st.edited()) st.note.textContent = MINE; });
+        if (!NF.origin.edited() || !NF.say.edited()) setTimeout(() => { if (live()) look(false); }, 400);
+      }
+      // ↻ Look up (R): ask the services again now.
+      const lookBtn = editEl.querySelector('#de-names-look');
+      if (lookBtn) lookBtn.addEventListener('click', () => {
+        if (NF.origin.edited() && NF.say.edited()) {
+          if (typeof toast === 'function') toast('Both are your own text — click an “edited ✕” flag to look one up again.', 2500);
+          return;
+        }
+        look(true);
       });
 
       editEl.querySelector('#de-save').addEventListener('click', () => {
@@ -3397,13 +3495,17 @@
           common:   editEl.querySelector('#de-common').value.trim(),
           extinct:  editEl.querySelector('#de-extinct').checked
         };
-        // facts1-3 are NOT in this patch — Xe saves them itself. The two name
-        // fields: absent stays absent, text that was emptied is stored '' (a clear).
-        // An auto-filled draft Phil emptied is a clear too, so it isn't offered again.
-        const nameOrigin = editEl.querySelector('#de-nameorigin').value.trim();
-        const nameSay = editEl.querySelector('#de-namesay').value.split('\n').map(s => s.trim()).filter(Boolean).join('\n');
-        if (nameOrigin || t.NameOrigin != null || autoFilled.origin) patch.NameOrigin = nameOrigin;
-        if (nameSay || t.NameSay != null || autoFilled.say) patch.NameSay = nameSay;
+        // facts1-3 are NOT in this patch — Xe saves them itself. (dev1152) A name
+        // field goes in only when its box differs from what is stored, and on a
+        // taxon that makes it Phil's (…Edited) — emptied too, so a rejected
+        // look-up doesn't come back. Looked-up text is already saved.
+        const stored = byId.get(id) || t;
+        Object.values(NF).forEach(st => {
+          const v = normName(st, st.box.value);
+          if (v === normName(st, stored[st.field])) return;
+          patch[st.field] = v;
+          if (isTaxon) patch[st.flagKey] = true;
+        });
         const r = updateTag(id, patch);
         if (r.ok) {
           if (typeof toast === 'function') toast('✓ Saved: ' + patch.label, 1000);
@@ -3474,8 +3576,29 @@
     search.addEventListener('input', () => {
       // New search invalidates keyboard focus
       keyboardFocusedId = null;
+      _searchClosed.clear();
+      if (!search.value.trim()) revealSelected();
       renderView();
     });
+    // (dev1152) After the filter is cleared, keep the open tag in sight: its
+    // ancestors open (the search opened them only for itself).
+    function revealSelected() {
+      if (selectedId && byId.get(selectedId)) tagAncestors(selectedId).forEach(a => expandedNodes.add(a));
+    }
+    function scrollSelectedIntoView() {
+      const el = selectedId && listEl.querySelector('[data-tag-id="' + selectedId + '"]');
+      if (el) el.scrollIntoView({ block: 'center' });
+    }
+    // F: the search text is D's only filter.
+    function clearFilters() {
+      const had = !!search.value.trim();
+      search.value = '';
+      _searchClosed.clear();
+      revealSelected();
+      renderView();
+      scrollSelectedIntoView();
+      if (typeof toast === 'function') toast(had ? 'Filter cleared' : 'No filter to clear', 900);
+    }
     // (dev0847) Taxon info panel — the Tier 1 note/wiki/IUCN store. Lives in
     // taxoninfo.js and its own taxoninfo.json, deliberately NOT in tags.json:
     // saveTags() rewrites this whole array on every edit, so prose does not
@@ -3603,6 +3726,7 @@
     function isTextField(el) {
       if (!el) return false;
       const tag = el.tagName;
+      if (el.readOnly) return false;     // (dev1152) a looked-up name box until ✎ Edit
       if (tag === 'TEXTAREA') return true;
       if (tag === 'INPUT') {
         const type = (el.type || 'text').toLowerCase();
@@ -3705,17 +3829,19 @@
           childrenByParent.get(p).push(x);
         }));
         const kids = childrenByParent.get(keyboardFocusedId) || [];
-        if (kids.length && !expandedNodes.has(keyboardFocusedId)) {
+        if (kids.length && !isOpen(keyboardFocusedId)) {
           e.preventDefault(); e.stopPropagation();
-          expandedNodes.add(keyboardFocusedId);
+          setOpen(keyboardFocusedId, true);
           renderView();
           return true;
         }
-        if (kids.length && expandedNodes.has(keyboardFocusedId)) {
-          // Already expanded → move focus into first child
+        if (kids.length && isOpen(keyboardFocusedId)) {
+          // Already expanded → move focus into first child (that the filter shows)
+          const shown = new Set(getVisibleRowIds());
+          const vis = kids.filter(k => shown.has(k.id)).sort((a, b) => a.label.localeCompare(b.label));
+          if (!vis.length) return false;
           e.preventDefault(); e.stopPropagation();
-          kids.sort((a, b) => a.label.localeCompare(b.label));
-          setKbFocus(kids[0].id, true);
+          setKbFocus(vis[0].id, true);
           return true;
         }
         return false;
@@ -3723,10 +3849,10 @@
       if (e.key === 'ArrowLeft' && keyboardFocusedId && viewMode === 'tree') {
         const t = byId.get(keyboardFocusedId);
         if (!t) return false;
-        if (expandedNodes.has(keyboardFocusedId)) {
+        if (isOpen(keyboardFocusedId)) {
           // Currently expanded → collapse it
           e.preventDefault(); e.stopPropagation();
-          expandedNodes.delete(keyboardFocusedId);
+          setOpen(keyboardFocusedId, false);
           renderView();
           return true;
         }
@@ -3817,6 +3943,22 @@
       // listeners are document-capture and D's registered first, so without
       // this T/G and the arrow keys would act on D while typing in Xe.
       if (document.getElementById('textEditorOverlay') || document.getElementById('teSlideOverlay')) return;
+
+      // (dev1152) Whenever the key isn't going into a text box:
+      //   f = to the search (filter) box   F = clear the filter
+      //   R = look the open taxon's Name origin + Name say up again
+      if (!e.ctrlKey && !e.altKey && !e.metaKey && !isTextField(ae) && !document.getElementById('treeCtxMenu')
+          && (e.key === 'f' || e.key === 'F' || e.key === 'r' || e.key === 'R')) {
+        e.preventDefault(); e.stopPropagation();
+        if (e.key === 'f') { search.focus(); search.select(); }
+        else if (e.key === 'F') clearFilters();
+        else {
+          const b = editEl.querySelector('#de-names-look');
+          if (b) b.click();
+          else if (typeof toast === 'function') toast('R looks up the names of the open taxon', 1500);
+        }
+        return;
+      }
 
       // Right panel: confine Tab cycling, allow T/G escape only when NOT in text field
       if (inRightPanel(ae)) {
