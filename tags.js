@@ -211,39 +211,63 @@
     const worker = async () => { while (next < items.length) { const i = next++; await fn(items[i], i); } };
     await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
   }
+  // (dev1151) _netFails counts requests that never got an answer, so a look-up
+  // can tell "no source" from "the service didn't reply" (and try again later).
+  let _netFails = 0;
   async function _getJson(url) {
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const r = await fetch(url);
-      if (r.status === 204) return null;
-      if (r.status === 429 || r.status === 503) { await _sleep(2500 * (attempt + 1)); continue; }
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const txt = await r.text();
-      return txt ? JSON.parse(txt) : null;
+    try {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const r = await fetch(url);
+        if (r.status === 204) return null;
+        if (r.status === 429 || r.status === 503) { await _sleep(2500 * (attempt + 1)); continue; }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const txt = await r.text();
+        return txt ? JSON.parse(txt) : null;
+      }
+      throw new Error('rate-limited (HTTP 429)');
+    } catch (e) {
+      _netFails++;
+      throw e;
     }
-    throw new Error('rate-limited (HTTP 429)');
   }
 
   // Wiktionary wikitext for many words, 50 per request. Map word → wikitext.
+  // (dev1151) Pages are remembered for the session ('' = no page), so Name
+  // origin and Name say, and the next tag opened, ask for each word once.
+  const _wtCache = new Map();
   async function _wtFetchMany(words) {
     const out = new Map();
-    const uniq = [...new Set(words.filter(Boolean))];
+    const uniq = [...new Set(words.filter(Boolean))].filter(w => {
+      if (!_wtCache.has(w)) return true;
+      if (_wtCache.get(w)) out.set(w, _wtCache.get(w));
+      return false;
+    });
     for (let i = 0; i < uniq.length; i += 50) {
       const batch = uniq.slice(i, i + 50);
       const j = await _getJson('https://en.wiktionary.org/w/api.php?action=query&prop=revisions&rvprop=content'
         + '&rvslots=main&format=json&formatversion=2&redirects=1&origin=*&titles='
         + encodeURIComponent(batch.join('|'))).catch(() => null);
       if (j && j.query) {
-        const back = {};
-        (j.query.normalized || []).concat(j.query.redirects || []).forEach(x => { back[x.to] = back[x.from] || x.from; });
+        const got = new Map();
         (j.query.pages || []).forEach(p => {
           const rev = p.revisions && p.revisions[0];
           const txt = rev && rev.slots && rev.slots.main ? rev.slots.main.content : '';
-          if (txt) out.set(back[p.title] || p.title, txt);
+          if (txt) got.set(p.title, txt);
         });
+        const to = _titleResolver(j.query);
+        batch.forEach(w => { const txt = got.get(to(w)) || ''; _wtCache.set(w, txt); if (txt) out.set(w, txt); });
       }
       if (i + 50 < uniq.length) await _sleep(1500);   // 600 ms drew 429s
     }
     return out;
+  }
+  // A MediaWiki query answers under the final title: asked → normalized →
+  // redirect target. Several asked titles may land on one page.
+  function _titleResolver(q) {
+    const norm = {}, redir = {};
+    (q.normalized || []).forEach(x => { norm[x.from] = x.to; });
+    (q.redirects || []).forEach(x => { redir[x.from] = x.to; });
+    return t => { t = norm[t] || t; return redir[t] || t; };
   }
 
   // Up to the first . or ; that is outside “quotes” and (brackets), so a gloss
@@ -344,7 +368,7 @@
         if (!hits.length) return;
         const fit = h => [h.kingdom, h.phylum, h.class, h.order, h.family].some(v => v && x.lineage.has(String(v).toLowerCase()));
         const h = hits.find(fit) || (hits.length === 1 ? hits[0] : hits.find(h => h.status === 'accepted') || hits[0]);
-        out.set(x.name, { auth: h.authority, url: h.url || '' });
+        out.set(x.name, { auth: h.authority, url: h.url || '', aphia: h.status === 'accepted' ? h.AphiaID : 0 });
       });
       done++;
       if (onStep && batches.length > 1) onStep('WoRMS: who named them… ' + done + '/' + batches.length);
@@ -359,14 +383,162 @@
   }
 
   // "(Garman, 1888)" → "Described by Garman in 1888, first placed in a different genus."
-  function authoritySentence(auth) {
+  // (dev1151) x.names = the authors' full names (Wikidata), x.orig = the name it
+  // was first described under: "Described by Carl Linnaeus in 1758 as Tetraodon mola."
+  function _splitAuthority(auth) {
     const a = String(auth || '').trim();
-    if (!a) return '';
     const moved = /^\(.*\)$/.test(a);
     const inner = a.replace(/^\(|\)$/g, '').trim();
     const m = /^(.*?),?\s*(\d{4})\s*$/.exec(inner);
-    const who = m ? m[1].trim() : inner, year = m ? m[2] : '';
-    return 'Described by ' + who + (year ? ' in ' + year : '') + (moved ? ', first placed in a different genus.' : '.');
+    return { moved, inner, who: m ? m[1].trim() : inner, year: m ? m[2] : '' };
+  }
+  function authoritySentence(auth, x) {
+    if (!String(auth || '').trim()) return '';
+    const p = _splitAuthority(auth);
+    x = x || {};
+    const names = (x.names || []).length
+      ? x.names.slice(0, -1).join(', ') + (x.names.length > 1 ? ' and ' : '') + x.names[x.names.length - 1] : p.who;
+    return 'Described by ' + names + (p.year ? ' in ' + p.year : '')
+      + (p.moved ? (x.orig ? ' as ' + x.orig + '.' : ', first placed in a different genus.') : '.');
+  }
+
+  // Wikidata, many names per query: each taxon item's authors (full names)
+  // and its original combination / basionym. Map name → [{ q, authors[], orig }].
+  async function _wdTaxa(names) {
+    const out = new Map();
+    for (let i = 0; i < names.length; i += 80) {
+      const batch = names.slice(i, i + 80).filter(n => /^[A-Za-z][A-Za-z -]*$/.test(n));
+      if (!batch.length) continue;
+      const q = 'SELECT ?name ?item ?authorLabel ?origName WHERE { VALUES ?name { '
+        + batch.map(n => '"' + n + '"').join(' ') + ' } ?item p:P225 ?st . ?st ps:P225 ?name . '
+        + 'OPTIONAL { ?st pq:P405 ?author . } OPTIONAL { ?item wdt:P566|wdt:P1403 ?o . ?o wdt:P225 ?origName . } '
+        + 'SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul". } }';
+      const j = await _getJson('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q)).catch(() => null);
+      const items = new Map();
+      ((j && j.results && j.results.bindings) || []).forEach(b => {
+        const q = b.item.value.replace(/^.*\//, '');
+        if (!items.has(q)) items.set(q, { q, name: b.name.value, authors: [], orig: '' });
+        const it = items.get(q);
+        const al = b.authorLabel && b.authorLabel.value;
+        if (al && !/^Q\d+$/.test(al) && !it.authors.includes(al)) it.authors.push(al);
+        if (b.origName && !it.orig) it.orig = b.origName.value;
+      });
+      items.forEach(it => { if (!out.has(it.name)) out.set(it.name, []); out.get(it.name).push(it); });
+    }
+    return out;
+  }
+  // The Wikidata item whose authors are the WoRMS/GBIF authority's surnames,
+  // in that order. Anything that does not line up is ignored, so a homonym
+  // (a plant of the same name) can't lend its authors.
+  function _wdMatch(items, auth, genus, epithet) {
+    const p = _splitAuthority(auth);
+    const sur = p.who.split(/\s*(?:,|&|\band\b|\bet\b)\s*/).filter(Boolean)
+      .map(s => salFold(s.split(/\s+/).pop()));
+    for (const it of items || []) {
+      if (!sur.length || it.authors.length !== sur.length) continue;
+      const names = sur.map(s => it.authors.find(a => salFold(a.split(/\s+/).pop()) === s));
+      if (names.some(n => !n || n.length > 60)) continue;
+      return { q: it.q, names, orig: _origOk(it.orig, genus, epithet) ? it.orig : '' };
+    }
+    return null;
+  }
+  // An original combination is another genus with the same epithet (its
+  // ending may change with the genus: Sepia pfefferi, Medusa velella).
+  function _origOk(orig, genus, epithet) {
+    const w = String(orig || '').trim().split(/\s+/);
+    if (w.length < 2 || !epithet) return false;
+    return w[0] !== genus && salFold(w[w.length - 1]).slice(0, 4) === salFold(epithet).slice(0, 4);
+  }
+  // WoRMS synonyms of a moved species: the one under the authority without
+  // brackets is the name it was first described under (Tetraodon mola).
+  async function _wormsOriginal(a, genus, epithet) {
+    const inner = _splitAuthority(a.auth).inner;
+    const all = [];
+    for (let off = 1; off < 200; off += 50) {
+      const page = await _getJson('https://www.marinespecies.org/rest/AphiaSynonymsByAphiaID/' + a.aphia + '?offset=' + off);
+      if (!Array.isArray(page)) break;
+      all.push(...page);
+      if (page.length < 50) break;
+    }
+    const c = all.filter(x => x && String(x.authority || '').trim() === inner && _origOk(x.scientificname, genus, epithet));
+    const best = c.find(x => /basionym|original/i.test((x.unacceptreason || '') + ' ' + (x.status || ''))) || c[0];
+    return best ? best.scientificname : '';
+  }
+
+  // What the bare word means, from its first two definitions (for the base of
+  // a diminutive: velum “cloth; sail of a ship”, not the PIE root in its etymology).
+  function _wtFirstDef(wikitext, langs) {
+    for (const s of _wtSections(wikitext, langs)) {
+      const d = s.defs.filter(x => x.charAt(0) !== '\u0001' && !/^(Used |A taxonomic)/i.test(x))
+        .map(x => x.replace(/^\([^)]*\)\s*/, '').replace(/\.$/, '').replace(/^(an?|the) /i, '').split(/[;,]/)[0].trim())
+        .filter(Boolean);
+      if (d.length) return d.slice(0, 2).join('; ');
+    }
+    return '';
+  }
+  // Velella → vel + -ella → velum (“sail”): a Latin diminutive of a word
+  // Wiktionary has. Bases tried: -um, -us, -a.
+  const WT_DIM = ['ellus', 'ella', 'ellum', 'illus', 'illa', 'illum', 'ulus', 'ula', 'ulum'];
+  function _wtDimBases(word) {
+    const lw = String(word || '').toLowerCase();
+    const suf = WT_DIM.find(s => lw.endsWith(s) && lw.length - s.length >= 3);
+    if (!suf) return [];
+    const stem = lw.slice(0, -suf.length);
+    return [stem + 'um', stem + 'us', stem + 'a'];
+  }
+  function _wtDiminutive(word, pages) {
+    for (const b of _wtDimBases(word)) {
+      const g = _wtFirstDef(pages.get(b), ['Latin']);
+      if (g) return 'a diminutive of Latin ' + b + ' (“' + g + '”)';
+    }
+    return '';
+  }
+  // An epithet with no Wiktionary page at all, ending in the Latin genitive of
+  // a surname: pfefferi → “of Pfeffer”. (-ae/-orum skipped: novaeangliae.)
+  function _eponym(ep) {
+    const m = /^([a-z]{3,}?[^aeiouy])(ii|i)$/.exec(String(ep || ''));
+    if (!m) return '';
+    const who = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+    return '“of ' + who + '”, after a person named ' + who;
+  }
+
+  // Wikipedia: the article a tag is filed under (taxoninfo), else its label,
+  // which Wikipedia redirects (Rhinomuraena quaesita → Ribbon eel).
+  function _wikiTitleFor(t) {
+    const ti = t && window.taxonInfo && typeof window.taxonInfo.get === 'function' ? window.taxonInfo.get(t.id) : null;
+    return (ti && ti.wikiTitle) || (t && t.label) || '';
+  }
+  // A species' genus tag, when it is filed under one.
+  function _genusTagOf(t) {
+    const g = String(t.label || '').trim().split(/\s+/)[0];
+    const pid = (t.parents || []).find(p => { const pt = byId.get(p); return pt && pt.label === g; });
+    return pid ? byId.get(pid) : null;
+  }
+  const _wpUrl = title => 'https://en.wikipedia.org/wiki/' + encodeURIComponent(String(title).replace(/ /g, '_'));
+  const _wtUrl = (word, lang) => 'https://en.wiktionary.org/wiki/' + encodeURIComponent(word) + (lang ? '#' + lang : '');
+  // The part of a Wikipedia sentence that explains `word`: from the clause
+  // that names it and says what it means, so "It was originally classified …
+  // as Tetraodon mola, its epithet mola is Latin for …" starts at "Its epithet".
+  // A clause before it that doesn't name the word stays ("In Latin, the name
+  // Mola means …"). "Aptly named" is not an explanation, so plain "named" isn't enough.
+  // "Refers to" counts only next to "name"/"epithet" — fossils that literature
+  // "refers to" under a synonym explain nothing.
+  const _MEAN_RE = /\b(?:Latin|Greek)\b|\bmeans?\b|\bmeaning\b|\bnamed (?:after|for|in honou?r)|\bhonou?r(?:s|ing|ed)?\b|\bderive[sd]? from\b|\betymolog\w*|\beponym\w*|\b(?:name|epithet)\b.*\b(?:refer(?:s|ring)? to|allud(?:es|ing) to)\b/i;
+  function _wikiClause(text, word) {
+    if (!word) return '';
+    const wre = new RegExp('(^|[^A-Za-z])' + word.replace(/-/g, '\\-') + '($|[^A-Za-z])', 'i');
+    if (!wre.test(text)) return '';
+    const starts = [0];
+    String(text).replace(/[,;]\s+/g, (m, off) => { starts.push(off + m.length); return m; });
+    for (let k = 0; k < starts.length; k++) {
+      const seg = text.slice(starts[k], k + 1 < starts.length ? starts[k + 1] : text.length);
+      if (wre.test(seg) && _MEAN_RE.test(seg)) {
+        if (!wre.test(text.slice(0, starts[k]))) return text;
+        const t = text.slice(starts[k]).replace(/^(?:and|but|while|whereas|whilst)\s+/i, '');
+        return t.charAt(0).toUpperCase() + t.slice(1);
+      }
+    }
+    return '';
   }
 
   function _lineageLabels(t) {
@@ -375,9 +547,13 @@
     return s;
   }
 
-  // Drafts for many taxon tags. Returns Map id → { draft, auth, ety, meaning, epithet, word }.
-  async function lookupNameOrigins(tags, onStep) {
+  // Drafts for many taxon tags. Returns Map id → { draft, sources, auth, ety, meaning, epithet, word }.
+  // (dev1151) opts.deep — for the one tag D has open — also asks WoRMS for the
+  // original combination and Wikipedia for sentences that explain the words.
+  // Both are a request per tag, so 🔎 Fill names over every taxon skips them.
+  async function lookupNameOrigins(tags, onStep, opts) {
     const step = onStep || (() => {});
+    const deep = !!(opts && opts.deep);
     const jobs = tags.map(t => {
       const words = String(t.label || '').trim().split(/\s+/).filter(w => /^[A-Za-z-]+$/.test(w));
       const single = words.length === 1;
@@ -399,33 +575,62 @@
     // Genus / one-word names: their own etymology, else (genera only) built from
     // their parts — prefixes first, then the rest only where a prefix exists,
     // so a bulk fill stays a handful of requests.
-    const etys = new Map();
+    const etys = new Map(), etySrc = new Map();
     const genera = new Set(jobs.map(j => j.genus || (j.t.rank === 'genus' ? j.word : '')).filter(Boolean));
     const needParts = [];
     new Set(jobs.map(j => j.word || j.genus).filter(Boolean)).forEach(w => {
       const e = _wtNameEtymology(pages.get(w));
-      if (e) etys.set(w, e); else if (genera.has(w)) needParts.push(w);
+      if (e) { etys.set(w, e); etySrc.set(w, w); } else if (genera.has(w)) needParts.push(w);
     });
     if (needParts.length) {
       step('Wiktionary: parts of ' + needParts.length + ' genus names…');
-      const pp = await _wtFetchMany(needParts.flatMap(w => _wtSplits(w).map(sp => sp.pre)));
+      const pp = await _wtFetchMany(needParts.flatMap(w => _wtSplits(w).map(sp => sp.pre).concat(_wtDimBases(w))));
       const rest = needParts.flatMap(w => _wtSplits(w).filter(sp => _wtPartGloss(pp.get(sp.pre))).flatMap(sp => sp.forms.map(f => f.t)));
       if (rest.length) (await _wtFetchMany(rest)).forEach((v, k) => pp.set(k, v));
-      needParts.forEach(w => { const c = _wtCompound(w, pp); if (c) etys.set(w, c); });
+      needParts.forEach(w => {
+        const c = _wtCompound(w, pp) || _wtDiminutive(w, pp);
+        if (c) { etys.set(w, c); etySrc.set(w, (/^(\S+) \(/.exec(c) || /Latin (\S+) \(/.exec(c) || [])[1] || ''); }
+      });
     }
     const meanings = new Map(), lemmas = new Map();
     jobs.forEach(j => {
       if (!j.epithet) return;
       const m = _wtEpithetMeaning(pages.get(j.epithet));
       if (m && m.lemma && m.lemma !== j.epithet) lemmas.set(j.epithet, m.lemma);
-      else if (m && m.text) meanings.set(j.epithet, m.text);
+      else if (m && m.text && m.text.toLowerCase().replace(/[^a-z]/g, '') !== j.epithet.replace(/[^a-z]/g, '')) meanings.set(j.epithet, m.text);
+      else if (!pages.has(j.epithet) && _eponym(j.epithet)) meanings.set(j.epithet, _eponym(j.epithet));
     });
     if (lemmas.size) {
       const lp = await _wtFetchMany([...lemmas.values()]);
       lemmas.forEach((lemma, ep) => {
         const m = _wtEpithetMeaning(lp.get(lemma));
-        if (m && m.text) meanings.set(ep, m.text.replace(/^Latin, /, 'Latin, form of ' + lemma + ', '));
+        if (m && m.text) meanings.set(ep, m.text.replace(/^Latin, (.*)$/, 'Latin $1 (a form of ' + lemma + ')'));
       });
+    }
+    // Who: full names and the original genus from Wikidata (batched), then for
+    // the open tag WoRMS's own synonym list, which knows more original names.
+    step('Wikidata: the authors’ full names…');
+    const wd = await _wdTaxa(jobs.filter(j => auths.has(j.name)).map(j => j.name)).catch(() => new Map());
+    const who = new Map();
+    jobs.forEach(j => {
+      const a = auths.get(j.name);
+      const m = a ? _wdMatch(wd.get(j.name), a.auth, j.genus, j.epithet) : null;
+      if (m) who.set(j.name, m);
+    });
+    const wiki = new Map();
+    if (deep) {
+      step('WoRMS + Wikipedia: original name, and what the words mean…');
+      await Promise.all(jobs.map(async j => {
+        const a = auths.get(j.name);
+        if (a && a.aphia && j.epithet && _splitAuthority(a.auth).moved) {
+          const o = await _wormsOriginal(a, j.genus, j.epithet).catch(() => '');
+          if (o) who.set(j.name, Object.assign({}, who.get(j.name) || {}, { orig: o }));
+        }
+        const g = j.genus ? _genusTagOf(j.t) : null;
+        const titles = [...new Set([_wikiTitleFor(j.t), j.genus ? (g ? _wikiTitleFor(g) : j.genus) : ''].filter(Boolean))];
+        const keys = [j.word || j.genus, j.epithet].filter(Boolean);
+        wiki.set(j.t.id, (await Promise.all(titles.map(ti => wikiNamingSentences(ti, keys).catch(() => [])))).flat());
+      }));
     }
     const out = new Map();
     jobs.forEach(j => {
@@ -433,12 +638,47 @@
       const nameWord = j.word || j.genus;
       const ety = etys.get(nameWord) || '';
       const meaning = j.epithet ? (meanings.get(j.epithet) || '') : '';
+      const w = who.get(j.name) || {};
+      const sources = [];
       const lines = [];
-      if (a) lines.push(authoritySentence(a.auth));
-      if (ety) lines.push(nameWord + ': ' + ety + '.');
-      if (meaning) lines.push(j.epithet + ': ' + meaning + '.');
-      out.set(j.t.id, { draft: lines.map(l => l.replace(/\.{2,}$/, '.')).join('\n'),
-                        auth: a || null, ety, meaning, word: j.word, epithet: j.epithet });
+      if (a) {
+        lines.push(authoritySentence(a.auth, w));
+        if (a.url) sources.push({ name: /gbif/.test(a.url) ? 'GBIF' : 'WoRMS', url: a.url });
+        if (w.q && (w.names || w.orig)) sources.push({ name: 'Wikidata', url: 'https://www.wikidata.org/wiki/' + w.q });
+      }
+      // A Wikipedia sentence that explains a word takes that word's line — it
+      // says why (“which the fish resembles…”), Wiktionary only what. Taken
+      // as written, so it carries its credit link (CC BY-SA).
+      const ws = wiki.get(j.t.id) || [];
+      const wikiFor = word => { for (const s of ws) { const c = _wikiClause(s.text, word); if (c) return { c, src: s.src }; } return null; };
+      const wG = wikiFor(nameWord), wE = j.epithet ? wikiFor(j.epithet) : null;
+      const wikiLine = x => x.c + ' ([Wikipedia](' + x.src + '))';
+      if (wG || wE) sources.push({ name: 'Wikipedia', url: (wG || wE).src });
+      const wt = [];                                   // Wiktionary pages the draft used
+      const tauto = !!(j.genus && j.epithet && j.genus.toLowerCase() === j.epithet);
+      if (tauto) {
+        const x = wG || wE;
+        if (!x && ety) wt.push(etySrc.get(nameWord));
+        lines.push(j.genus + ' ' + j.epithet + ': the genus and the epithet are the same word'
+          + (!x && ety ? ', ' + ety.charAt(0).toLowerCase() + ety.slice(1) : '') + '.');
+        if (x) lines.push(wikiLine(x));
+      } else {
+        // One sentence often explains both words, or one clause is the tail of
+        // the other: keep the longer, once.
+        let g2 = wG, e2 = wE;
+        if (g2 && e2 && (g2.c.includes(e2.c) || e2.c.includes(g2.c))) { g2 = g2.c.length >= e2.c.length ? g2 : e2; e2 = null; }
+        if (g2) lines.push(wikiLine(g2));
+        else if (ety) { lines.push(nameWord + ': ' + ety + '.'); wt.push(etySrc.get(nameWord)); }
+        if (e2) lines.push(wikiLine(e2));
+        else if (!wE && meaning) {
+          lines.push(j.epithet + ': ' + meaning + '.');
+          wt.push(lemmas.get(j.epithet) || (pages.has(j.epithet) ? j.epithet : ''));
+        }
+      }
+      const wt1 = wt.find(Boolean);
+      if (wt1) sources.push({ name: 'Wiktionary', url: _wtUrl(wt1) });
+      out.set(j.t.id, { draft: lines.map(l => l.replace(/\.{2,}$/, '.').replace(/([.!?])\.$/, '$1')).join('\n'),
+                        sources, auth: a || null, ety, meaning, word: j.word, epithet: j.epithet });
     });
     return out;
   }
@@ -468,6 +708,344 @@
         return { text: s, src, score };
       })
       .filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 4);
+  }
+
+  // ── Name say from published pronunciations (dev1151) ─────────────────────
+  // Only what a source has printed — never worked out from the spelling (the
+  // dev1149 rule respelling was dropped as poor):
+  //   Wikipedia leads: {{respell}} or {{IPAc-en}} right after a bold name;
+  //   Wiktionary: Translingual pronunciation, or the English entry whose sense
+  //     is this animal ("mola: a sunfish, Mola mola").
+  // IPA is rewritten in the respelling key behind D's "?". A binomial is
+  // filled only when every word has a source; otherwise the box stays empty.
+  const IPA_V = ['eɪ', 'aɪ', 'ɔɪ', 'oʊ', 'əʊ', 'aʊ', 'ɪə', 'eə', 'ɛə', 'ʊə', 'iː', 'uː', 'ɑː', 'ɔː', 'ɜː', 'ɛː',
+    'i', 'u', 'ɪ', 'ʊ', 'e', 'ɛ', 'æ', 'ɑ', 'ɒ', 'ɔ', 'ʌ', 'ə', 'a', 'o'];
+  const IPA_C = ['tʃ', 'dʒ', 'hw', 'p', 'b', 't', 'd', 'k', 'g', 'f', 'v', 'θ', 'ð', 's', 'z', 'ʃ', 'ʒ', 'h',
+    'm', 'n', 'ŋ', 'l', 'r', 'j', 'w', 'x'];
+  const IPA_ONSET = new Set(['pl', 'pr', 'bl', 'br', 'tr', 'dr', 'kl', 'kr', 'gl', 'gr', 'fl', 'fr', 'θr', 'ʃr',
+    'sp', 'st', 'sk', 'sm', 'sn', 'sl', 'sw', 'sf', 'tw', 'dw', 'kw', 'gw', 'θw', 'pj', 'bj', 'tj', 'dj', 'kj', 'gj',
+    'mj', 'nj', 'fj', 'vj', 'hj', 'lj', 'sj', 'zj', 'θj', 'spl', 'spr', 'str', 'skr', 'skw', 'skj', 'spj', 'stj']);
+  const IPA_CHECKED = new Set(['ɪ', 'ʊ', 'e', 'ɛ', 'æ', 'ɒ', 'ʌ', 'ɑ']);
+  const RS_CONS = { 'θ': 'th', 'ð': 'dh', 'ʃ': 'sh', 'ʒ': 'zh', 'tʃ': 'ch', 'dʒ': 'j', 'j': 'y', 'ŋ': 'ng', 'x': 'kh', 'hw': 'wh' };
+  // vowel + r in the same syllable: before a consonant or at the end (near,
+  // north), and before a vowel (merry, moray → MORR-ay), as Wikipedia writes them.
+  const RS_R = { 'ɔː': 'or', 'ɔ': 'or', 'o': 'or', 'ɑː': 'ar', 'ɑ': 'ar', 'a': 'ar', 'ə': 'er', 'ɜː': 'ur',
+    'ɪə': 'eer', 'iː': 'eer', 'i': 'eer', 'ɛə': 'air', 'eə': 'air', 'ɛː': 'air', 'ʊə': 'oor', 'uː': 'oor', 'u': 'oor' };
+  const RS_R_CONS = { 'ɪ': 'eer', 'ɛ': 'air', 'e': 'air', 'ʊ': 'oor', 'ʌ': 'ur', 'æ': 'ar', 'ɒ': 'or' };
+  const RS_R_VOW = { 'ɪ': 'irr', 'ɛ': 'err', 'e': 'err', 'ʊ': 'oor', 'ʌ': 'urr', 'æ': 'arr', 'ɒ': 'orr' };
+
+  function _ipaNorm(s) {
+    return String(s || '').normalize('NFC')
+      .replace(/[,;].*$/, '')                     // first of several forms
+      .replace(/[\/\[\]]/g, '').replace(/\([^)]*\)/g, '')     // optional sounds dropped
+      .replace(/[͜͡‿]/g, '').replace(/[ɹɻ]/g, 'r').replace(/ɡ/g, 'g').replace(/ɫ/g, 'l')
+      .replace(/ɾ/g, 't').replace(/ʍ/g, 'hw').replace(/ʔ/g, '').replace(/ɚ/g, 'ər').replace(/ɝ/g, 'ɜːr')
+      .replace(/ɐ/g, 'ə').replace(/[ᵻɨ]/g, 'ɪ').replace(/ᵿ/g, 'ʊ').replace(/ɵ/g, 'oʊ').replace(/:/g, 'ː')
+      .replace(/'/g, 'ˈ').replace(/([nlmr])[̩̍]/g, 'ə$1')     // syllabic n̩ l̩ → ən əl
+      .replace(/[̀-ͯ]/g, '').replace(/ˑ/g, '').replace(/ɜ(?!ː)/g, 'ɜː')
+      .trim();
+  }
+  // One IPA word → its syllables { on[], v, co[], st } (st 2 = primary stress).
+  function _ipaSyllables(word) {
+    const toks = [];
+    for (let i = 0; i < word.length;) {
+      const ch = word[i];
+      if (ch === 'ˈ' || ch === 'ˌ' || ch === '.' || ch === '-') { toks.push({ k: 'B', st: ch === 'ˈ' ? 2 : ch === 'ˌ' ? 1 : 0 }); i++; continue; }
+      const v = IPA_V.find(x => word.startsWith(x, i));
+      if (v) { toks.push({ k: 'V', p: v }); i += v.length; continue; }
+      const c = IPA_C.find(x => word.startsWith(x, i));
+      if (c) { toks.push({ k: 'C', p: c }); i += c.length; continue; }
+      return null;                                  // a symbol we can't read: no respelling at all
+    }
+    const nuc = toks.map((t, j) => (t.k === 'V' ? j : -1)).filter(j => j >= 0);
+    if (!nuc.length) return null;
+    const sy = [];
+    nuc.forEach((ni, n) => {
+      const gap = toks.slice(n ? nuc[n - 1] + 1 : 0, ni);
+      const s = { on: [], v: toks[ni].p, co: [], st: 0 };
+      const cons = gap.filter(g => g.k === 'C').map(g => g.p);
+      const bi = gap.findIndex(g => g.k === 'B');
+      gap.forEach(g => { if (g.k === 'B' && g.st > s.st) s.st = g.st; });
+      if (!n) s.on = cons;
+      else {
+        const prev = sy[n - 1];
+        let split;
+        if (bi >= 0) split = gap.slice(0, bi).filter(g => g.k === 'C').length;
+        else {
+          // Maximal onset, but a stressed short vowel keeps a consonant (TOP-ə-də).
+          let k = cons.length;
+          while (k > 0 && !(k === 1 ? cons[cons.length - 1] !== 'ŋ' : IPA_ONSET.has(cons.slice(-k).join('')))) k--;
+          split = cons.length - k;
+          if (!split && cons.length && prev.st === 2 && IPA_CHECKED.has(prev.v)) split = 1;
+        }
+        // Even across a printed boundary (/ˈpæ.ɡjə.ɹəs/) a stressed short vowel
+        // is written closed, as Wikipedia does: PAG-yer-uhs, not PA-.
+        if (!split && cons.length && prev.st === 2 && IPA_CHECKED.has(prev.v) && s.st !== 2) split = 1;
+        prev.co = cons.slice(0, split);
+        s.on = cons.slice(split);
+      }
+      sy.push(s);
+    });
+    sy[sy.length - 1].co = toks.slice(nuc[nuc.length - 1] + 1).filter(t => t.k === 'C').map(t => t.p);
+    // The word's stress: primary, else its secondary, else a lone syllable.
+    if (!sy.some(s => s.st === 2)) { const s2 = sy.find(s => s.st === 1); if (s2) s2.st = 2; else if (sy.length === 1) sy[0].st = 2; }
+    return sy;
+  }
+  function _sylSpell(s, nextHasOnset) {
+    const co = s.co.slice();
+    let v;
+    if (co[0] === 'r' && (RS_R[s.v] || RS_R_CONS[s.v])) {
+      v = RS_R[s.v] || ((co.length > 1 || nextHasOnset !== false) ? RS_R_CONS[s.v] : RS_R_VOW[s.v]);
+      co.shift();
+    } else {
+      const open = !co.length;
+      v = { 'æ': 'a', 'ɛ': open ? 'eh' : 'e', 'e': open ? 'eh' : 'e', 'ɪ': open ? 'ih' : 'i', 'ɒ': 'o',
+        'ʌ': open ? 'uh' : 'u', 'ʊ': 'uu', 'ə': 'uh', 'ɑ': open ? 'ah' : 'o', 'ɑː': 'ah', 'ɔː': 'aw', 'ɔ': 'aw',
+        'ɜː': 'ur', 'iː': 'ee', 'i': 'ee', 'uː': 'oo', 'u': 'oo', 'eɪ': 'ay', 'oʊ': 'oh', 'əʊ': 'oh', 'o': 'oh',
+        'aʊ': 'ow', 'ɔɪ': 'oy', 'ɪə': 'eer', 'eə': 'air', 'ɛə': 'air', 'ɛː': 'air', 'ʊə': 'oor', 'a': 'a',
+        'aɪ': !s.on.length ? 'eye' : (open ? 'y' : 'igh') }[s.v];
+    }
+    const cons = arr => arr.map((c, i) => (c === 'ŋ' && (arr[i + 1] === 'k' || arr[i + 1] === 'g') ? 'n' : (RS_CONS[c] || c))).join('');
+    if (s.dropR) v = v.slice(0, -1);                 // see ipaToRespell: myoo-REE
+    const out = cons(s.on) + v + cons(co);
+    return s.st === 2 ? out.toUpperCase() : out;
+  }
+  // "/ˈməʊ.lə/" → "MOH-luh"; several words keep their spaces. '' when unreadable.
+  function ipaToRespell(ipa) {
+    const words = _ipaNorm(ipa).split(/\s+/).filter(Boolean);
+    if (!words.length) return '';
+    const out = [];
+    for (const w of words) {
+      const sy = _ipaSyllables(w);
+      if (!sy) return '';
+      // eer/air/oor already end in r: before an r-syllable write one r —
+      // LAIR-ee-uh, but myoo-REE when the r-syllable carries the stress.
+      sy.forEach((s, i) => {
+        const nx = sy[i + 1];
+        if (s.co.length || !nx || nx.on[0] !== 'r' || !/^(ɪə|eə|ɛə|ʊə|ɛː)$/.test(s.v)) return;
+        if (nx.st === 2 && (s.v === 'ʊə' || s.v === 'ɪə')) s.dropR = true;
+        else nx.on = nx.on.slice(1);
+      });
+      out.push(sy.map((s, i) => _sylSpell(s, i + 1 < sy.length ? sy[i + 1].on.length > 0 : true)).join('-'));
+    }
+    return out.join(' ');
+  }
+  // {{respell|ok|TOP|ə|də}} → "ok-TOP-uh-duh" (Wikipedia's own respelling, ə → uh).
+  function _respellTemplate(body) {
+    const all = body.split('|').slice(1).map(p => p.trim()).filter(p => p && !/=/.test(p));
+    const cut = all.findIndex(p => /^[,;]/.test(p));                 // ",_" starts another form
+    const parts = (cut >= 0 ? all.slice(0, cut) : all).filter(p => p !== '-');
+    if (!parts.length) return '';
+    return parts.join('-').replace(/-?_-?/g, ' ').replace(/ər/g, 'er').replace(/ə/g, 'uh');
+  }
+  // {{IPAc-en|UK|ˈ|m|ɒr|eɪ|,_|US|m|ə|ˈ|r|eɪ}} → { GB: 'ˈmɒreɪ', US: 'məˈreɪ', any: '' }
+  function _ipacenForms(body) {
+    const rec = { US: '', GB: '', any: '' };
+    let cur = { acc: 'any', ipa: '' };
+    const flush = () => { if (cur.ipa.trim() && !rec[cur.acc]) rec[cur.acc] = cur.ipa.trim(); };
+    body.split('|').slice(1).map(p => p.trim()).filter(p => p && !/^[a-z0-9]+\s*=/i.test(p)).forEach(p => {
+      if (/^[,;]/.test(p)) { flush(); cur = { acc: 'any', ipa: '' }; return; }
+      if (/^[A-Za-z]{2,}$/.test(p) && p !== 'hw') {     // a label, not a sound
+        if (cur.ipa.trim()) { flush(); cur = { acc: 'any', ipa: '' }; }
+        const a = _accent(p);
+        if (a !== 'any') cur.acc = a;
+        return;
+      }
+      cur.ipa += p.replace(/_/g, ' ');
+    });
+    flush();
+    delete rec.skip;
+    return rec;
+  }
+  function _accent(s) {
+    const set = new Set();
+    String(s || '').split(/[,|]/).map(x => x.trim()).filter(Boolean).forEach(x => {
+      if (/^(UK|RP|GB|SSB|Brit(ish)?|England|Received Pronunciation|Standard Southern British)$/i.test(x)) set.add('GB');
+      else if (/^(US|GA|GenAm|General American|Amer(ican)?)$/i.test(x)) set.add('US');
+      else if (!/^(en|mul|also|pron|lang|local|uncommon|rare|old-fashioned|traditional|standard|more common|common)$/i.test(x)) set.add('other');
+    });
+    if (set.has('GB') && set.has('US')) return 'any';
+    if (set.has('GB')) return 'GB';
+    if (set.has('US')) return 'US';
+    return set.has('other') ? 'skip' : 'any';
+  }
+  // Pronunciations in a Wikipedia lead, keyed by the folded bold term they
+  // follow: "order '''Octopoda''' ({{IPAc-en|…}})" belongs to Octopoda.
+  function _wpSays(lead) {
+    const out = new Map();
+    const s = String(lead || '');
+    const re = /\{\{\s*(IPAc-en|respell)\s*\|([^{}]*)\}\}/gi;
+    let m;
+    while ((m = re.exec(s))) {
+      const before = s.slice(0, m.index);
+      const bolds = [...before.matchAll(/'''(.+?)'''(?!')/g)];
+      const b = bolds[bolds.length - 1];
+      if (!b) continue;
+      const gap = before.slice(b.index + b[0].length).replace(/\{\{[^{}]*\}\}/g, '');
+      if (gap.length > 40 || /[.!?]\s|\)/.test(gap)) continue;
+      const term = salFold(b[1].replace(/''/g, '').replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, '$1').trim());
+      if (!term) continue;
+      const rec = out.get(term) || { US: '', GB: '', any: '', respell: '' };
+      if (/^respell$/i.test(m[1])) rec.respell = rec.respell || _respellTemplate('respell|' + m[2]);
+      else { const f = _ipacenForms('IPAc-en|' + m[2]); ['US', 'GB', 'any'].forEach(k => { if (!rec[k] && f[k]) rec[k] = f[k]; }); }
+      out.set(term, rec);
+    }
+    return out;
+  }
+  // Pronunciation lines of one language section of a Wiktionary page. For
+  // English, only the etymology whose sense is a taxon (taxlink/taxfmt/
+  // "genus"), so "mola" the textile can't lend its sound to Mola the fish.
+  function _wtSays(wikitext, lang) {
+    const secs = String(wikitext || '').split(/^==([^=].*?)==\s*$/m);
+    let body = null;
+    for (let i = 1; i < secs.length; i += 2) if (secs[i].trim() === lang) { body = secs[i + 1] || ''; break; }
+    if (body == null) return null;
+    if (lang === 'English') {
+      const parts = body.split(/^===\s*Etymology[^=]*===\s*$/m);
+      const isTaxon = x => /\{\{\s*(taxlink|taxfmt|taxon|taxlinknew|vern)\s*\|/i.test(x)
+        || /^#[^:*].*\b(genus|species|family)\b/m.test(x);
+      const k = parts.length > 1 ? parts.slice(1).findIndex(isTaxon) + 1 : (isTaxon(body) ? 0 : -1);
+      if (k < 0 || (parts.length > 1 && k === 0)) return null;
+      const own = parts.length > 1 ? _wtPronLines(parts[k]) : null;
+      return own && (own.US || own.GB || own.any) ? own : _wtPronLines(parts[0]);
+    }
+    return _wtPronLines(body);
+  }
+  function _wtPronLines(text) {
+    const rec = { US: '', GB: '', any: '' };
+    String(text || '').split('\n').forEach(line => {
+      if (!/^\*/.test(line)) return;
+      const lineAcc = (/\{\{\s*(?:a|accent)\s*\|([^{}]*)\}\}/.exec(line) || [])[1] || '';
+      for (const m of line.matchAll(/\{\{\s*IPA\s*\|([^{}]*)\}\}/g)) {
+        const ps = m[1].split('|').map(p => p.trim());
+        if (!/^(en|mul)$/.test(ps[0])) continue;
+        const kv = {}, pos = [];
+        ps.slice(1).forEach(p => { const x = /^(\w+)\s*=([\s\S]*)$/.exec(p); if (x) kv[x[1]] = x[2].trim(); else pos.push(p); });
+        const ipa = pos.find(p => /^\//.test(p)) || pos.find(p => /^\[/.test(p));
+        const acc = _accent(kv.a || kv.accent || lineAcc);
+        if (ipa && acc !== 'skip' && !rec[acc]) rec[acc] = ipa;
+      }
+    });
+    return rec;
+  }
+  // A sanity check, not a rule: a pronunciation printed next to a name but
+  // meant for another word (Wikipedia's "Moray eels, or Muraenidae (/ˈmɒreɪ/)")
+  // has too few or too many syllables for the spelling, so it is not used.
+  function _sylFits(label, respell) {
+    const lw = String(label).toLowerCase().split(/\s+/), rw = String(respell).split(/\s+/);
+    if (lw.length !== rw.length) return false;
+    return lw.every((w, i) => {
+      const n = rw[i].split('-').filter(Boolean).length;
+      return n >= (w.match(/[aeiouy]+/g) || []).length && n <= (w.match(/[aeiouy]/g) || []).length + 1;
+    });
+  }
+  // A source record → { us, gb } respellings (one copied to the other when
+  // only one accent is printed), or null.
+  function _sayPair(rec) {
+    if (!rec) return null;
+    if (rec.respell) return { us: rec.respell, gb: rec.respell };
+    const us = rec.US || rec.any ? ipaToRespell(rec.US || rec.any) : '';
+    const gb = rec.GB || rec.any ? ipaToRespell(rec.GB || rec.any) : '';
+    return us || gb ? { us: us || gb, gb: gb || us } : null;
+  }
+  // Lead-section wikitext of many Wikipedia pages, 50 per request.
+  // Map asked title → { title, text }. Remembered for the session.
+  const _wpLeadCache = new Map();
+  async function _wpLeads(titles) {
+    const out = new Map();
+    const need = [...new Set(titles.filter(Boolean))].filter(x => {
+      if (!_wpLeadCache.has(x)) return true;
+      if (_wpLeadCache.get(x)) out.set(x, _wpLeadCache.get(x));
+      return false;
+    });
+    for (let i = 0; i < need.length; i += 50) {
+      const batch = need.slice(i, i + 50);
+      const j = await _getJson('https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content'
+        + '&rvslots=main&rvsection=0&format=json&formatversion=2&redirects=1&origin=*&titles='
+        + encodeURIComponent(batch.join('|'))).catch(() => null);
+      if (j && j.query) {
+        const got = new Map();
+        (j.query.pages || []).forEach(p => {
+          const rev = p.revisions && p.revisions[0];
+          const txt = rev && rev.slots && rev.slots.main ? rev.slots.main.content : '';
+          if (txt) got.set(p.title, { title: p.title, text: txt });
+        });
+        const to = _titleResolver(j.query);
+        batch.forEach(b => { const v = got.get(to(b)) || null; _wpLeadCache.set(b, v); if (v) out.set(b, v); });
+      }
+      if (i + 50 < need.length) await _sleep(1000);
+    }
+    return out;
+  }
+
+  // Name say for many taxon tags. Map id → { say, partial, missing[], sources[] }:
+  // say = the lines for the box ('' unless every word has a source).
+  async function lookupNameSays(tags, onStep) {
+    const step = onStep || (() => {});
+    const jobs = tags.map(t => {
+      const words = String(t.label || '').trim().split(/\s+/).filter(w => /^[A-Za-z-]+$/.test(w));
+      if (!words.length) return null;
+      const g = words.length > 1 ? _genusTagOf(t) : null;
+      const titles = [...new Set([_wikiTitleFor(t), words.length > 1 ? (g ? _wikiTitleFor(g) : words[0]) : ''].filter(Boolean))];
+      return { t, words, label: words.join(' '), titles };
+    }).filter(Boolean);
+    step('Wikipedia: pronunciations in ' + jobs.length + ' article leads…');
+    const leads = await _wpLeads(jobs.flatMap(j => j.titles));
+    step('Wiktionary: pronunciations…');
+    const pages = await _wtFetchMany(jobs.flatMap(j => [j.label, ...j.words, ...j.words.map(w => w.toLowerCase())]));
+    const out = new Map();
+    jobs.forEach(j => {
+      const wp = j.titles.map(ti => leads.get(ti)).filter(Boolean).map(x => ({ x, says: _wpSays(x.text) }));
+      const find = w => {
+        const f = salFold(w);
+        const fits = p => p && _sylFits(w, p.us) && _sylFits(w, p.gb);
+        for (const { x, says } of wp) {
+          const p = _sayPair(says.get(f));
+          if (fits(p)) return { pair: p, src: { name: 'Wikipedia', url: _wpUrl(x.title) } };
+        }
+        for (const [pg, lang] of [[w, 'Translingual'], [w.toLowerCase(), 'English'], [w.toLowerCase(), 'Translingual']]) {
+          const p = _sayPair(_wtSays(pages.get(pg), lang));
+          if (fits(p)) return { pair: p, src: { name: 'Wiktionary', url: _wtUrl(pg, lang), word: pg } };
+        }
+        return null;
+      };
+      const whole = find(j.label);
+      const parts = whole ? [whole] : j.words.length > 1 ? j.words.map(find) : [null];
+      const missing = whole ? [] : j.words.filter((w, i) => !parts[i]);
+      const sources = [];
+      parts.forEach(p => { if (p && !sources.some(s => s.url === p.src.url)) sources.push(p.src); });
+      let say = '', partial = '';
+      if (!missing.length) {
+        const us = parts.map(p => p.pair.us).join(' '), gb = parts.map(p => p.pair.gb).join(' ');
+        say = us === gb ? us : 'US: ' + us + '\nGB: ' + gb;
+      } else if (sources.length) {
+        partial = j.words.map((w, i) => (parts[i] ? parts[i].pair.us : w.toLowerCase())).join(' ');
+      }
+      out.set(j.t.id, { say, partial, missing, sources });
+    });
+    return out;
+  }
+
+  // D's auto-fill: one look-up per tag per session (keyed by label as well, so
+  // a renamed tag is looked up again). A failed look-up is forgotten.
+  const _autoCache = new Map();
+  function autoNameDraft(kind, t) {
+    const key = kind + '|' + t.id + '|' + t.label;
+    if (!_autoCache.has(key)) {
+      const p = (async () => {
+        const ti = window.taxonInfo;
+        if (ti && ti.load && ti.loaded && !ti.loaded()) await ti.load().catch(() => {});
+        const fails = _netFails;
+        const m = kind === 'origin' ? await lookupNameOrigins([t], null, { deep: true }) : await lookupNameSays([t]);
+        const r = Object.assign({}, m.get(t.id) || {});
+        // A service that didn't answer: say so, and look again next time.
+        if (_netFails > fails) { r.incomplete = true; _autoCache.delete(key); }
+        return r;
+      })();
+      p.catch(() => _autoCache.delete(key));
+      _autoCache.set(key, p);
+    }
+    return _autoCache.get(key);
   }
 
   // ── public API ───────────────────────────────────────────────────────────
@@ -539,6 +1117,8 @@
     TEXT_FIELDS,
     factsText,
     lookupNameOrigins,
+    lookupNameSays,
+    ipaToRespell,
     nameOriginHtml,
   };
 
@@ -1813,7 +2393,7 @@
           style="padding:5px 12px;border:1px solid #6c9;background:rgba(0,80,55,0.45);color:#8ec;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">🌳 Normalize tree</button>
         <button id="dictTaxonInfo" title="Taxon info (dev0847) — short Wikipedia notes, common names and IUCN status per taxon, kept in taxoninfo.json. Opens the review panel: see what has been fetched, fetch what is missing, and resolve names that several kingdoms share."
           style="padding:5px 12px;border:1px solid #9bd;background:rgba(20,45,90,0.5);color:#9bd;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">📖 Taxon info</button>
-        <button id="dictFillNames" title="Fill Name origin on every taxon that has none yet, from WoRMS/GBIF (who named it, when) and Wiktionary (what the name means). About 1½ minutes for 600 taxa. Never touches a Name origin you have written or cleared. Name say needs no filling — an empty one shows the automatic respelling."
+        <button id="dictFillNames" title="Fill Name origin and Name say on every taxon that has none yet. Name origin: WoRMS/GBIF + Wikidata (who named it, when) and Wiktionary (what the name means). Name say: only pronunciations Wikipedia or Wiktionary have published, in the ? respelling key. About 3–4 minutes for 600 taxa. Never touches one you have written or cleared. Opening a tag fills its own two boxes anyway, with Wikipedia sentences too."
           style="padding:5px 12px;border:1px solid #4af;background:rgba(0,40,100,0.35);color:#8ef;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">🔎 Fill names</button>
         <button id="dictClose" style="padding:5px 12px;border:1px solid #f66;background:rgba(80,0,0,0.4);color:#f88;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">✕ Close (Esc)</button>
       </div>
@@ -2519,6 +3099,11 @@
           #de-namesay-keybox table { border-collapse:collapse; margin-top:4px; }
           #de-namesay-keybox td { padding:1px 10px 1px 0; }
           #de-namesay-keybox td:first-child { font-family:monospace; color:#fff; }
+          .de-auto-note { color:#678; font:10.5px/1.5 system-ui,sans-serif; margin-top:2px; }
+          .de-auto-note:empty { display:none; }
+          .de-auto-note a { color:#68a; }
+          .de-auto-note button { margin-left:4px; padding:0 6px; border:1px solid #456; background:#14142a; color:#9ab;
+            border-radius:3px; cursor:pointer; font:10px monospace; }
         </style>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
           <span style="font-size:17px;color:${kindColor(t)};font-weight:bold;">${escapeHtml(labelFor(t.id))}</span>
@@ -2577,6 +3162,7 @@
                 style="flex:1;min-width:0;padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#ccc;border-radius:4px;font-family:system-ui,sans-serif;font-size:12px;outline:none;resize:vertical;">${escapeHtml(t.NameOrigin || '')}</textarea>
               ${t.kind === 'taxon' ? `<button id="de-origin-look" title="Look this name up: WoRMS (who named it, when), Wiktionary (what the name means), Wikipedia (sentences about the name). Nothing is written until you use a result and press ✓ Save." style="padding:4px 9px;border:1px solid #4af;background:rgba(0,40,100,0.35);color:#8ef;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;white-space:nowrap;">🔎 Look up</button>` : ''}
             </div>
+            <div id="de-origin-auto" class="de-auto-note"></div>
             <div id="de-origin-inherit"></div>
             <div id="de-origin-look-out"></div>
           </div>
@@ -2588,6 +3174,7 @@
                 style="flex:1;min-width:0;padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#fff;border-radius:4px;font-family:monospace;font-size:12px;outline:none;resize:vertical;">${escapeHtml(t.NameSay || '')}</textarea>
               <button id="de-namesay-key" title="Respelling key" style="padding:4px 9px;border:1px solid #556;background:#14142a;color:#9ab;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;">?</button>
             </div>
+            <div id="de-namesay-auto" class="de-auto-note"></div>
             <div id="de-namesay-keybox" style="display:none;margin-top:6px;padding:7px 10px;background:#0d0d1e;border:1px solid #345;border-radius:5px;color:#aab;font:11px/1.6 system-ui,sans-serif;">${NAMESAY_KEY_HTML}</div>
           </div>
 
@@ -2686,6 +3273,65 @@
           + '<b style="color:#9ab;">' + escapeHtml((a.rank ? a.rank + ' ' : '') + a.label) + ':</b> '
           + nameOriginHtml(a.NameOrigin) + '</div>').join('');
       }
+      // (dev1151) Opening a taxon fills an ABSENT Name origin / Name say with a
+      // sourced draft — never one typed, or one stored as '' (Phil cleared it).
+      // Only the boxes change; ✓ Save is what writes. Starts after 0.4 s on the
+      // same tag, so arrowing down the list doesn't look up every row passed.
+      const sayBox = editEl.querySelector('#de-namesay');
+      const autoFilled = { origin: false, say: false };
+      if (t.kind === 'taxon' && (t.NameOrigin === undefined || t.NameSay === undefined)) {
+        const oNote = editEl.querySelector('#de-origin-auto'), sNote = editEl.querySelector('#de-namesay-auto');
+        const links = srcs => (srcs || []).map(s => '<a href="' + escapeAttr(s.url) + '" target="_blank" rel="noopener">'
+          + escapeHtml(s.name) + '</a>').join(' · ');
+        const live = () => selectedId === id && originBox.isConnected;
+        const run = (kind, box, note, field, apply) => {
+          let typed = false;
+          box.addEventListener('input', () => { typed = true; });
+          note.textContent = '🔎 looking up…';
+          autoNameDraft(kind, t).then(r => {
+            if (!live()) return;
+            const cur = byId.get(id);
+            if (!cur || cur[field] !== undefined || typed || box.value.trim()) { note.textContent = ''; return; }
+            apply(r);
+          }).catch(e => { if (live()) note.textContent = 'Look-up failed: ' + (e && e.message || e); });
+        };
+        setTimeout(() => {
+          if (!live()) return;
+          if (t.NameOrigin === undefined && !originBox.value.trim()) run('origin', originBox, oNote, 'NameOrigin', r => {
+            if (!r || !r.draft) {
+              oNote.textContent = r && r.incomplete ? 'A source didn’t answer — open the tag again to retry.'
+                : 'No source found for this name (WoRMS, GBIF, Wiktionary, Wikipedia).';
+              return;
+            }
+            originBox.value = r.draft;
+            autoFilled.origin = true;
+            if (originBox.scrollHeight > originBox.clientHeight) originBox.style.height = (originBox.scrollHeight + 4) + 'px';
+            oNote.innerHTML = 'Draft from ' + links(r.sources) + ' — ✓ Save keeps it.'
+              + (r.incomplete ? ' (A source didn’t answer; opening the tag again may find more.)' : '');
+          });
+          if (t.NameSay === undefined && !sayBox.value.trim()) run('say', sayBox, sNote, 'NameSay', r => {
+            if (r && r.say) {
+              sayBox.value = r.say;
+              autoFilled.say = true;
+              sayBox.rows = Math.max(2, r.say.split('\n').length);
+              sNote.innerHTML = 'From ' + links(r.sources) + ' — ✓ Save keeps it.';
+            } else if (r && r.partial) {
+              sNote.innerHTML = 'Published for part of the name only (' + links(r.sources) + '): <b>' + escapeHtml(r.partial)
+                + '</b> — nothing for <i>' + escapeHtml(r.missing.join(', ')) + '</i>.<button data-say-use>↓ Use</button>';
+              sNote.querySelector('[data-say-use]').addEventListener('click', () => {
+                sayBox.value = r.partial;
+                autoFilled.say = true;
+                sayBox.focus();
+              });
+            } else if (r && r.incomplete) {
+              sNote.textContent = 'Wikipedia or Wiktionary didn’t answer — open the tag again to retry.';
+            } else {
+              sNote.textContent = 'No published pronunciation (Wikipedia, Wiktionary) — type one with the ? key.';
+            }
+          });
+        }, 400);
+      }
+
       // 🔎 Look up: the draft and any Wikipedia sentences land in a box below.
       // ↓ Use / + add only fill the text box — ✓ Save is still what writes.
       const lookBtn = editEl.querySelector('#de-origin-look');
@@ -2706,7 +3352,7 @@
           const ti = window.taxonInfo && window.taxonInfo.get ? window.taxonInfo.get(id) : null;
           const words = String(t.label || '').split(/\s+/);
           const [res, wiki] = await Promise.all([
-            lookupNameOrigins([t], s => { if (out.isConnected) out.innerHTML = note('🔎 ' + escapeHtml(s)); }),
+            lookupNameOrigins([t], s => { if (out.isConnected) out.innerHTML = note('🔎 ' + escapeHtml(s)); }, { deep: true }),
             wikiNamingSentences((ti && ti.wikiTitle) || t.label, words.length > 1 ? words.slice(-1) : words),
           ]);
           if (!out.isConnected) return;
@@ -2753,10 +3399,11 @@
         };
         // facts1-3 are NOT in this patch — Xe saves them itself. The two name
         // fields: absent stays absent, text that was emptied is stored '' (a clear).
+        // An auto-filled draft Phil emptied is a clear too, so it isn't offered again.
         const nameOrigin = editEl.querySelector('#de-nameorigin').value.trim();
         const nameSay = editEl.querySelector('#de-namesay').value.split('\n').map(s => s.trim()).filter(Boolean).join('\n');
-        if (nameOrigin || t.NameOrigin != null) patch.NameOrigin = nameOrigin;
-        if (nameSay || t.NameSay != null) patch.NameSay = nameSay;
+        if (nameOrigin || t.NameOrigin != null || autoFilled.origin) patch.NameOrigin = nameOrigin;
+        if (nameSay || t.NameSay != null || autoFilled.say) patch.NameSay = nameSay;
         const r = updateTag(id, patch);
         if (r.ok) {
           if (typeof toast === 'function') toast('✓ Saved: ' + patch.label, 1000);
@@ -2848,31 +3495,43 @@
     }
     // (dev1149) 🔎 Fill names — Name origin for every taxon that has NONE
     // (absent, not ''), so a hand-written or cleared one is never touched.
-    // Writes once at the end (withBatchedSave). The open tag's box is only
-    // filled if it is still empty, so nothing typed there is replaced.
+    // (dev1151) Name say too, wherever a published pronunciation exists.
+    // Writes once at the end (withBatchedSave). The open tag's boxes are only
+    // filled if still empty, so nothing typed there is replaced.
     const fnBtn = dictOverlay.querySelector('#dictFillNames');
     if (fnBtn) {
       fnBtn.addEventListener('click', async () => {
         const todo = tagsArr.filter(x => x.kind === 'taxon' && x.NameOrigin === undefined);
+        const todoSay = tagsArr.filter(x => x.kind === 'taxon' && x.NameSay === undefined);
         const say = (s, ms) => { if (typeof toast === 'function') toast(s, ms || 8000); };
-        if (!todo.length) { say('Every taxon already has a Name origin.', 2500); return; }
+        if (!todo.length && !todoSay.length) { say('Every taxon already has a Name origin and a Name say.', 2500); return; }
         fnBtn.disabled = true;
-        say('🔎 Fill names: looking up ' + todo.length + ' taxa — about ' + Math.max(5, Math.round(todo.length / 6.5)) + ' s…');
+        say('🔎 Fill names: looking up ' + Math.max(todo.length, todoSay.length) + ' taxa — about '
+          + Math.max(5, Math.round(todo.length / 6 + todoSay.length / 4)) + ' s…');
         try {
-          const res = await lookupNameOrigins(todo, s => say('🔎 Fill names (' + todo.length + '): ' + s));
-          let n = 0;
+          const ti = window.taxonInfo;
+          if (ti && ti.load && ti.loaded && !ti.loaded()) await ti.load().catch(() => {});
+          const res = todo.length ? await lookupNameOrigins(todo, s => say('🔎 Fill names (' + todo.length + '): ' + s)) : new Map();
+          const resSay = todoSay.length ? await lookupNameSays(todoSay, s => say('🔎 Fill names (' + todoSay.length + '): ' + s)) : new Map();
+          let n = 0, nSay = 0;
           withBatchedSave(() => {
             todo.forEach(x => {
               const r = res.get(x.id), cur = byId.get(x.id);
               if (r && r.draft && cur && cur.NameOrigin === undefined) { updateTag(x.id, { NameOrigin: r.draft }); n++; }
             });
+            todoSay.forEach(x => {
+              const r = resSay.get(x.id), cur = byId.get(x.id);
+              if (r && r.say && cur && cur.NameSay === undefined) { updateTag(x.id, { NameSay: r.say }); nSay++; }
+            });
           });
           if (selectedId && editEl) {
-            const box = editEl.querySelector('#de-nameorigin'), cur = byId.get(selectedId);
+            const cur = byId.get(selectedId);
+            const box = editEl.querySelector('#de-nameorigin'), sBox = editEl.querySelector('#de-namesay');
             if (box && !box.value.trim() && cur && cur.NameOrigin) box.value = cur.NameOrigin;
+            if (sBox && !sBox.value.trim() && cur && cur.NameSay) sBox.value = cur.NameSay;
           }
-          say('✓ Name origin filled on ' + n + ' of ' + todo.length + ' taxa.' + (n < todo.length
-            ? ' The rest had no source — 🔎 Look up on a tag also offers Wikipedia sentences.' : ''), 7000);
+          say('✓ Name origin filled on ' + n + ' of ' + todo.length + ' taxa; Name say on ' + nSay + ' of ' + todoSay.length
+            + (nSay < todoSay.length ? ' (the rest have no published pronunciation)' : '') + '.', 8000);
         } catch (e) {
           say('Fill names failed: ' + (e && e.message || e), 5000);
         } finally {
