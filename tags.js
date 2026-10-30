@@ -305,7 +305,8 @@
       const defs = s.defs.filter(d => d.charAt(0) !== '\u0001')
         .map(d => d.split(';')[0].replace(/,\s*having been\b.*$/, '').trim()).filter(Boolean);
       const epo = defs.length && /^(.+?)\s*\(attributive\)$/.exec(defs[0]);
-      if (epo) return { text: 'named after ' + epo[1] };
+      // (dev1153) The etymology often has the full name ("Named … for Charles Darwin").
+      if (epo) return { text: 'named after ' + ((s.ety && _personIn(s.ety, epo[1])) || epo[1]) };
       if (defs.length) return { text: (s.lang === 'Latin' ? 'Latin, ' : '') + '“' + defs.slice(0, 2).join('; ') + '”' };
       if (s.ety) return { text: _firstSentence(s.ety) };
     }
@@ -504,6 +505,32 @@
     const who = m[1].charAt(0).toUpperCase() + m[1].slice(1);
     return '“of ' + who + '”, after a person named ' + who;
   }
+  const _eponymStem = ep => (/^([a-z]{3,}?[^aeiouy])(ii|i)$/.exec(String(ep || '')) || [])[1] || '';
+  // (dev1153) Who an eponym honours, from the species' own article: the first
+  // sentence where the surname stands as a person and something was done —
+  // "It was discovered by Charles Darwin during his voyage on HMS Beagle…" →
+  // { name: 'Charles Darwin', text }. "Darwin's frog" is the common name, not him.
+  const _WHO_DID = /\b(?:discover\w*|collect\w*|found|named|describ\w*|honou?r\w*|first|caught|obtain\w*|sent|brought|record\w*)\b/i;
+  const _NOT_GIVEN = /^(?:The|A|An|In|On|By|Of|For|And|As|At|To|From|With|When|After|Before|Southern|Northern|Eastern|Western|Common|Great|Lesser|Greater|Little|Mount|Lake|Cape|Port|Saint|St)$/;
+  function _personIn(text, stem) {
+    if (!stem || text.length > 300 || !_WHO_DID.test(text)) return '';
+    const re = new RegExp('\\b' + stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b(?![\'’]s)', 'gi');
+    let m;
+    while ((m = re.exec(text))) {
+      if (!/^[A-Z]/.test(m[0])) continue;
+      const before = text.slice(0, m.index).trim().split(/\s+/);
+      const given = [];
+      while (before.length) {
+        const w = before[before.length - 1];
+        if ((/^[A-ZÀ-Þ][a-zà-ÿ]+$/.test(w) && !_NOT_GIVEN.test(w)) || /^[A-Z]\.$/.test(w)
+            || /^(?:von|van|der|den|de|du|da|la|le|di)$/.test(w)) given.unshift(before.pop());
+        else break;
+      }
+      while (given.length && /^[a-z]/.test(given[0])) given.shift();
+      return given.concat(m[0]).join(' ');
+    }
+    return '';
+  }
 
   // Wikipedia: the article a tag is filed under (taxoninfo), else its label,
   // which Wikipedia redirects (Rhinomuraena quaesita → Ribbon eel).
@@ -526,7 +553,10 @@
   // Mola means …"). "Aptly named" is not an explanation, so plain "named" isn't enough.
   // "Refers to" counts only next to "name"/"epithet" — fossils that literature
   // "refers to" under a synonym explain nothing.
-  const _MEAN_RE = /\b(?:Latin|Greek)\b|\bmeans?\b|\bmeaning\b|\bnamed (?:after|for|in honou?r)|\bhonou?r(?:s|ing|ed)?\b|\bderive[sd]? from\b|\betymolog\w*|\beponym\w*|\b(?:name|epithet)\b.*\b(?:refer(?:s|ring)? to|allud(?:es|ing) to)\b/i;
+  // (dev1153) "This means that R. darwinii will be more localized…" is not a
+  // meaning: "means that", "by means of" and "meaning that" don't count, and the
+  // explaining word must come AFTER the word it explains ("frondosa means …").
+  const _MEAN_RE = /\b(?:Latin|Greek)\b|(?<!\bby\s)\bmeans?\b(?!\s+(?:that|of)\b)|\bmeaning\b(?!\s+that\b)|\bnamed (?:after|for|in honou?r)|\bhonou?r(?:s|ing|ed)?\b|\bderive[sd]? from\b|\betymolog\w*|\beponym\w*|\b(?:name|epithet)\b.*\b(?:refer(?:s|ring)? to|allud(?:es|ing) to)\b/i;
   // (dev1152) Sentences that explain a word without writing it: "The genus name
   // is a combination of rhino … and op …" (Rhinopias), "The name is derived
   // from … askaros … and sepion" (Ascarosepion). `implicit` is the phrase that
@@ -553,7 +583,8 @@
     String(text).replace(/[,;]\s+/g, (m, off) => { starts.push(off + m.length); return m; });
     for (let k = 0; k < starts.length; k++) {
       const seg = text.slice(starts[k], k + 1 < starts.length ? starts[k + 1] : text.length);
-      if (wre.test(seg) && _MEAN_RE.test(seg)) {
+      const at = seg.search(wre);
+      if (at >= 0 && (_MEAN_RE.test(seg.slice(at + word.length + 1)) || /\bnamed (?:after|for|in honou?r)|\bhonou?r/i.test(seg))) {
         if (!wre.test(text.slice(0, starts[k]))) return text;
         const t = text.slice(starts[k]).replace(/^(?:and|but|while|whereas|whilst)\s+/i, '');
         return t.charAt(0).toUpperCase() + t.slice(1);
@@ -651,7 +682,8 @@
         const titles = [...new Set([_wikiTitleFor(j.t), j.genus ? (g ? _wikiTitleFor(g) : j.genus) : ''].filter(Boolean))];
         const keys = [j.word || j.genus, j.epithet].filter(Boolean);
         // self = the tag's own article; for a species the second is the genus's.
-        wiki.set(j.t.id, (await Promise.all(titles.map((ti, k) => wikiNamingSentences(ti, keys)
+        const person = _eponymStem(j.epithet);
+        wiki.set(j.t.id, (await Promise.all(titles.map((ti, k) => wikiNamingSentences(ti, keys, k === 0 ? person : '')
           .then(a => a.map(s => Object.assign(s, { self: k === 0 }))).catch(() => [])))).flat());
       }));
     }
@@ -681,9 +713,9 @@
       const gWord = (j.genus || j.word).toLowerCase();
       const isGenus = !!j.genus || j.t.rank === 'genus';
       const wikiFor = (word, epi) => {
-        for (const s of ws) { const c = _wikiClause(s.text, word); if (c) return { c, src: s.src }; }
+        for (const s of ws) { const c = !s.who && _wikiClause(s.text, word); if (c) return { c, src: s.src }; }
         for (const s of ws) {
-          if (s.subject && s.subject.toLowerCase() !== gWord) continue;
+          if (s.who || (s.subject && s.subject.toLowerCase() !== gWord)) continue;
           const own = j.word ? s.self : !s.self;
           for (const [re, bare] of epi ? [[s.self ? _IMPL_EPITHET : null, false]]
                                        : [[isGenus ? _IMPL_GENUS : null, false], [own ? _IMPL_BARE : null, true]]) {
@@ -711,8 +743,17 @@
         if (g2 && e2 && (g2.c.includes(e2.c) || e2.c.includes(g2.c))) { g2 = g2.c.length >= e2.c.length ? g2 : e2; e2 = null; }
         if (g2) lines.push(wikiLine(g2));
         else if (ety) { lines.push(nameWord + ': ' + ety + '.'); wt.push(etySrc.get(nameWord)); }
+        // (dev1153) An eponym whose person the article names: "darwinii: “of
+        // Darwin”, after Charles Darwin. It was discovered by Charles Darwin …".
+        // Wiktionary's own "named after Darwin" gets the same.
+        const whoS = meaning && (meaning === _eponym(j.epithet) || /^named after /.test(meaning)) ? ws.find(s => s.who) : null;
         if (e2) lines.push(wikiLine(e2));
-        else if (!wE && meaning) {
+        else if (!wE && whoS) {
+          lines.push(j.epithet + ': ' + meaning.replace(/after (?:a person named )?[^,;“”]*$/, 'after ' + whoS.who) + '. '
+            + whoS.text + ' ([Wikipedia](' + whoS.src + '))');
+          if (!sources.some(x => x.name === 'Wikipedia')) sources.push({ name: 'Wikipedia', url: whoS.src });
+          wt.push(lemmas.get(j.epithet) || (pages.has(j.epithet) ? j.epithet : ''));
+        } else if (!wE && meaning) {
           lines.push(j.epithet + ': ' + meaning + '.');
           wt.push(lemmas.get(j.epithet) || (pages.has(j.epithet) ? j.epithet : ''));
         }
@@ -728,7 +769,9 @@
   // Wikipedia sentences that talk about the name, best first. Per-tag only —
   // full-article extracts come one page per request.
   const _NAMING_RE = /\b(named|naming|derived from|derives from|from the (?:Ancient )?(?:Greek|Latin)|etymolog\w*|specific (?:name|epithet)|generic name|genus name|epithet|honou?r(?:s|ing|ed)?|eponym\w*|(?:Latin|Greek) (?:word )?for|meaning|means|refer(?:s|ring)? to|in reference to|alludes? to)\b/i;
-  async function wikiNamingSentences(title, keyWords) {
+  // (dev1153) person = the surname an eponym epithet honours: the first sentence
+  // naming that person comes back too, as { who, text } (not a naming sentence).
+  async function wikiNamingSentences(title, keyWords, person) {
     if (!title) return [];
     const j = await _getJson('https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1'
       + '&format=json&formatversion=2&redirects=1&origin=*&titles=' + encodeURIComponent(title)).catch(() => null);
@@ -746,6 +789,8 @@
       const subject = m && !_NOT_SUBJECT.test(m[1]) ? m[1] : '';
       _sentences(par).forEach(s => sents.push({ s: s.replace(/\s+/g, ' ').trim(), subject }));
     });
+    let whoS = null;
+    if (person) for (const x of sents) { const who = _personIn(x.s, person); if (who) { whoS = { text: x.s, src, score: 0, who }; break; } }
     return sents
       .filter(x => x.s.length > 25 && x.s.length < 450 && _NAMING_RE.test(x.s))
       .map(({ s, subject }) => {
@@ -759,7 +804,8 @@
         if (/common name/i.test(s)) score -= 1;
         return { text: s, src, score, subject };
       })
-      .filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 4);
+      .filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 4)
+      .concat(whoS ? [whoS] : []);
   }
   const _NOT_SUBJECT = /^(?:It|Its|This|That|These|Those|There|They|Their|He|She|One|Each|All|Both|Some|Most|Many|Several|Such|Which|What|Who|Here)$/;
   // Sentences, without breaking after an initial or a short abbreviation

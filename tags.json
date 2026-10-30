@@ -4613,7 +4613,8 @@
     ],
     "rank": "species",
     "common": "Darwin's frog",
-    "extinct": false
+    "extinct": false,
+    "NameOrigin": "Described by André Marie Constant Duméril and Gabriel Bibron in 1841.\nRhinoderma: rhino- (“nose”) + -derma (“skin”).\nThis means that R. darwinii will be more localized to certain habitats in the future. ([Wikipedia](https://en.wikipedia.org/wiki/Darwin's_frog))"
   },
   {
     "id": "amphibia",
@@ -4633,7 +4634,9 @@
       "amphibia"
     ],
     "aliases": [],
-    "rank": "order"
+    "rank": "order",
+    "NameSay": "uh-NOOR-uh",
+    "NameOrigin": "Described by Duméril in 1806.\nA frog is any member of a diverse and largely semiaquatic group of short-bodied, tailless amphibian vertebrates composing the order Anura (coming from the Ancient Greek ἀνούρα, literally 'without tail'). ([Wikipedia](https://en.wikipedia.org/wiki/Frog))"
   },
   {
     "id": "rhinodermatidae",
@@ -5113,7 +5116,8 @@
     "aliases": [],
     "rank": "species",
     "common": "weedy scorpionfish",
-    "extinct": false
+    "extinct": false,
+    "NameOrigin": "Described by Albert Günther in 1892 as Scorpaena frondosa.\nThe genus name is a combination of rhino meaning \"snout\" and op meaning \"eye\", an allusion to he upturned snout and raised orbits of R. frondosa with the suffix ias which is used in some Greek names for fishes, for example Xiphias. ([Wikipedia](https://en.wikipedia.org/wiki/Rhinopias))\nThe specific name frondosa means \"branched or full of leaves\", an allusion to the fleshy tentacles which cover most of the body of this fish. ([Wikipedia](https://en.wikipedia.org/wiki/Rhinopias_frondosa))"
   },
   {
     "id": "scorpaeniformes",
@@ -5143,7 +5147,8 @@
       "scorpaenidae"
     ],
     "aliases": [],
-    "rank": "genus"
+    "rank": "genus",
+    "NameOrigin": "Described by Theodore Nicholas Gill in 1905.\nThe genus name is a combination of rhino meaning \"snout\" and op meaning \"eye\", an allusion to he upturned snout and raised orbits of R. frondosa with the suffix ias which is used in some Greek names for fishes, for example Xiphias. ([Wikipedia](https://en.wikipedia.org/wiki/Rhinopias))"
   },
   {
     "id": "rhinopias-aphanes",
@@ -5159,7 +5164,8 @@
     ],
     "rank": "species",
     "common": "lacy scorpionfish",
-    "extinct": false
+    "extinct": false,
+    "NameOrigin": "Described by William Eschmeyer in 1973.\nThe genus name is a combination of rhino meaning \"snout\" and op meaning \"eye\", an allusion to he upturned snout and raised orbits of R. frondosa with the suffix ias which is used in some Greek names for fishes, for example Xiphias. ([Wikipedia](https://en.wikipedia.org/wiki/Rhinopias))\nThe specific name aphanes means \"that which is unseen or inconspicuous\", an allusion to the camouflage created by its notable coloration and flaps of skin. ([Wikipedia](https://en.wikipedia.org/wiki/Rhinopias_aphanes))"
   },
   {
     "id": "orectolobiformes",
@@ -7148,7 +7154,8 @@
       "elasmobranchii"
     ],
     "aliases": [],
-    "rank": "order"
+    "rank": "order",
+    "NameOrigin": "Rhinopristiformes: From Rhina + Pristis + -iformes, named after two typical genera of the order."
   },
   {
     "id": "rhinidae",
@@ -8320,7 +8327,8 @@
     "common": "ribbon eel",
     "extinct": false,
     "facts1": "<p>Thin, ribbon-like body<br>Flared anterior nostrils look like horns<br>Like other morays often seen looking out from burrow</p>",
-    "facts2": "<p>Protandrous hermaphrodites, meaning initial sex male, later may become female</p>"
+    "facts2": "<p>Protandrous hermaphrodites, meaning initial sex male, later may become female</p>",
+    "NameOrigin": "Described by Samuel Garman in 1888.\nRhinomuraena: rhino- (“nose”) + Muraena (“moray eel”).\nquaesita: Latin “sought for; asked” (a form of quaesitus)."
   },
   {
     "id": "rhinomuraena",
