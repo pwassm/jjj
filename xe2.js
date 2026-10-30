@@ -731,6 +731,9 @@
   // ══ EDITOR OVERLAY ══════════════════════════════════════════════════════════
   var _api = null;      // { editor, slide, getFtext }
   var _row = null, _cell = null, _field = 'ftext';
+  // (dev1148) Set when the record is not an ml.json/c.json row — D's Facts boxes
+  // open a TAG here. { onSave(html) → false on failure, onClose() }.
+  var _ext = null;
   var _saveTimer = null;
 
   function nowIso() { return (typeof window.isoNow === 'function') ? window.isoNow() : new Date().toISOString(); }
@@ -759,6 +762,14 @@
   // if it is not, say so out loud instead of pretending the save happened.
   function doSave() {
     if (!_api || !_row) return false;
+    // (dev1148) An outside owner takes the HTML and saves it to its own file:
+    // no ml.json write, and no DateModified/VidRange stamped on a tag.
+    if (_ext && typeof _ext.onSave === 'function') {
+      var okExt = false;
+      try { okExt = _ext.onSave(_api.getFtext()) !== false; } catch (e) { console.warn('[xe2] onSave failed', e); }
+      if (okExt) stampSaved();
+      return okExt;
+    }
     _row[_field] = _api.getFtext();
     _row.DateModified = nowIso();
     if (_field === 'ftext' && !_row.link) _row.VidRange = 'text';
@@ -797,6 +808,14 @@
     var ov = document.getElementById('xe2Overlay'); if (ov) ov.remove();
     var st = document.getElementById('xe2Styles'); if (st) st.remove();
     document.removeEventListener('keydown', _onKeydown, true);
+    // (dev1148) Not an ml.json row, so no T re-sort / refocus / render — hand
+    // back to the owner instead.
+    if (_ext) {
+      var ext = _ext;
+      _ext = null; _row = null; _cell = null;
+      if (typeof ext.onClose === 'function') { try { ext.onClose(); } catch (e) {} }
+      return;
+    }
     // (dev0625) Re-sort BEFORE refocus/render: doSave() stamped _row.DateModified,
     // but render() alone reuses the stale sortedIdx, so in a DateModified-sorted
     // view ("LastModOnTop") the edited row kept its old position while showing a
@@ -2681,6 +2700,7 @@
       _field = opts.field || 'ftext';
       if (!row) return false; // v1 handles row creation before delegating
       _row = row;
+      _ext = (opts.onSave || opts.onClose) ? { onSave: opts.onSave, onClose: opts.onClose } : null;
 
       injectStyles();
 
@@ -2695,7 +2715,11 @@
       ov.innerHTML =
         '<div style="background:#161628;border:1px solid #445;border-radius:12px;flex:1;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden;">' +
           '<div id="xe2HeaderBar" title="Swipe ← (drag right-to-left) to save and go back" style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:2px solid #6af;background:#2b3a5c;touch-action:none;">' +
-            '<span style="color:#ff8;font-weight:bold;">Text Slide <span style="color:#8ef;">v2</span> · ' + cellStr + mediaNote + ' <span style="color:#89a;font-weight:normal;font-size:11px;">· swipe ← to go back</span></span>' +
+            '<span style="color:#ff8;font-weight:bold;">' +
+              (opts.title   // (dev1148) e.g. "Facts 1 · Rhinomuraena quaesita" when editing a tag
+                ? String(opts.title).replace(/&/g, '&amp;').replace(/</g, '&lt;') + ' <span style="color:#8ef;">v2</span>'
+                : 'Text Slide <span style="color:#8ef;">v2</span> · ' + cellStr + mediaNote) +
+              ' <span style="color:#89a;font-weight:normal;font-size:11px;">· swipe ← to go back</span></span>' +
             '<span id="xe2Saved" style="color:#6d8;font-size:11px;font-family:monospace;"></span>' +
             '<div style="display:flex;gap:8px;">' +
               '<button id="xe2Close" class="xe2-btn" title="Close without saving (Esc)">✕ Close</button>' +

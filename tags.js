@@ -18,10 +18,18 @@
  * Storage:
  *   tags.json is an array: [meta, ...tagRecords] (SAL-style)
  *   Each tag record:
- *     { id, label, kind, rank?, parents:[], aliases?:[], formerly?:[], def?:"", common?:"", extinct?:false }
+ *     { id, label, kind, rank?, parents:[], aliases?:[], formerly?:[], common?:"", extinct?:false,
+ *       facts1?:"", facts2?:"", facts3?:"", NameOrigin?:"", NameSay?:"" }
  *   formerly (dev1116) = older scientific names the label replaced (Pleuroncodes
  *   planipes on Grimothea planipes). Searched and matched exactly like aliases,
  *   but shown as "formerly" so an old name is told apart from a common-name variant.
+ *   facts1-3 (dev1148) = HTML written in Xe v2; facts1 is the old `def`, renamed
+ *   on load. A fact goes on the tag at the rank where it is TRUE — a family-wide
+ *   fact once on the family, not repeated on every species. NameOrigin = how the
+ *   binomial was given (plain text). NameSay = respelled pronunciation, one
+ *   "Label: respelling" line per variant (US / GB / Classical), stress in CAPS.
+ *   ABSENT vs '' matters for these five: absent = never written (the tags.json
+ *   write guard in core.js may backfill it from disk), '' = deliberately cleared.
  *   Rules:
  *     - id is a slug (lowercase, a-z 0-9 and hyphens)
  *     - kind === "taxon" → at most ONE parent of kind taxon/root (its single
@@ -42,6 +50,83 @@
   let orphanTags = [];         // referenced but missing
 
   const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
+
+  // (dev1148) The prose fields a tag can carry. core.js's tags.json write guard
+  // reads this list (tagsLib.TEXT_FIELDS) to know what to backfill from disk.
+  const TEXT_FIELDS = ['facts1', 'facts2', 'facts3', 'NameOrigin', 'NameSay'];
+
+  // Searchable text of a tag's facts + name origin, tags stripped. NameSay is
+  // left out: respellings like "MOH-luh" only add junk matches.
+  function factsText(t) {
+    if (!t) return '';
+    return ['facts1', 'facts2', 'facts3', 'NameOrigin'].map(f => t[f] || '').join(' ')
+      .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  // Old `def` values are plain text; facts1 is HTML. Text that already holds a
+  // tag is passed through, anything else is escaped and given paragraphs.
+  function plainToHtml(s) {
+    s = String(s == null ? '' : s);
+    if (!s.trim()) return '';
+    if (/<[a-z][\s\S]*>/i.test(s)) return s;
+    const esc = x => x.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return s.split(/\n\s*\n/).map(p => p.split('\n').map(l => esc(l.trim())).filter(Boolean).join('<br>'))
+      .filter(Boolean).map(p => '<p>' + p + '</p>').join('');
+  }
+
+  // Xe hands back '<p></p>' for an emptied editor — that is a clear, not content.
+  function isBlankHtml(h) {
+    h = String(h == null ? '' : h);
+    if (/<(img|video|iframe)\b/i.test(h)) return false;
+    return !h.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+  }
+
+  // What D's Facts box shows: the HTML itself, or a hint when there is none.
+  function factsPreviewHtml(h) {
+    return isBlankHtml(h)
+      ? '<span style="color:#556;font-style:italic;">empty — ✎ Xe to write</span>'
+      : String(h);
+  }
+
+  // The respelling key behind D's "?" next to Name say. Based on Wikipedia's
+  // pronunciation respelling key, with "uh" where it uses ə — no IPA symbols.
+  const NAMESAY_KEY_HTML =
+    'Hyphens between syllables; the <b>stressed syllable in CAPITALS</b>. One line per variant, '
+    + 'usual one first: <code>US:</code> <code>GB:</code> <code>Classical:</code> — add a line only when it differs.'
+    + '<table>'
+    + '<tr><td>ee</td><td>s<b>ee</b></td></tr>'
+    + '<tr><td>eye / y</td><td><b>eye</b>, m<b>y</b> (SY = "sigh")</td></tr>'
+    + '<tr><td>ay</td><td>d<b>ay</b></td></tr>'
+    + '<tr><td>oh</td><td>g<b>o</b></td></tr>'
+    + '<tr><td>oo</td><td>f<b>oo</b>d</td></tr>'
+    + '<tr><td>ow</td><td>n<b>ow</b></td></tr>'
+    + '<tr><td>uh</td><td>the unstressed a in sof<b>a</b></td></tr>'
+    + '<tr><td>g</td><td>always hard, as in <b>g</b>et (soft g is written j)</td></tr>'
+    + '<tr><td>k / s</td><td>hard c / soft c (or<b>c</b>a → k, Or<b>c</b>inus → s)</td></tr>'
+    + '</table>';
+
+  // (dev1148) Speak a NameSay line with the browser's own voices. Approximate —
+  // the engine reads the respelling as English — but hearing it beats guessing
+  // from the letters. The label picks the accent: GB/UK → en-GB, else en-US.
+  // Lowercased first: an engine may spell a CAPITALISED syllable letter by letter.
+  function sayRespelling(line) {
+    if (!('speechSynthesis' in window)) {
+      if (typeof toast === 'function') toast('This browser has no speech voices', 2000);
+      return;
+    }
+    const m = /^\s*([A-Za-z][A-Za-z .]{0,19}):\s*(.+)$/.exec(line || '');
+    const label = m ? m[1].trim().toLowerCase() : '';
+    const text = (m ? m[2] : String(line || '')).toLowerCase().trim();
+    if (!text) return;
+    const lang = /^(gb|uk|brit)/.test(label) ? 'en-GB' : 'en-US';
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang;
+    u.rate = 0.85;
+    const v = window.speechSynthesis.getVoices().find(x => (x.lang || '').replace('_', '-') === lang);
+    if (v) u.voice = v;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  }
 
   // ── public API ───────────────────────────────────────────────────────────
   // ── salFold (dev0855) ───────────────────────────────────────────
@@ -109,6 +194,8 @@
     fold: salFold,
     resolveTaxon: (name, opts) => resolveTaxon(name, opts),
     closeMenu: closeChipContextMenu,
+    TEXT_FIELDS,
+    factsText,
   };
 
   // Substring search across label, common name, and aliases.
@@ -163,8 +250,25 @@
       if (!Array.isArray(t.parents)) t.parents = t.parents ? [t.parents] : [];
       if (!Array.isArray(t.aliases)) t.aliases = [];
       if (t.formerly != null && !Array.isArray(t.formerly)) t.formerly = [String(t.formerly)];
-      if (t.def == null) t.def = '';
+      // (dev1148) `def` → `facts1`. Done here, in the app, not by a script on
+      // tags.json: an open tab's next saveTags() would write the old shape back.
+      // Disk keeps `def` until the next save, so this runs on every load until
+      // then — harmless, it finds nothing left to move the second time.
+      if (t.def != null) {
+        const d = plainToHtml(t.def);
+        if (d) t.facts1 = (t.facts1 && !isBlankHtml(t.facts1)) ? (t.facts1.includes(d) ? t.facts1 : t.facts1 + d) : d;
+        delete t.def;
+      }
     });
+    if (tagsMeta && Array.isArray(tagsMeta._salColOrder)) {
+      const co = tagsMeta._salColOrder.map(c => c === 'def' ? 'facts1' : c);
+      let at = co.indexOf('facts1');
+      if (at < 0) { co.push('facts1'); at = co.length - 1; }
+      TEXT_FIELDS.slice(1).forEach(f => { if (!co.includes(f)) co.splice(++at, 0, f); });
+      tagsMeta._salColOrder = co;
+      const w = tagsMeta._salColWidths;
+      if (w && w.def != null) { if (w.facts1 == null) w.facts1 = w.def; delete w.def; }
+    }
     buildIndex();
   }
 
@@ -480,8 +584,11 @@
       kind: kind || 'topic',
       parents: Array.isArray(partial.parents) ? partial.parents.filter(Boolean) : [],
       aliases: cleanAliasList(partial.aliases),
-      def: partial.def || '',
     };
+    // (dev1148) `def` still accepted from older callers; it lands as facts1.
+    const f1 = partial.facts1 || plainToHtml(partial.def);
+    if (f1) rec.facts1 = f1;
+    TEXT_FIELDS.slice(1).forEach(f => { if (partial[f]) rec[f] = partial[f]; });
     if (rank) rec.rank = rank;
     if (partial.common) rec.common = formatTagLabel(partial.common);
     if (partial.extinct) rec.extinct = true;
@@ -546,7 +653,7 @@
   //   - every record tagged `from` becomes tagged `to` (dedup if already there)
   //   - `from`'s label + common + aliases become aliases of `to`
   //   - `from`'s children re-point their parent to `to`
-  //   - `from`'s common/def copied to `to` if `to` lacks them
+  //   - `from`'s common, facts1-3, NameOrigin, NameSay copied to `to` if `to` lacks them
   //   - `from` is then deleted
   // Refuses if toId is a descendant of fromId (would create a cycle).
   // (dev1116) opts.asFormerly: `from` is an out-of-date name for `to`, so its
@@ -583,9 +690,11 @@
     const formerly = (to.formerly || []).concat(from.formerly || [], opts.asFormerly ? [from.label] : []);
     if (formerly.length) { to.formerly = formerly; tidyFormerly(to); }
 
-    // 2. Fill in common/def on target if missing
+    // 2. Fill in common + the prose fields on target if missing
     if (!to.common && from.common) to.common = from.common;
-    if (!to.def    && from.def)    to.def    = from.def;
+    TEXT_FIELDS.forEach(f => {
+      if ((!to[f] || isBlankHtml(to[f])) && from[f] && !isBlankHtml(from[f])) to[f] = from[f];
+    });
 
     // 3. Re-point children: any tag whose parents include fromId → toId
     let childrenMoved = 0;
@@ -1424,7 +1533,7 @@
       let filtered = tagsArr.slice();
       if (q) {
         filtered = filtered.filter(t => {
-          const hay = [t.label, t.id, t.common || '', t.def || '', ...(t.aliases || []), ...(t.formerly || [])]
+          const hay = [t.label, t.id, t.common || '', factsText(t), ...(t.aliases || []), ...(t.formerly || [])]
             .map(s => String(s).toLowerCase()).join(' ');
           return hay.includes(q);
         });
@@ -1526,7 +1635,7 @@
       const matchedIds = new Set();
       if (q) {
         tagsArr.forEach(t => {
-          const hay = [t.label, t.id, t.common || '', t.def || '', ...(t.aliases || []), ...(t.formerly || [])]
+          const hay = [t.label, t.id, t.common || '', factsText(t), ...(t.aliases || []), ...(t.formerly || [])]
             .map(s => String(s).toLowerCase()).join(' ');
           if (hay.includes(q)) matchedIds.add(t.id);
         });
@@ -2055,6 +2164,16 @@
         + '</div>';
 
       editEl.innerHTML = `
+        <style>
+          .de-facts-prev { flex:1; min-width:0; max-height:120px; overflow:auto; padding:5px 8px; background:#0a0a1a;
+            border:1px solid #333; border-radius:4px; color:#ccc; font:12px/1.4 system-ui,sans-serif; cursor:pointer; }
+          .de-facts-prev p, .de-facts-prev ul, .de-facts-prev ol { margin:.2em 0; }
+          .de-facts-prev h1, .de-facts-prev h2, .de-facts-prev h3, .de-facts-prev h4 { font-size:1.1em; margin:.25em 0; color:#ff8; }
+          .de-facts-prev img, .de-facts-prev video { max-width:100%; max-height:80px; }
+          #de-namesay-keybox table { border-collapse:collapse; margin-top:4px; }
+          #de-namesay-keybox td { padding:1px 10px 1px 0; }
+          #de-namesay-keybox td:first-child { font-family:monospace; color:#fff; }
+        </style>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
           <span style="font-size:17px;color:${kindColor(t)};font-weight:bold;">${escapeHtml(labelFor(t.id))}</span>
           <span style="color:#555;font-size:11px;">id=${escapeHtml(t.id)}</span>
@@ -2098,9 +2217,27 @@
           <input id="de-common" type="text" value="${escapeAttr(t.common || '')}"
             style="padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#fff;border-radius:4px;font-family:monospace;font-size:12px;outline:none;">
 
-          <label style="color:#6af;padding-top:5px;">Definition</label>
-          <textarea id="de-def" rows="4"
-            style="padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#ccc;border-radius:4px;font-family:monospace;font-size:12px;outline:none;resize:vertical;">${escapeHtml(t.def || '')}</textarea>
+          ${['facts1', 'facts2', 'facts3'].map((f, i) => `
+          <label style="color:#6af;padding-top:5px;" title="${i ? 'Secondary facts — whatever suits this taxon. Start with a heading to title the block.' : 'Main facts, shown first on card backs. Put a fact on the tag at the rank where it is true: a family-wide fact goes on the family.'}">Facts ${i + 1}</label>
+          <div style="display:flex;gap:6px;align-items:flex-start;min-width:0;">
+            <div class="de-facts-prev" data-facts-prev="${f}" title="Double-click to edit in Xe">${factsPreviewHtml(t[f])}</div>
+            <button data-facts-edit="${f}" title="Edit Facts ${i + 1} in Xe" style="padding:4px 9px;border:1px solid #4af;background:rgba(0,40,100,0.35);color:#8ef;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;white-space:nowrap;">✎ Xe</button>
+          </div>`).join('')}
+
+          <label style="color:#6af;padding-top:5px;" title="How the binomial was given: who named it, when, and what the Latin or Greek means">Name origin</label>
+          <textarea id="de-nameorigin" rows="2" placeholder="who named it, when, and what the Latin or Greek means"
+            style="padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#ccc;border-radius:4px;font-family:system-ui,sans-serif;font-size:12px;outline:none;resize:vertical;">${escapeHtml(t.NameOrigin || '')}</textarea>
+
+          <label style="color:#6af;padding-top:5px;" title="Respelled pronunciation, one line per variant">Name say</label>
+          <div style="min-width:0;">
+            <div style="display:flex;gap:6px;align-items:flex-start;">
+              <textarea id="de-namesay" rows="2" placeholder="US: or-SY-nuhs OR-kuh&#10;GB: aw-SY-nuhs AW-kuh"
+                style="flex:1;min-width:0;padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#fff;border-radius:4px;font-family:monospace;font-size:12px;outline:none;resize:vertical;">${escapeHtml(t.NameSay || '')}</textarea>
+              <button id="de-namesay-key" title="Respelling key" style="padding:4px 9px;border:1px solid #556;background:#14142a;color:#9ab;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;">?</button>
+            </div>
+            <div id="de-namesay-play" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;"></div>
+            <div id="de-namesay-keybox" style="display:none;margin-top:6px;padding:7px 10px;background:#0d0d1e;border:1px solid #345;border-radius:5px;color:#aab;font:11px/1.6 system-ui,sans-serif;">${NAMESAY_KEY_HTML}</div>
+          </div>
 
           <label style="color:#6af;padding-top:5px;">Extinct</label>
           <label style="padding-top:5px;"><input id="de-extinct" type="checkbox" ${t.extinct ? 'checked' : ''}> <span style="color:#888;font-size:11px;">extinct taxon</span></label>
@@ -2134,6 +2271,64 @@
         placeholder: (t.kind === 'taxon' ? 'single parent…' : 'parent(s)…')
       });
 
+      // (dev1148) Facts 1-3 open in Xe v2 with THIS TAG as the record. Xe calls
+      // onSave (its 1 s autosave and ✓ Save) instead of writing ml.json, so the
+      // HTML goes through updateTag → tags.json. Only the preview box is redrawn,
+      // not the whole panel: a full selectTag() would throw away anything typed
+      // in the other boxes and not yet saved.
+      const openFacts = (field) => {
+        if (!window.XE2 || typeof window.XE2.open !== 'function') {
+          if (typeof toast === 'function') toast('Xe v2 is not loaded', 2000);
+          return;
+        }
+        const n = field.slice(-1);
+        const refresh = () => {
+          const el = editEl.querySelector('[data-facts-prev="' + field + '"]');
+          const cur = byId.get(id);
+          if (el && el.isConnected && cur) el.innerHTML = factsPreviewHtml(cur[field]);
+        };
+        window.XE2.open('Facts ' + n, t, {
+          field,
+          title: 'Facts ' + n + ' · ' + labelFor(id),
+          onSave: (html) => {
+            const cur = byId.get(id);
+            if (!cur) return false;
+            const v = isBlankHtml(html) ? '' : html;
+            if (v === '' && cur[field] == null) return true;      // never written, still empty
+            if (cur[field] != null && v === cur[field]) return true;
+            updateTag(id, { [field]: v });
+            refresh();
+            return true;
+          },
+          onClose: refresh
+        });
+      };
+      editEl.querySelectorAll('[data-facts-edit]').forEach(b =>
+        b.addEventListener('click', () => openFacts(b.dataset.factsEdit)));
+      editEl.querySelectorAll('[data-facts-prev]').forEach(el =>
+        el.addEventListener('dblclick', () => openFacts(el.dataset.factsPrev)));
+
+      // NameSay: one 🔊 per line, redrawn as you type; ? shows the respelling key.
+      const sayBox = editEl.querySelector('#de-namesay');
+      const sayPlay = editEl.querySelector('#de-namesay-play');
+      const drawSay = () => {
+        const lines = sayBox.value.split('\n').map(s => s.trim()).filter(Boolean);
+        sayPlay.innerHTML = lines.map((l, i) => {
+          const m = /^\s*([A-Za-z][A-Za-z .]{0,19}):/.exec(l);
+          return '<button data-say="' + i + '" title="' + escapeAttr(l) + '" style="padding:2px 8px;border:1px solid #456;'
+            + 'background:#14142a;color:#cde;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;">🔊 '
+            + escapeHtml(m ? m[1].trim() : 'say') + '</button>';
+        }).join('');
+        sayPlay.querySelectorAll('[data-say]').forEach(b =>
+          b.addEventListener('click', () => sayRespelling(lines[+b.dataset.say])));
+      };
+      sayBox.addEventListener('input', drawSay);
+      drawSay();
+      editEl.querySelector('#de-namesay-key').addEventListener('click', () => {
+        const k = editEl.querySelector('#de-namesay-keybox');
+        k.style.display = (k.style.display === 'none') ? 'block' : 'none';
+      });
+
       editEl.querySelector('#de-save').addEventListener('click', () => {
         const patch = {
           label:    editEl.querySelector('#de-label').value.trim(),
@@ -2143,9 +2338,14 @@
           aliases:  editEl.querySelector('#de-aliases').value.split(',').map(s => s.trim()).filter(Boolean),
           formerly: editEl.querySelector('#de-formerly').value.split(',').map(s => s.trim()).filter(Boolean),
           common:   editEl.querySelector('#de-common').value.trim(),
-          def:      editEl.querySelector('#de-def').value,
           extinct:  editEl.querySelector('#de-extinct').checked
         };
+        // facts1-3 are NOT in this patch — Xe saves them itself. The two name
+        // fields: absent stays absent, text that was emptied is stored '' (a clear).
+        const nameOrigin = editEl.querySelector('#de-nameorigin').value.trim();
+        const nameSay = editEl.querySelector('#de-namesay').value.split('\n').map(s => s.trim()).filter(Boolean).join('\n');
+        if (nameOrigin || t.NameOrigin != null) patch.NameOrigin = nameOrigin;
+        if (nameSay || t.NameSay != null) patch.NameSay = nameSay;
         const r = updateTag(id, patch);
         if (r.ok) {
           if (typeof toast === 'function') toast('✓ Saved: ' + patch.label, 1000);
@@ -2509,6 +2709,10 @@
       // If a chip-autocomplete dropdown is open or merge modal is open, defer
       if (document.querySelector('.tag-dd')) return;
       if (document.getElementById('mergeModal')) return;
+      // (dev1148) Xe (Facts editing) or Xs on top owns the keyboard. Both
+      // listeners are document-capture and D's registered first, so without
+      // this T/G and the arrow keys would act on D while typing in Xe.
+      if (document.getElementById('textEditorOverlay') || document.getElementById('teSlideOverlay')) return;
 
       // Right panel: confine Tab cycling, allow T/G escape only when NOT in text field
       if (inRightPanel(ae)) {
@@ -2609,6 +2813,8 @@
       if (e.key !== 'Escape') return;
       if (document.querySelector('.tag-dd')) return;
       if (document.getElementById('mergeModal')) return;
+      // (dev1148) Esc in Xe/Xs closes that layer only, not the dictionary under it.
+      if (document.getElementById('textEditorOverlay') || document.getElementById('teSlideOverlay')) return;
       e.preventDefault();
       e.stopPropagation();
       window.closeDictionary();
@@ -4527,8 +4733,8 @@
   function seedDictionary() {
     const T = [];
     T.push({ _salMeta: true, _tagsVersion: 1,
-      _salColOrder: ['id','label','kind','rank','parents','aliases','formerly','common','def','extinct'],
-      _salColWidths: { id:140, label:170, kind:70, rank:80, parents:200, aliases:220, formerly:170, common:140, def:320, extinct:60 }
+      _salColOrder: ['id','label','kind','rank','parents','aliases','formerly','common','facts1','facts2','facts3','NameOrigin','NameSay','extinct'],
+      _salColWidths: { id:140, label:170, kind:70, rank:80, parents:200, aliases:220, formerly:170, common:140, facts1:320, extinct:60 }
     });
     // Roots
     T.push({ id:'life',     label:'Life',     kind:'root', parents:[] });
@@ -4555,7 +4761,7 @@
     T.push({ id:'isopoda',         label:'Isopoda',         kind:'taxon', rank:'order',     parents:['malacostraca'], aliases:['isopod','isopod crustacean'] });
     T.push({ id:'caprellidae',     label:'Caprellidae',     kind:'taxon', rank:'family',    parents:['amphipoda'],
       aliases:['caprellid','caprellid amphipod','skeleton shrimp','skeleton shrimps','ghost shrimp'],
-      def:'Family of amphipod crustaceans with elongated slender bodies, typically clinging to algae or hydroids and moving in an inchworm fashion.' });
+      facts1:'<p>Family of amphipod crustaceans with elongated slender bodies, typically clinging to algae or hydroids and moving in an inchworm fashion.</p>' });
     T.push({ id:'phtisica',        label:'Phtisica',        kind:'taxon', rank:'genus',     parents:['caprellidae'] });
     T.push({ id:'phtisica-marina', label:'Phtisica marina', kind:'taxon', rank:'species',   parents:['phtisica'], common:'Skeleton shrimp' });
     T.push({ id:'liropus',         label:'Liropus',         kind:'taxon', rank:'genus',     parents:['caprellidae'] });

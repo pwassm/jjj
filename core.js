@@ -974,6 +974,29 @@ function _rehydrateFtextFromPrev(rows, prevRows) {
 }
 if (typeof module !== 'undefined' && module.exports) module.exports._rehydrateFtextFromPrev = _rehydrateFtextFromPrev;
 
+// (dev1148) The same guard for tags.json's prose fields (facts1-3, NameOrigin,
+// NameSay = tagsLib.TEXT_FIELDS). saveTags() writes the whole array from
+// memory, so a tab that loaded tags.json BEFORE another tab wrote a fact would
+// erase it with its next tag edit. A field ABSENT in memory is refilled from
+// the on-disk copy, matched by id; '' is a deliberate clear and is kept.
+function _rehydrateTagTextFromPrev(tags, prevTags, fields) {
+  if (!Array.isArray(tags) || !Array.isArray(prevTags) || !Array.isArray(fields) || !fields.length) return 0;
+  const disk = new Map();
+  for (const t of prevTags) if (t && !t._salMeta && t.id) disk.set(t.id, t);
+  if (!disk.size) return 0;
+  let n = 0;
+  for (const t of tags) {
+    if (!t || t._salMeta || !t.id) continue;
+    const d = disk.get(t.id);
+    if (!d) continue;
+    for (const f of fields) {
+      if (t[f] === undefined && typeof d[f] === 'string' && d[f].length > 0) { t[f] = d[f]; n++; }
+    }
+  }
+  return n;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports._rehydrateTagTextFromPrev = _rehydrateTagTextFromPrev;
+
 // (dev0853) ── ml.public.json: the copy the world gets ─────────────────────
 // The repo is public and GitHub Pages serves whatever is committed, so every
 // byte of ml.json was readable at https://sealifeandmore.com/ml.json — 6.2 MB
@@ -1151,6 +1174,17 @@ async function writeFileToDisk(name, jsonData) {
       const refilled = _rehydrateFtextFromPrev(jsonData, prev);
       if (refilled) console.warn('writeFileToDisk: ftext-loss guard refilled '
         + refilled + ' row(s) from disk before save (in-memory copy was ftext-stripped).');
+    } catch(e) { /* no existing file / parse fail — nothing to protect this write */ }
+  }
+  // (dev1148) tags.json: refill facts/name fields a stale in-memory copy lacks.
+  if (name === 'tags.json' && Array.isArray(jsonData)
+      && window.tagsLib && Array.isArray(window.tagsLib.TEXT_FIELDS)) {
+    try {
+      const cur = await dir.getFileHandle(name, {create:false});
+      const prev = JSON.parse(await (await cur.getFile()).text());
+      const refilled = _rehydrateTagTextFromPrev(jsonData, prev, window.tagsLib.TEXT_FIELDS);
+      if (refilled) console.warn('writeFileToDisk: tags.json guard refilled '
+        + refilled + ' facts/name field(s) from disk (this tab loaded tags.json before they were written).');
     } catch(e) { /* no existing file / parse fail — nothing to protect this write */ }
   }
   try {

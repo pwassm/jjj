@@ -1130,8 +1130,9 @@ async function _showShareableMenu() {
   void _smPlayableN;
   // (dev0400) Resolve a blob entry's dictionary-tag text once tagsLib exists.
   // Caches on first success; retries (leaves tagBlob null) while tags are still
-  // loading. Includes label + common + aliases + def so every facet of a tag is
-  // searchable (was only label + common).
+  // loading. Includes label + common + aliases + facts so every facet of a tag is
+  // searchable (was only label + common). (dev1148) `def` became facts1-3 +
+  // NameOrigin, read through tagsLib.factsText with the HTML stripped.
   // (dev0420) tagsLib (the API object) is assigned synchronously at script load,
   // but its DATA only fills in after the async tags.json fetch resolves. The
   // public greeting menu opens BEFORE that fetch lands, so "the object exists"
@@ -1149,7 +1150,7 @@ async function _showShareableMenu() {
       tb += ' ' + (t.label || '') + ' ' + (t.common || '')
           + ' ' + (Array.isArray(t.aliases) ? t.aliases.join(' ') : '')
           + ' ' + (Array.isArray(t.formerly) ? t.formerly.join(' ') : '')
-          + ' ' + (t.def || '');
+          + ' ' + (window.tagsLib.factsText ? window.tagsLib.factsText(t) : '');
       if (t.kind === 'taxon') taxon = true;
     });
     e.tagBlob = window.salFold(tb);   // (dev0855) same fold as the query
@@ -3394,7 +3395,7 @@ async function _showShareableMenu() {
       // (common || label): clicking a chip reading 'Oxyjulis californica' silently
       // typed 'senorita' and returned 9 rows where the label returns 8 — the extra
       // one a rock wrasse (Halichoeres semicinctus) that merely shares the common
-      // name in its title. A tagged row's tagBlob holds label+common+aliases+def,
+      // name in its title. A tagged row's tagBlob holds label+common+aliases+facts,
       // so the label still finds every row carrying the tag, and only that.
       _smSuggEl.innerHTML = sug.map(t => '<span class="sm-chip" data-q="' + _smEsc(t.label) + '">' + _smEsc(t.label) + '</span>').join('');
       _smSuggEl.querySelectorAll('.sm-chip').forEach(c =>
