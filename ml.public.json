@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1793389025017,
+    "_salPushTime": 1793424405376,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -90,10 +90,10 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "UID",
+      "col": "DateAdded",
       "dir": "desc"
     },
-    "_salGsize": 3,
+    "_salGsize": 2,
     "_salViews": {
       "view1": {
         "name": "view1",
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1793389025017
+    "_salSavedAt": 1793424405376
   },
   {
     "UID": "1",
@@ -54923,7 +54923,7 @@
     "Mode": "L",
     "DictSize": "623",
     "UOD": "1",
-    "cell": ""
+    "cell": "2b"
   },
   {
     "UID": "2517",
@@ -57363,7 +57363,7 @@
     "vidLength": "0:58",
     "VidRange": "14.025 44",
     "VidComment": "",
-    "cell": ""
+    "cell": "2a"
   },
   {
     "UID": "2658",
@@ -57382,7 +57382,7 @@
     "VidAuthor": "@cadiveguy",
     "Mode": "L",
     "ftext": "",
-    "cell": "",
+    "cell": "1b",
     "vidLength": "3:49",
     "VidRange": "36.619 22, 100.388 26",
     "VidComment": ", "
@@ -57404,7 +57404,7 @@
     "VidAuthor": "@NatGeoAnimals",
     "Mode": "L",
     "ftext": "",
-    "cell": "",
+    "cell": "1a",
     "vidLength": "1:40",
     "VidRange": "1 80",
     "VidComment": ""
@@ -57843,7 +57843,7 @@
     "vidLength": "0:17",
     "Mode": "P",
     "DictSize": "0",
-    "cell": "1b"
+    "cell": ""
   },
   {
     "UID": "2685",
@@ -57859,11 +57859,11 @@
     "vidLength": "0:08",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "1c"
+    "cell": ""
   },
   {
     "UID": "2686",
-    "cell": "2a",
+    "cell": "",
     "show": "1",
     "VidRange": "text",
     "ftext": "<p>D<strong>igenean trematode metacercaria</strong>&nbsp;(a parasitic flatworm larva)</p><p></p><ul><li><p><strong>Role of the jellyfish host:</strong>&nbsp;Scyphozoan jellyfish like&nbsp;<em>Aurelia</em>&nbsp;commonly serve as second intermediate hosts (or paratenic hosts) for marine digenean trematodes. The free-swimming larval stage (cercaria) penetrates the gelatinous mesoglea of the ephyra or young medusa, where it transforms into an active or unencysted metacercaria.</p><p></p></li><li><p><strong>Life cycle:</strong>&nbsp;The parasite remains alive and mobile inside the jellyfish tissue without killing it immediately. When a medusivorous or planktivorous fish (the definitive host) eats the infected ephyra or jellyfish, the metacercaria matures into an adult reproductive worm inside the fish's digestive tract.</p><p></p></li><li><p><strong>Size:</strong>&nbsp;At approximately 0.1 mm to 0.2 mm (100–200 µm) in length, it fits within the expected size range of newly penetrated trematode cercariae/metacercariae developing inside cnidarian tissue.</p><p></p></li></ul>",
@@ -57875,7 +57875,7 @@
   },
   {
     "UID": "2687",
-    "cell": "2b",
+    "cell": "",
     "show": "1",
     "VidRange": "text",
     "ftext": "<p>Digenean flatworms have an obligate, multi-host life cycle:</p><p></p><ol><li><p><strong>First intermediate host:</strong> A marine mollusc (usually a specific gastropod or bivalve snail).<a target=\"_blank\" rel=\"noopener\" href=\"https://www.parasite-journal.org/articles/parasite/full_html/2016/01/parasite150043/parasite150043.html\">parasite-journal</a></p></li><li><p><strong>Second intermediate host:</strong> Gelatinous zooplankton (such as <em>Aurelia</em> ephyrae/medusae).<a target=\"_blank\" rel=\"noopener\" href=\"https://www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2022.942094/full\">frontiersin</a></p></li><li><p><strong>Definitive host:</strong> A vertebrate (typically a teleost fish).</p></li></ol><p></p><p>Survival impact depends on <strong>parasite burden</strong> and <strong>anatomical location</strong>:</p><ul><li><p><strong>Low burden (1–2 worms):</strong> Minimal direct mortality. Digenean metacercariae are adapted to keep intermediate hosts alive so that they can eventually be eaten by a fish. Jellyfish mesoglea is low-cost tissue with high regenerative capacity.</p></li><li><p><strong>Locomotor and sensory impairment:</strong> Because this worm is located immediately adjacent to the rhopalium (the ephyra's primary pacemaker and gravity/light sensory hub), localized tissue disruption can cause asymmetrical pulsation, impaired swimming balance, or delayed bell contraction.</p></li><li><p><strong>Heavy burden:</strong> Multiple penetrating cercariae can cause severe mesogleal lysis, arm deformation, reduced feeding efficiency on plankton, and secondary bacterial infections, significantly lowering the ephyra's chance of reaching the adult medusa stage.</p></li></ul>",
@@ -57887,7 +57887,7 @@
   },
   {
     "UID": "2688",
-    "cell": "2c",
+    "cell": "",
     "show": "1",
     "VidRange": "text",
     "ftext": "<h2>Digenean</h2><ul><li><p><strong>Pronunciation:</strong></p><ul><li><p>Phonetic: <strong>dye-JEEN-ee-un</strong> or <strong>dih-JEEN-ee-un</strong><a target=\"_blank\" rel=\"noopener\" href=\"https://www.merriam-webster.com/medical/Digenea\">merriam-webster</a></p></li><li><p>IPA: /<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"http://daɪˈdʒiː.ni\">daɪˈdʒiː.ni</a>.ən/ or /<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"http://dɪˈdʒiː.ni\">dɪˈdʒiː.ni</a>.ən/</p></li></ul></li><li><p><strong>Word Origin:</strong></p><ul><li><p>Formed from the subclass name <strong>Digenea</strong> plus the English suffix <em>-an</em> (denoting belonging or pertaining to).oed+1</p></li><li><p>Ultimately derived from Ancient Greek:</p><ul><li><p><strong>διˊς\\delta\\text{ί}\\varsigmaδιˊς (<em>dis</em>)</strong> = \"twice\" or \"double\"</p></li><li><p><strong>γεˊνoς\\gamma\\text{έ}\\nu\\text{o}\\varsigmaγεˊνoς (<em>genos</em>)</strong> = \"birth,\" \"race,\" or \"generation\"</p></li></ul></li><li><p><strong>Literal meaning:</strong> <em>\"Two generations\"</em> or <em>\"two-born\"</em>, referring to their obligate life cycle that alternates between sexual reproduction in a definitive vertebrate host and asexual reproduction inside a molluscan intermediate host.</p></li></ul></li></ul>",
@@ -57899,7 +57899,7 @@
   },
   {
     "UID": "2689",
-    "cell": "3a",
+    "cell": "",
     "show": "1",
     "VidRange": "text",
     "ftext": "<h2>Trematode</h2><ul><li><p><strong>Pronunciation:</strong></p><ul><li><p>Phonetic: <strong>TREM-uh-tohd</strong> (common US/UK) or <strong>TREE-muh-tohd</strong>oed+1</p></li><li><p>IPA: /<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"http://ˈtrɛm.ə.to\">ˈtrɛm.ə.to</a>ʊd/ or /<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"http://ˈtriː.mə.to\">ˈtriː.mə.to</a>ʊd/</p></li></ul></li><li><p><strong>Word Origin:</strong></p><ul><li><p>Borrowed into English in the 1830s via the taxonomic class name <strong>Trematoda</strong> (coined by Johann Karl Wilhelm Illiger in 1811).oed+1</p></li><li><p>Derived from Ancient Greek:</p><ul><li><p><strong>τρη~μα\\tau\\rho\\tilde{\\eta}\\mu\\alphaτρη~​μα (<em>trêma</em>, stem <em>trēmat-</em>)</strong> = \"hole,\" \"perforation,\" or \"orifice\"<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wiktionary.org/wiki/trematode\">wiktionary</a></p></li><li><p><strong>−ωδης-\\omega\\delta\\eta\\varsigma−ωδης (<em>-ōdēs</em>)</strong> / <strong>-ode\\text{-ode}-ode</strong> = \"having the form of,\" \"resembling,\" or \"full of\"<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wiktionary.org/wiki/trematode\">wiktionary</a></p></li></ul></li><li><p><strong>Literal meaning:</strong> <em>\"Having holes\"</em> or <em>\"perforated ones\"</em>, describing the distinct suction discs (the oral and ventral suckers) on their bodies, which early naturalists perceived as hollow apertures or pores.<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wiktionary.org/wiki/trematode\">wiktionary</a></p></li></ul></li></ul>",
@@ -57914,7 +57914,7 @@
   },
   {
     "UID": "2690",
-    "cell": "3b",
+    "cell": "",
     "show": "1",
     "VidRange": "text",
     "ftext": "<h2>Metacercaria</h2><ul><li><p><strong>Pronunciation:</strong></p><ul><li><p>Singular: <strong>MET-uh-ser-KAIR-ee-uh</strong>merriam-webster+1</p><ul><li><p>IPA: /ˌmɛt.ə.sərˈkɛər.i.ə/</p></li></ul></li><li><p>Plural (<em>metacercariae</em>): <strong>MET-uh-ser-KAIR-ee-eye</strong> or <strong>MET-uh-ser-KAIR-ee-ee</strong>collinsdictionary+1</p><ul><li><p>IPA: /ˌmɛt.ə.sərˈkɛər.i.aɪ/ or /ˌmɛt.ə.sərˈkɛər.i.iː/</p></li></ul></li></ul></li><li><p><strong>Word Origin:</strong></p><ul><li><p>A 20th-century New Latin scientific compound formed from:</p><ul><li><p><strong>μϵτα-\\mu\\epsilon\\tau\\alpha\\text{-}μϵτα- (<em>meta-</em>)</strong> = \"after,\" \"later,\" or \"beyond\"</p></li><li><p><strong>cercaria</strong> = the preceding, free-swimming larval stage with a tail.merriam-webster+2</p><ul><li><p><em>Cercaria</em> itself comes from Ancient Greek <strong>κεˊρκoς\\kappa\\text{έ}\\rho\\kappa\\text{o}\\varsigmaκεˊρκoς (<em>kérkos</em>)</strong> meaning \"tail\", plus the New Latin diminutive suffix <em>-aria</em>.</p></li></ul></li></ul></li><li><p><strong>Literal meaning:</strong> <em>\"The stage after the tailed larva\"</em>—the post-cercarial stage reached after the parasite penetrates its intermediate host (like the ephyra), sheds its tail, and transforms into the resting or unencysted infective form.</p></li></ul></li></ul>",
@@ -57938,7 +57938,7 @@
     "vidLength": "0:17",
     "Mode": "P",
     "DictSize": "0",
-    "cell": "1a"
+    "cell": ""
   },
   {
     "UID": "2692",
@@ -57951,7 +57951,8 @@
     "ftextSize": "12230",
     "FtextJunk": "0",
     "DictSize": "0",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2693",
@@ -57969,7 +57970,8 @@
     "MPix": "1.6",
     "Mode": "L",
     "ftext": "",
-    "VidTitle": "Loki"
+    "VidTitle": "Loki",
+    "cell": ""
   },
   {
     "UID": "2694",
@@ -57985,7 +57987,8 @@
     "VidTitle": "【フウセンウオ】 ナメダンゴも１匹。かわいい泳ぎ＆食事あり＜短縮版＞ @浅虫水族館（青森県）;Balloon lumpfish",
     "VidAuthor": "@%E3%82%A2%E3%83%8B%E3%83%9E%E3%83%AB%E3%82%B9%E3%82%AF%E3%82%A8%E3%82%A2",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2695",
@@ -58003,7 +58006,8 @@
     "VidTitle": "We Were Wrong About Sulforaphane and Astaxanthin?",
     "VidAuthor": "@DrBradStanfield",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2696",
@@ -58021,7 +58025,8 @@
     "VidTitle": "It’s Weird, But Tendon Training Makes You Stronger Than Lifting! (The Science Explained)",
     "VidAuthor": "@UsaUser-m1l",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2697",
@@ -58039,7 +58044,8 @@
     "VidTitle": "I Replaced Stretching With These 5 Isometric Holds",
     "VidAuthor": "@StrengthMode101",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2698",
@@ -58056,7 +58062,8 @@
     "VidAuthor": "@MBARIvideo",
     "Mode": "L",
     "ftext": "",
-    "FTLsaved": "9"
+    "FTLsaved": "9",
+    "cell": ""
   },
   {
     "UID": "2699",
@@ -58074,7 +58081,8 @@
     "VidTitle": "I’m Obsessed with THIS Heart Health Food",
     "VidAuthor": "@nicknorwitzMDPhD",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2700",
@@ -58092,7 +58100,8 @@
     "VidTitle": "Coconut Crabs Taste Like Lobster. So Why Don’t We Eat Them ?",
     "VidAuthor": "@VynkoFiles",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2701",
@@ -58110,7 +58119,8 @@
     "VidTitle": "Keith Baar's Tendon Protocol: What's Actually Tested",
     "VidAuthor": "@andysfieldnotes",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2702",
@@ -58128,7 +58138,8 @@
     "VidTitle": "Better Than Emil Abrahamsson’s 'No Hangs': A 3-Minute Alternative Protocol | ft. Keith Baar",
     "VidAuthor": "@thenuggetclimbing",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2703",
@@ -58146,7 +58157,8 @@
     "DictSize": "0",
     "VidTitle": "Meet Loki, the Horned Deep-Sea Cucumber #Shorts",
     "VidAuthor": "@ScienceCornerNews",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2704",
@@ -58164,7 +58176,8 @@
     "DictSize": "0",
     "VidTitle": "The Ending Will Shock You 😮 #shorts",
     "VidAuthor": "@aucklandttofficial",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2705",
@@ -58182,7 +58195,8 @@
     "DictSize": "0",
     "VidTitle": "This Giant Deep-Sea Bug Stopped Eating for 5 Years",
     "VidAuthor": "@lightlesslab",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2706",
@@ -58200,7 +58214,8 @@
     "DictSize": "0",
     "VidTitle": "Çocuklarımız Sağlıklı Büyüsün — Doç. Dr. Ediz Yeşilkaya",
     "VidAuthor": "@cocukendokrinoloji",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2707",
@@ -58220,7 +58235,8 @@
     "VidAuthor": "@BBC",
     "Mode": "L",
     "ftext": "",
-    "VQ": "9"
+    "VQ": "9",
+    "cell": ""
   },
   {
     "UID": "2708",
@@ -58238,7 +58254,8 @@
     "VidTitle": "Flatworm Penis Fencing | World's Weirdest",
     "VidAuthor": "@NatGeoAnimals",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2709",
@@ -58256,7 +58273,8 @@
     "VidTitle": "Species Spotlight - Candy-striped flatworm (Prostheceraeus vittatus)",
     "VidAuthor": "@GHMarineBio",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2710",
@@ -58275,7 +58293,8 @@
     "VidAuthor": "@GHMarineBio",
     "Mode": "L",
     "ftext": "",
-    "FTLsaved": "9"
+    "FTLsaved": "9",
+    "cell": ""
   },
   {
     "UID": "2711",
@@ -58292,7 +58311,8 @@
     "VidAuthor": "Sandro Bocci",
     "Mode": "L",
     "ftext": "",
-    "FTLsaved": "9"
+    "FTLsaved": "9",
+    "cell": ""
   },
   {
     "UID": "2712",
@@ -58306,7 +58326,8 @@
     "FtextJunk": "0",
     "DictSize": "0",
     "MPix": "2.4",
-    "Mode": "L"
+    "Mode": "L",
+    "cell": ""
   },
   {
     "UID": "2713",
@@ -58322,7 +58343,8 @@
     "FtextJunk": "0",
     "DictSize": "528",
     "MPix": "2.4",
-    "Mode": "L"
+    "Mode": "L",
+    "cell": ""
   },
   {
     "UID": "2714",
@@ -58337,7 +58359,8 @@
     "ftextSize": "27141",
     "FtextJunk": "0",
     "DictSize": "528",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2714_d",
@@ -58386,5 +58409,141 @@
     "DictSize": "528",
     "ftext": "",
     "cell": ""
+  },
+  {
+    "UID": "2715",
+    "link": "https://youtu.be/g3awDijFtYQ",
+    "show": "1",
+    "DateAdded": "2026-10-31 04:49:36",
+    "DateModified": "2026-10-31 05:06:33",
+    "tags": [
+      "lybia-tessellata"
+    ],
+    "Mute": "0",
+    "ftextSize": "752",
+    "FtextJunk": "10",
+    "DictSize": "481",
+    "VidTitle": "This crab has a jealous rival | Parenthood - BBC",
+    "VidAuthor": "@BBC",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "5:27"
+  },
+  {
+    "UID": "2716",
+    "link": "https://youtu.be/dADZ6vIV8YI",
+    "show": "1",
+    "DateAdded": "2026-10-31 05:08:05",
+    "DateModified": "2026-10-31 05:10:01",
+    "tags": [
+      "lybia-tessellata"
+    ],
+    "Mute": "0",
+    "ftextSize": "1398",
+    "FtextJunk": "5",
+    "DictSize": "481",
+    "VidTitle": "This Tiny Crab Can Knock Out Predators Twice Its Size | Natural Born Rebels | BBC Earth",
+    "VidAuthor": "@bbcearth",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2717",
+    "link": "https://youtu.be/BUdpqFQYeZA",
+    "show": "1",
+    "DateAdded": "2026-10-31 05:08:22",
+    "DateModified": "2026-10-31 05:10:02",
+    "tags": [
+      "lybia-tessellata"
+    ],
+    "Mute": "0",
+    "ftextSize": "1671",
+    "FtextJunk": "5",
+    "DictSize": "481",
+    "VidTitle": "Boxer Crab Fights off Pufferfish",
+    "VidAuthor": "@naturepbs",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2718",
+    "link": "https://youtu.be/A2rh-x1l84s",
+    "show": "1",
+    "DateAdded": "2026-10-31 05:09:15",
+    "DateModified": "2026-10-31 05:10:03",
+    "tags": [
+      "lybia-tessellata"
+    ],
+    "Mute": "0",
+    "Mode": "P",
+    "ftextSize": "740",
+    "FtextJunk": "10",
+    "DictSize": "481",
+    "VidTitle": "Nature Boxer and Cheerleader | Boxer Crab / Pom-pom Crab",
+    "VidAuthor": "@nahe_j",
+    "ftext": "",
+    "vidLength": "1:00"
+  },
+  {
+    "UID": "2719",
+    "link": "https://youtu.be/AbFCWH6zKaE",
+    "show": "1",
+    "DateAdded": "2026-10-31 05:18:06",
+    "DateModified": "2026-10-31 05:18:09",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "240",
+    "FtextJunk": "32",
+    "DictSize": "0",
+    "VidTitle": "pom pom crab eating bristle worm",
+    "VidAuthor": "@craigdoc6656",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2720",
+    "link": "https://youtu.be/xjtAv-plXRw",
+    "show": "1",
+    "DateAdded": "2026-10-31 05:20:00",
+    "DateModified": "2026-10-31 05:22:47",
+    "tags": [],
+    "Mute": "0",
+    "Mode": "P",
+    "ftextSize": "8472",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "VidTitle": "pom pom crab using bristle worm as a pom pom",
+    "VidAuthor": "@craigdoc6656",
+    "ftext": ""
+  },
+  {
+    "UID": "2721",
+    "link": "https://packaged-media.redd.it/d1rpykt6apkf1/pb/m2-res_854p.mp4?m=DASHPlaylist.mpd&var=sgpssan&v=1&e=1793440800&s=d525e9b430d300c8f2daa103569f08949714fec5",
+    "show": "1",
+    "DateAdded": "2026-10-31 05:24:01",
+    "DateModified": "2026-10-31 05:25:36",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "5706",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "MPix": "V",
+    "vidLength": "0:21",
+    "ftext": ""
+  },
+  {
+    "UID": "2722",
+    "link": "https://www.reddit.com/r/ReefTank/comments/1mxsg3q/pom_pom_crab_holding_bristle_worms_instead_of/",
+    "show": "1",
+    "DateAdded": "2026-10-31 05:26:02",
+    "DateModified": "2026-10-31 05:26:45",
+    "tags": [],
+    "ltype": "v",
+    "Mute": "0",
+    "linkpage": "https://www.reddit.com/r/ReefTank/comments/1mxsg3q/pom_pom_crab_holding_bristle_worms_instead_of/",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
   }
 ]
