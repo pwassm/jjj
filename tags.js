@@ -1302,10 +1302,13 @@
     // isn't lowered again on every load. Nothing is written until the next save.
     // (dev1173) Same reason: clear the split-authorship aliases already stored.
     // Repeats harmlessly on each load until the next save writes them out.
+    // (dev1174) The author and year they held move to `authority` (D: Named by/date).
     tagsArr.forEach(t => {
       if (!Array.isArray(t.aliases) || !t.aliases.length) return;
-      const c = cleanAliasList(t.aliases, t.label);
+      const sink = {};
+      const c = cleanAliasList(t.aliases, t.label, sink);
       if (c.length !== t.aliases.length || c.some((x, i) => x !== t.aliases[i])) t.aliases = c;
+      if (sink.authority && !t.authority) t.authority = sink.authority;
     });
     if (tagsMeta && !tagsMeta._commonCaseDone) {
       tagsArr.forEach(t => { if (t.common) t.common = commonCase(t.common, t.label); });
@@ -1420,29 +1423,36 @@
   // stripAuthorship can't see that (no year or "(A" in the first piece), so with
   // the tag's label in hand: drop label+author, then author-only pieces until a
   // year. A real alias after the year (Cockatiel, Wobbegong) is kept.
+  // (dev1174) What it drops is the authority: given a sink object, the pieces
+  // go back together there as "Rosenblatt & Cohen, 1986" (WoRMS's own format).
   const AUTH_WORD = /^(?:\(?[A-ZÀ-Þ][A-Za-zÀ-ÿ.'’-]*\)?|&|ex|in|et|de|del|da|van|von|der|f\.)$/;
   function isAuthorTail(s) {
     const w = String(s || '').trim().split(/\s+/);
     return w[0] !== '' && /^[(A-ZÀ-Þ]/.test(w[0]) && w.every(x => AUTH_WORD.test(x));
   }
-  function dropAuthorFragments(arr, label) {
+  function dropAuthorFragments(arr, label, sink) {
     const lbl = String(label || '').trim(), lc = lbl.toLowerCase();
     const out = [];
-    let inAuth = false;
+    let inAuth = false, parts = null;
+    const close = () => { if (parts && sink && !sink.authority) sink.authority = parts.join(', '); parts = null; };
     arr.forEach(a => {
       const s = String(a == null ? '' : a).trim();
-      if (/^\(?\d{4}\)?$/.test(s)) { inAuth = false; return; }
-      if (inAuth && isAuthorTail(s)) return;
+      if (/^\(?\d{4}\)?$/.test(s)) { if (inAuth && parts) parts.push(s.replace(/[()]/g, '')); close(); inAuth = false; return; }
+      if (inAuth && isAuthorTail(s)) { parts.push(s); return; }
+      close();
       inAuth = false;
-      if (lbl && s.toLowerCase().startsWith(lc + ' ') && isAuthorTail(s.slice(lbl.length))) { inAuth = true; return; }
+      if (lbl && s.toLowerCase().startsWith(lc + ' ') && isAuthorTail(s.slice(lbl.length))) {
+        inAuth = true; parts = [s.slice(lbl.length).trim()]; return;
+      }
       out.push(a);
     });
+    close();
     return out;
   }
 
-  function cleanAliasList(arr, label) {
+  function cleanAliasList(arr, label, sink) {
     if (!Array.isArray(arr)) return [];
-    arr = dropAuthorFragments(arr, label);
+    arr = dropAuthorFragments(arr, label, sink);
     const out = [], seen = new Set();
     arr.forEach(a => {
       let s = stripAuthorship(a).replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1711,13 +1721,16 @@
       }
     }
 
+    const _sink = {};
     const rec = {
       id,
       label,
       kind: kind || 'topic',
       parents: Array.isArray(partial.parents) ? partial.parents.filter(Boolean) : [],
-      aliases: cleanAliasList(partial.aliases, label),
+      aliases: cleanAliasList(partial.aliases, label, _sink),
     };
+    const auth = String(partial.authority || _sink.authority || '').trim();
+    if (auth) rec.authority = auth;
     // (dev1148) `def` still accepted from older callers; it lands as facts1.
     const f1 = partial.facts1 || plainToHtml(partial.def);
     if (f1) rec.facts1 = f1;
@@ -1744,7 +1757,12 @@
       } else if (k === 'parents' && Array.isArray(patch.parents)) {
         t.parents = patch.parents.filter(Boolean);
       } else if (k === 'aliases' && Array.isArray(patch.aliases)) {
-        t.aliases = cleanAliasList(patch.aliases, patch.label != null ? patch.label : t.label);
+        const sink = {};
+        t.aliases = cleanAliasList(patch.aliases, patch.label != null ? patch.label : t.label, sink);
+        if (sink.authority && !t.authority && !patch.authority) t.authority = sink.authority;
+      } else if (k === 'authority') {
+        const a = String(patch.authority || '').trim();
+        if (a) t.authority = a; else delete t.authority;
       } else if (k === 'formerly') {
         t.formerly = Array.isArray(patch.formerly) ? patch.formerly : [];
       } else {
@@ -1822,7 +1840,9 @@
         aliasesAdded++;
       }
     });
-    to.aliases = cleanAliasList(mergedAliases, to.label);
+    const mSink = {};
+    to.aliases = cleanAliasList(mergedAliases, to.label, mSink);
+    if (!to.authority) { const a = mSink.authority || from.authority; if (a) to.authority = a; }
     const formerly = (to.formerly || []).concat(from.formerly || [], opts.asFormerly ? [from.label] : []);
     if (formerly.length) { to.formerly = formerly; tidyFormerly(to); }
 
@@ -3379,6 +3399,11 @@
             placeholder="older scientific names, e.g. Pleuroncodes planipes"
             style="padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#cdb;border-radius:4px;font-family:monospace;font-size:12px;font-style:italic;outline:none;">
 
+          <label style="color:#6af;padding-top:5px;" title="Who named this taxon and when (the authority). Parentheses mean it was first described in a different genus. Check taxonomy and the name-origin look-up fill it when empty.">Named by/date</label>
+          <input id="de-authority" type="text" value="${escapeAttr(t.authority || '')}"
+            placeholder="e.g. Rosenblatt &amp; Cohen, 1986 · (Linnaeus, 1758)"
+            style="padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#fff;border-radius:4px;font-family:monospace;font-size:12px;outline:none;">
+
           <label style="color:#6af;padding-top:5px;">Common name</label>
           <input id="de-common" type="text" value="${escapeAttr(t.common || '')}"
             style="padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#fff;border-radius:4px;font-family:monospace;font-size:12px;outline:none;">
@@ -3556,6 +3581,13 @@
       const applyLook = (st, r) => {
         const cur = byId.get(id);
         const v = valueOf(st, r);
+        // (dev1174) The origin look-up found who named it: fill an empty Named by/date.
+        const aBox = editEl.querySelector('#de-authority');
+        const found = st.kind === 'origin' && r && r.auth && String(r.auth.auth || '').trim();
+        if (found && cur && !cur.authority && aBox && !aBox.value.trim()) {
+          updateTag(id, { authority: found });
+          if (live()) aBox.value = found;
+        }
         if (cur && !cur[st.flagKey] && !st.typed && v && cur[st.field] !== v) updateTag(id, { [st.field]: v });
         if (!live()) return;
         if (st.edited() || st.typed) { st.note.textContent = st.edited() ? MINE : ''; return; }
@@ -3638,6 +3670,7 @@
           aliases:  editEl.querySelector('#de-aliases').value.split(',').map(s => s.trim()).filter(Boolean),
           formerly: editEl.querySelector('#de-formerly').value.split(',').map(s => s.trim()).filter(Boolean),
           common:   editEl.querySelector('#de-common').value.trim(),
+          authority: editEl.querySelector('#de-authority').value.trim(),
           extinct:  editEl.querySelector('#de-extinct').checked
         };
         // facts1-3 are NOT in this patch — Xe saves them itself. (dev1152) A name
@@ -3804,6 +3837,7 @@
             todo.forEach(x => {
               const r = res.get(x.id), cur = byId.get(x.id);
               if (r && r.draft && cur && cur.NameOrigin === undefined) { updateTag(x.id, { NameOrigin: r.draft }); n++; }
+              if (r && r.auth && r.auth.auth && cur && !cur.authority) updateTag(x.id, { authority: String(r.auth.auth).trim() });
             });
             todoSay.forEach(x => {
               const r = resSay.get(x.id), cur = byId.get(x.id);
@@ -6272,6 +6306,9 @@
           if (res._commonName) (res._commonOld || []).forEach(o => {
             if (o.toLowerCase() !== String(target.label || '').toLowerCase()) addFormerly(mostSpecificId, o);
           });
+          // (dev1174) Who named it, when the answer is the target's own name.
+          const auth = String(res.authorship || '').trim();
+          if (auth && !target.authority && sciLc === String(target.label || '').toLowerCase()) patch.authority = auth;
           // 2) Set English common name if target lacks one
           if (!target.common && !res._commonName) {
             const v = pickVernacular(res);
