@@ -18,9 +18,11 @@
  * Storage:
  *   tags.json is an array: [meta, ...tagRecords] (SAL-style)
  *   Each tag record:
- *     { id, label, kind, rank?, parents:[], aliases?:[], formerly?:[], common?:"", extinct?:false,
+ *     { id, label, kind, rank?, parents:[], aliases?:[], formerly?:[], common?:"", authority?:"",
  *       facts1?:"", facts2?:"", facts3?:"", NameOrigin?:"", NameSay?:"",
  *       NameOriginEdited?:true, NameSayEdited?:true }
+ *   authority (dev1174) = who named it and when, "Rosenblatt & Cohen, 1986" (D: Named by/date).
+ *   No extinct flag since dev1175: a taxon is extinct when its facts say "extinct".
  *   formerly (dev1116) = older scientific names the label replaced (Pleuroncodes
  *   planipes on Grimothea planipes). Searched and matched exactly like aliases,
  *   but shown as "formerly" so an old name is told apart from a common-name variant.
@@ -78,6 +80,10 @@
   }
 
   // Xe hands back '<p></p>' for an emptied editor — that is a clear, not content.
+  // (dev1175) Extinct = the word in any facts field (the old checkbox is gone).
+  function factsSayExtinct(t) {
+    return !!t && ['facts1', 'facts2', 'facts3'].some(f => /\bextinct\b/i.test(String(t[f] || '').replace(/<[^>]*>/g, ' ')));
+  }
   function isBlankHtml(h) {
     h = String(h == null ? '' : h);
     if (/<(img|video|iframe)\b/i.test(h)) return false;
@@ -696,10 +702,13 @@
       const w = who.get(j.name) || {};
       const sources = [];
       const lines = [];
-      if (a) {
-        lines.push(authoritySentence(a.auth, w));
+      // (dev1175) Who and when are the Named by/date field (`authority`, filled
+      // from a.auth by the callers). Name origin says how it was named, so of the
+      // authority only the original combination stays: "First described as …".
+      if (a && w.orig && _splitAuthority(a.auth).moved) {
+        lines.push('First described as ' + w.orig + '.');
         if (a.url) sources.push({ name: /gbif/.test(a.url) ? 'GBIF' : 'WoRMS', url: a.url });
-        if (w.q && (w.names || w.orig)) sources.push({ name: 'Wikidata', url: 'https://www.wikidata.org/wiki/' + w.q });
+        if (w.q) sources.push({ name: 'Wikidata', url: 'https://www.wikidata.org/wiki/' + w.q });
       }
       // A Wikipedia sentence that explains a word takes that word's line — it
       // says why (“which the fish resembles…”), Wiktionary only what. Taken
@@ -1310,6 +1319,28 @@
       if (c.length !== t.aliases.length || c.some((x, i) => x !== t.aliases[i])) t.aliases = c;
       if (sink.authority && !t.authority) t.authority = sink.authority;
     });
+    // (dev1175) Name origin is how a taxon was named; who and when moved to
+    // Named by/date. Strip the old look-up's "Described by …" line once (flagged,
+    // so a line Phil types later stays), keeping an original name if it gave one.
+    if (tagsMeta && !tagsMeta._originWhoDone) {
+      tagsArr.forEach(t => {
+        if (typeof t.NameOrigin !== 'string' || !/^Described by /m.test(t.NameOrigin)) return;
+        const v = t.NameOrigin.split('\n').map(l => {
+          if (!/^Described by /.test(l)) return l;
+          const m = / as ([A-Z][a-z-]+(?: [a-z-]+){1,2})\.$/.exec(l.trim());
+          return m ? 'First described as ' + m[1] + '.' : null;
+        }).filter(l => l != null).join('\n').trim();
+        if (v) t.NameOrigin = v; else delete t.NameOrigin;
+      });
+      tagsMeta._originWhoDone = true;
+    }
+    // (dev1175) The Extinct checkbox is gone: a taxon is extinct when its facts
+    // say so. A ticked box becomes "Extinct." at the top of Facts 1.
+    tagsArr.forEach(t => {
+      if (!('extinct' in t)) return;
+      if (t.extinct && !factsSayExtinct(t)) t.facts1 = plainToHtml('Extinct.') + (isBlankHtml(t.facts1) ? '' : (t.facts1 || ''));
+      delete t.extinct;
+    });
     if (tagsMeta && !tagsMeta._commonCaseDone) {
       tagsArr.forEach(t => { if (t.common) t.common = commonCase(t.common, t.label); });
       tagsMeta._commonCaseDone = true;
@@ -1737,7 +1768,7 @@
     TEXT_FIELDS.slice(1).forEach(f => { if (partial[f]) rec[f] = partial[f]; });
     if (rank) rec.rank = rank;
     if (partial.common) rec.common = commonCase(partial.common, label);
-    if (partial.extinct) rec.extinct = true;
+    if (partial.extinct && !factsSayExtinct(rec)) rec.facts1 = plainToHtml('Extinct.') + (rec.facts1 || '');
     if (Array.isArray(partial.formerly)) { rec.formerly = partial.formerly; tidyFormerly(rec); }
     enforceParentRule(rec);
     tagsArr.push(rec);
@@ -2979,7 +3010,7 @@
       const rankBadge = t.rank
         ? ' <span style="color:#555;font-size:10px;">' + t.rank + '</span>'
         : (t.kind !== 'taxon' && t.kind !== 'root' ? ' <span style="color:#555;font-size:10px;">' + t.kind + '</span>' : '');
-      const extinct = t.extinct ? ' <span style="color:#a66;font-size:9px;">†ext</span>' : '';
+      const extinct = factsSayExtinct(t) ? ' <span style="color:#a66;font-size:9px;">†ext</span>' : '';
       const aliasHint = (t.aliases || []).length
         ? ' <span style="color:#666;font-size:10px;">also: ' + escapeHtml((t.aliases || []).slice(0,3).join(', ')) + '</span>'
         : '';
@@ -3441,8 +3472,6 @@
             <div id="de-namesay-keybox" style="display:none;margin-top:6px;padding:7px 10px;background:#0d0d1e;border:1px solid #345;border-radius:5px;color:#aab;font:11px/1.6 system-ui,sans-serif;">${NAMESAY_KEY_HTML}</div>
           </div>
 
-          <label style="color:#6af;padding-top:5px;">Extinct</label>
-          <label style="padding-top:5px;"><input id="de-extinct" type="checkbox" ${t.extinct ? 'checked' : ''}> <span style="color:#888;font-size:11px;">extinct taxon</span></label>
         </div>
 
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
@@ -3670,8 +3699,7 @@
           aliases:  editEl.querySelector('#de-aliases').value.split(',').map(s => s.trim()).filter(Boolean),
           formerly: editEl.querySelector('#de-formerly').value.split(',').map(s => s.trim()).filter(Boolean),
           common:   editEl.querySelector('#de-common').value.trim(),
-          authority: editEl.querySelector('#de-authority').value.trim(),
-          extinct:  editEl.querySelector('#de-extinct').checked
+          authority: editEl.querySelector('#de-authority').value.trim()
         };
         // facts1-3 are NOT in this patch — Xe saves them itself. (dev1152) A name
         // field goes in only when its box differs from what is stored, and on a
