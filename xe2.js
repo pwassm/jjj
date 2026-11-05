@@ -645,6 +645,27 @@
     return html;
   }
 
+  // (dev1168) A PLAIN-TEXT paste never reaches _transformPastedHTML, so literal
+  // <em>…</em> typed into AI-written text went in as visible tags (UID 2727). Only
+  // when such tags are present, send it down the HTML path, where the sanitizer's
+  // _literalTagsToReal turns them into real formatting. pasteHTML gets no event, so
+  // its nested handlePaste sees no clipboardData and returns false (no recursion).
+  // Tiptap's **bold** paste rule still runs: pasteHTML marks the paste the same way.
+  function _handlePlainPasteLiteralTags(view, event) {
+    var cd = event && event.clipboardData;
+    if (!cd || cd.getData('text/html')) return false;
+    var text = cd.getData('text/plain');
+    if (!text || !/<\/?(?:em|i|b|strong|entity)>/i.test(text)) return false;
+    if (view.state.selection.$from.parent.type.spec.code) return false;
+    var esc = document.createElement('div');
+    var html = text.split(/(?:\r\n?|\n)+/).filter(Boolean).map(function (line) {
+      esc.textContent = line;
+      return '<p>' + esc.innerHTML + '</p>';
+    }).join('');
+    view.pasteHTML(html);
+    return true;
+  }
+
   // (dev0732) A <video muted> only STARTS muted when an HTML PARSER built it.
   // Verified in this Chrome: innerHTML'd `<video muted>` → .muted === true, but
   // createElement + setAttribute('muted') → .muted === FALSE (the content
@@ -668,7 +689,7 @@
       extensions: buildExtensions(),
       content: raw || '',
       editable: opts.editable !== false,
-      editorProps: Object.assign({ transformPastedHTML: _transformPastedHTML }, opts.editorProps),
+      editorProps: Object.assign({ transformPastedHTML: _transformPastedHTML, handlePaste: _handlePlainPasteLiteralTags }, opts.editorProps),
     });
     _addSlotKeeper(editor);   // (dev1044)
     // Once for the initial render, then after every doc change — ProseMirror

@@ -9197,8 +9197,24 @@ function _sanitizePastedHtml(html) {
     });
   }
 
-  const out = body.innerHTML.trim();
+  const out = _literalTagsToReal(body.innerHTML.trim());
   return typeof _linkifyHtml === 'function' ? _linkifyHtml(out) : out;
+}
+
+// (dev1168) AI-written text often carries formatting tags AS TEXT — "(<em>Polybius
+// henslowii</em>)", even a mangled "<entity>Polybius henslowii</em>". Pasted, they
+// land in ftext escaped and show on screen as literal tags (UID 2727). Matched pairs
+// become real italic/bold; strays are dropped. Works only on text between real tags,
+// so an attribute value (alt="…") is never touched.
+function _literalTagsToReal(html) {
+  if (!html || !/&lt;\/?(?:em|i|b|strong|entity)&gt;/i.test(html)) return html || '';
+  return html.replace(/(<[^>]+>)|([^<]+)/g, (m, tag, text) => {
+    if (tag !== undefined) return tag;
+    return text
+      .replace(/&lt;(?:em|i|entity)&gt;([\s\S]*?)&lt;\/(?:em|i|entity)&gt;/gi, '<em>$1</em>')
+      .replace(/&lt;(?:b|strong)&gt;([\s\S]*?)&lt;\/(?:b|strong)&gt;/gi, '<strong>$1</strong>')
+      .replace(/&lt;\/?(?:em|i|b|strong|entity)&gt;/gi, '');
+  });
 }
 
 // (dev0341) Plain-text -> minimal HTML preserving every line break as its own
