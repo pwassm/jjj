@@ -12243,7 +12243,8 @@ const T_HOTKEY_HELP = [
     ['m', 'Mark4Grid chooser (⇧M toggles htMl reserve — upper-left cell → HTML slide)'],
     ['H', 'Help — species / HALO taxonomy pages'],
     ['Q', 'Local-media table (q.html, opens in a new tab)'],
-    ['R', 'Slideshow — Review mode'],
+    ['r', 'I screen'],
+    ['⇧R', 'Slideshow — Review mode'],
   ]},
   { group: 'Rows & cells', keys: [
     ['↑ / ↓', 'Move the row focus (respects the active filter + sort)'],
@@ -12369,8 +12370,16 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); isHelpOpen() ? closeHelp() : openHelp();
     return;
   }
-  // r → open ssmenu in Review mode (local-media triage; see localmedia-design.md)
-  if (e.key === 'r' || e.key === 'R') {
+  // (dev1165) r → the I screen, same as bare i. Only on the bare Table: this
+  // listener also runs under V and the staging screens, which shouldn't jump.
+  if (e.key === 'r') {
+    if (!_tScreenActive()) return;
+    e.preventDefault();
+    if (typeof window._hkStagingToggle === 'function') window._hkStagingToggle('i');
+    return;
+  }
+  // (dev1165) R (capital only) → open ssmenu in Review mode (local-media triage; see localmedia-design.md)
+  if (e.key === 'R') {
     e.preventDefault();
     if (typeof slideshowOpenSourceFolder === 'function') {
       slideshowOpenSourceFolder(true, 'review');
