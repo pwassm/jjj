@@ -1,7 +1,9 @@
 [
   {
     "_salMeta": true,
-    "_salColWidths": {},
+    "_salColWidths": {
+      "Lock": 64
+    },
     "_salColOrder": [
       "gname",
       "ctxt",
@@ -308,6 +310,20 @@
     "ctype": "t",
     "active": "3",
     "Label": "Grids",
+    "Lock": "1"
+  },
+  {
+    "Kind": "grids",
+    "gname": "Grids_d",
+    "ctxt": "",
+    "cells": 0,
+    "ss": "",
+    "Zoom": "",
+    "DateAdded": "2026-11-05 05:33:06",
+    "DateModified": "2026-11-05 05:34:19",
+    "ctype": "t",
+    "active": "3.1",
+    "Label": "Fun",
     "Lock": "1"
   },
   {
