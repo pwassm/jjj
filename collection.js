@@ -1116,14 +1116,20 @@ var _cFocus     = null;
 var _cPending   = null;
 var _cChecked   = new Set();
 var _cGnameFilter = '';  // live substring filter on gname column in C-screen
-// (dev0931) One-letter ctype filter: '' (off) or g/f/q/t/o. `g` is the GRIDS
-// bucket and deliberately includes the blank ctype — blank is the default and
-// most rows carry it, so a `g` that excluded blanks would show almost nothing.
+// (dev0931) ctype filter. `g` is the GRIDS bucket and deliberately includes the
+// blank ctype — blank is the default and most rows carry it.
+// (dev1167) Now the C toolbar's dropdown: '' = All, g/u/f/t = that list's ACTIVE
+// rows (a positive `active`, the same test the menu uses), q/o = every row of
+// that ctype (they have no list to be active in), off = every row not active.
 var _cCtypeFilter = '';
 function _cCtypeMatches(r) {
-  if (!_cCtypeFilter) return true;
+  const f = _cCtypeFilter;
+  if (!f) return true;
   const v = String((r && r.ctype) || '').trim().toLowerCase();
-  return _cCtypeFilter === 'g' ? (v === '' || v === 'g') : v === _cCtypeFilter;
+  const on = parseFloat(String((r && r.active) == null ? '' : r.active).trim()) > 0;
+  if (f === 'off') return !on;
+  if (f === 'q' || f === 'o') return v === f;
+  return on && (f === 'g' ? (v === '' || v === 'g') : v === f);
 }
 var _cMeta      = { _salMeta:true, _salColWidths:{}, _salColOrder:null, _salHidden:[],
                     _salViews:{}, _salActiveView:null };
@@ -1405,6 +1411,7 @@ function closeCScreen() {
   _cMode = false;
   _cGnameFilter = '';  // clear gname filter on exit
   _cCtypeFilter = '';  // (dev0931) …and the ctype filter with it
+  { const s = document.getElementById('cTypeSel'); if (s) s.value = ''; }
   if (_tSave) {
     data=_tSave.data; cols=_tSave.cols; hidden=_tSave.hidden; colWidths=_tSave.colWidths;
     sortCol=_tSave.sortCol; sortDir=_tSave.sortDir; sortedIdx=_tSave.sortedIdx;
@@ -1424,35 +1431,21 @@ function cUpdateStatus() {
     +(hidden.size?' ('+hidden.size+' hidden)':'')
     +(rowFilter?' 🔍 '+vis+'/'+total:'')
     +(_cGnameFilter?' 🔍 gname:"'+_cGnameFilter+'"':'')
-    +(_cCtypeFilter?' 🔍 ctype:'+_cCtypeFilter:'')
+    +(_cCtypeFilter?' 🔍 '+(document.getElementById('cTypeSel')?.selectedOptions[0]?.text||_cCtypeFilter):'')
     +(checkedRows.size?' · '+checkedRows.size+' ✓':'');
 }
 
-// (dev0931) ctype filter buttons — g f q t o. Five toggles, one active at a
-// time: clicking the lit one turns it off. They filter the C table to a single
-// KIND of row, which is what makes ctype worth having as a column at all.
+// (dev1167) The ctype dropdown replaces dev0931's g f q t o buttons. It blurs
+// after a pick because C's hotkeys (M, Enter, T, G…) stand down while a SELECT
+// has focus.
 (function wireCCtypeFilter() {
-  const LETTERS = ['g', 'f', 'q', 't', 'o'];
-  const btns = {};
-  LETTERS.forEach(L => { btns[L] = document.getElementById('cType' + L.toUpperCase() + 'Btn'); });
-  if (!btns.g) return;
-  function paint() {
-    LETTERS.forEach(L => {
-      const b = btns[L]; if (!b) return;
-      const on = (_cCtypeFilter === L);
-      b.style.borderColor = on ? '#fd6' : '#8a9';
-      b.style.color       = on ? '#fd6' : '#8a9';
-      b.style.background  = on ? 'rgba(80,60,0,0.45)' : 'rgba(20,30,25,0.3)';
-    });
-  }
-  LETTERS.forEach(L => {
-    const b = btns[L]; if (!b) return;
-    b.addEventListener('click', () => {
-      _cCtypeFilter = (_cCtypeFilter === L) ? '' : L;
-      paint(); buildSort(); render(); cUpdateStatus();
-    });
+  const sel = document.getElementById('cTypeSel');
+  if (!sel) return;
+  sel.addEventListener('change', () => {
+    _cCtypeFilter = sel.value;
+    sel.blur();
+    buildSort(); render(); cUpdateStatus();
   });
-  paint();
 })();
 
 // Filter Gname — live substring filter on gname column

@@ -32,7 +32,6 @@ updateShowAllBtn = function() {
 // Wire C-toolbar buttons
 document.getElementById('cCloseBtn').addEventListener('click', closeCScreen);
 document.getElementById('cGridBtn').addEventListener('click', ()=>{ closeCScreen(); gridShow(); });
-document.getElementById('cMakeActiveBtn').addEventListener('click', cMakeActive);
 document.getElementById('cDeleteBtn').addEventListener('click', cDeleteSelected);
 document.getElementById('cDuplicateBtn').addEventListener('click', cDuplicateSelected);
 document.getElementById('cShowAllBtn').addEventListener('click', ()=>{
@@ -1237,15 +1236,17 @@ async function _showShareableMenu() {
                      && _smOrd(g.active) > 0;
   const _cType = g => String(g.ctype || '').trim().toLowerCase();
   // t = a menu tab, o = the author's own parked material, f = a flashcard deck
-  // (which has a tab of its own now). None of the three belongs in Grids.
-  const gItems = cRows.filter(g => _cListed(g) && !/^[tof]$/.test(_cType(g))).map(_cCard);
+  // (which has a tab of its own now), u = a fun grid (dev1167, the Fun tab).
+  // None of the four belongs in Grids.
+  const gItems = cRows.filter(g => _cListed(g) && !/^[tofu]$/.test(_cType(g))).map(_cCard);
   const fItems = cRows.filter(g => _cListed(g) && _cType(g) === 'f').map(_cCard);
+  const funItems = cRows.filter(g => _cListed(g) && _cType(g) === 'u').map(_cCard);
   // The Grids tab's list, the Flashcards tab's list, and the index space the two
   // share — a card's Open button carries its position in `items` (_smDetCard's
   // data-i), so the arrays must be concatenated in this order and not re-sorted.
   const gridItems = vItems.concat(gItems);
   const flashItems = fItems;
-  const items = gridItems.concat(flashItems);
+  const items = gridItems.concat(flashItems, funItems);
 
   // (dev0596) Navigation-Training choices removed with the tab (was sourced from
   // each config row's `ss` field).
@@ -1689,6 +1690,7 @@ async function _showShareableMenu() {
     signin: { def: 'Contact', cls: ' sm-contact' },
     grids:  { def: 'Grids' },
     flash:  { def: 'Flashcards' },
+    fun:    { def: 'Fun' },
     search: { def: 'Search',        off: !SM_FEAT_SEARCH },
     saved:  { def: 'SavedSearches', off: !SM_FEAT_SEARCH },
     loops:  { def: 'Saved Loops' }
@@ -1857,6 +1859,9 @@ async function _showShareableMenu() {
       // the Grids list, which is what "separate them into a separate tab" means.
       case 'flash':  return flashItems.length ? _listHtml('smF')
         : '<div class="sm-chmax"><div class="sm-chnone">No flashcard decks yet.</div></div>';
+      // (dev1167) Fun grids (c.json ctype "u"): the same list over its own rows.
+      case 'fun':    return funItems.length ? _listHtml('smU')
+        : '<div class="sm-chmax"><div class="sm-chnone">No fun grids yet.</div></div>';
       // (dev0400) Search uses the same toolbar shape as the Grids filter: text
       // box + Clear to its right, plus Make grid. Enter in the box (or Make
       // grid) turns the current ≤25 results into a grid.
@@ -3366,10 +3371,12 @@ async function _showShareableMenu() {
   };
   const _smGridList  = _smMakeList('smG', gridItems);
   const _smFlashList = _smMakeList('smF', flashItems);
+  const _smFunList   = _smMakeList('smU', funItems);
   // The `f` hotkey wants the filter box of whichever list tab is showing.
   const _smListFilterFor = pg =>
       (pg === _pgOf('grids') ? (_smGridList  && _smGridList.filter)
-     : pg === _pgOf('flash') ? (_smFlashList && _smFlashList.filter) : null);
+     : pg === _pgOf('flash') ? (_smFlashList && _smFlashList.filter)
+     : pg === _pgOf('fun')   ? (_smFunList   && _smFunList.filter) : null);
 
   // (dev0596) Navigation-Training choice table + wiring removed with its tab.
 

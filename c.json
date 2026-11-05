@@ -3,7 +3,8 @@
     "_salMeta": true,
     "_salColWidths": {
       "Lock": 64,
-      "active": 84
+      "active": 130,
+      "cells": 129
     },
     "_salColOrder": [
       "gname",
@@ -184,7 +185,7 @@
       }
     },
     "_salActiveView": "ctypetabsontop",
-    "_salLayout": "square"
+    "_salLayout": "P3"
   },
   {
     "Kind": "intro",
@@ -314,7 +315,7 @@
     "Lock": "1"
   },
   {
-    "Kind": "grids",
+    "Kind": "fun",
     "gname": "Fun",
     "ctxt": "",
     "cells": 0,

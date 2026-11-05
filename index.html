@@ -990,7 +990,16 @@ window._salTurnGate = function (v, turnS, go) {
   <button class="tbtn" id="cFilterBtn" style="display:none;border-color:#f8a;color:#f8a;background:rgba(120,40,80,0.35);">🔍 Filter</button>
   <button class="tbtn" id="cClearFilterBtn" style="display:none;border-color:#f44;color:#f88;background:rgba(100,0,0,0.35);">✕ Filter</button>
   <span style="width:1px;height:22px;background:#334;flex-shrink:0;"></span>
-  <button class="tbtn" id="cMakeActiveBtn" style="border-color:#0f0;color:#0f0;background:rgba(0,80,0,0.3);" title="Make selected collection active and open Grid (M or Ctrl+click row)">✓ MakeActive→G (M/^click)</button>
+  <select id="cTypeSel" title="Show only these rows. Tabs, Grids, Fun and Flashcards list active rows only." style="padding:4px 6px;font-size:12px;background:#0a1422;border:1px solid #8a9;border-radius:5px;color:#cdd;flex-shrink:0;">
+    <option value="">All</option>
+    <option value="t">Active tabs</option>
+    <option value="g">Active grids</option>
+    <option value="u">Active fun</option>
+    <option value="f">Active flashcards</option>
+    <option value="q">Quizzes</option>
+    <option value="o">Own material</option>
+    <option value="off">Not active</option>
+  </select>
   <button class="tbtn" id="cDeleteBtn" style="border-color:#f44;color:#f88;background:rgba(100,0,0,0.3);" title="Delete selected collection">✕ Delete</button>
   <button class="tbtn" id="cDuplicateBtn" style="border-color:#ad8;color:#cfa;background:rgba(0,60,20,0.3);" title="Duplicate selected collection as &lt;gname&gt;_d (_d2, _d3, … if taken)">⧉ Duplicate</button>
   <span style="width:1px;height:22px;background:#334;flex-shrink:0;"></span>
@@ -999,11 +1008,6 @@ window._salTurnGate = function (v, turnS, go) {
     style="display:none;padding:4px 8px;font-size:12px;font-family:monospace;background:#0a1422;
            border:1px solid #adf;border-radius:5px;color:#eef;outline:none;width:160px;">
   <span style="width:1px;height:22px;background:#334;flex-shrink:0;"></span>
-  <button class="tbtn" id="cTypeGBtn" style="border-color:#8a9;color:#8a9;background:rgba(20,30,25,0.3);min-width:26px;" title="Show only grids (ctype g or blank — the default)">g</button>
-  <button class="tbtn" id="cTypeFBtn" style="border-color:#8a9;color:#8a9;background:rgba(20,30,25,0.3);min-width:26px;" title="Show only flashcard decks (ctype f)">f</button>
-  <button class="tbtn" id="cTypeQBtn" style="border-color:#8a9;color:#8a9;background:rgba(20,30,25,0.3);min-width:26px;" title="Show only quiz decks (ctype q)">q</button>
-  <button class="tbtn" id="cTypeTBtn" style="border-color:#8a9;color:#8a9;background:rgba(20,30,25,0.3);min-width:26px;" title="Show only menu tabs (ctype t)">t</button>
-  <button class="tbtn" id="cTypeOBtn" style="border-color:#8a9;color:#8a9;background:rgba(20,30,25,0.3);min-width:26px;" title="Show only the author’s own material (ctype o)">o</button>
   <button class="tbtn" id="cReloadBtn" style="border-color:#8ef;color:#8ef;background:rgba(0,50,70,0.3);" title="Drop the localStorage copy and re-read c.json from the project folder / server">↻ Reload from disk</button>
   <button class="tbtn" id="cDateFillBtn" style="border-color:#fc8;color:#fc8;background:rgba(60,40,0,0.3);" title="Fill blank DateAdded and DateModified with current time">📅 DateFill</button>
   <span style="width:1px;height:22px;background:#334;flex-shrink:0;"></span>
@@ -1357,7 +1361,7 @@ window._salTurnGate = function (v, turnS, go) {
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev1166';
+  window.HELP_VERSION_STR = 'dev1167';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
