@@ -1187,7 +1187,90 @@
 
   // Name say for many taxon tags. Map id → { say, partial, missing[], sources[] }:
   // say = the lines for the box ('' unless every word has a source).
-  async function lookupNameSays(tags, onStep) {
+  // ── Merriam-Webster pronunciations (dev1178) ─────────────────────────────
+  // Keys live ONLY in mw.local.json beside index.html — gitignored, so never on
+  // GitHub or slam.com: {"medical":"…","collegiate":"…"}. Read on localhost
+  // only; no file = this step is skipped. One tag at a time (D), never in bulk
+  // Fill names: a free key allows 1000 calls a day.
+  let _mwKeysP = null;
+  function _mwKeys() {
+    if (!_mwKeysP) {
+      const local = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+      _mwKeysP = !local ? Promise.resolve(null)
+        : fetch('mw.local.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    }
+    return _mwKeysP;
+  }
+  const _mwAudioUrl = f => {
+    if (!f) return '';
+    const sub = /^bix/.test(f) ? 'bix' : /^gg/.test(f) ? 'gg' : /^[^a-z]/i.test(f) ? 'number' : f.charAt(0);
+    return 'https://media.merriam-webster.com/audio/prons/en/us/mp3/' + sub + '/' + f + '.mp3';
+  };
+  // MW's own notation → D's respelling key (same vowel rules as ipaToRespell):
+  // "är-ˈthräp-əd-ə" → "ar-THROP-uhd-uh". Only re-writes what MW printed.
+  const MW_V = [['au̇', 'ow'], ['ȯi', 'oy'], ['ər', 'er'], ['är', 'ar'], ['ȯr', 'or'], ['ir', 'eer'], ['er', 'air'],
+    ['ür', 'oor'], ['u̇r', 'oor'], ['ä', null], ['ā', 'ay'], ['ē', 'ee'], ['ī', null], ['ō', 'oh'], ['ȯ', 'aw'],
+    ['ü', 'oo'], ['u̇', 'uu'], ['ə', 'uh'], ['ᵊ', 'uh'], ['a', 'a'], ['e', null], ['i', null]];
+  function mwToRespell(mw) {
+    const first = String(mw || '').normalize('NFC').split(/\s*[,;]\s*/)[0].replace(/\([^)]*\)/g, '').trim();
+    if (!first) return '';
+    const cons = c => c.replace(/t͟h/g, 'dh').replace(/ŋ(?=[kg])/g, 'n').replace(/ŋ/g, 'ng').replace(/ḵ/g, 'kh')
+      .replace(/[^a-z]/g, '');
+    return first.split(/\s+/).map(word => word.replace(/[ˈˌ]/g, m => '-' + m).split('-').filter(Boolean).map(syl => {
+      const stressed = syl.charAt(0) === 'ˈ';
+      syl = syl.replace(/[ˈˌ]/g, '');
+      for (let i = 0; i < syl.length; i++) {
+        const hit = MW_V.find(([k]) => syl.startsWith(k.normalize('NFC'), i));
+        if (!hit) continue;
+        const on = syl.slice(0, i), co = syl.slice(i + hit[0].length), open = !cons(co);
+        let v = hit[1];
+        if (hit[0] === 'ä') v = open ? 'ah' : 'o';
+        else if (hit[0] === 'e') v = open ? 'eh' : 'e';
+        else if (hit[0] === 'i') v = open ? 'ih' : 'i';
+        else if (hit[0] === 'ī') v = !cons(on) ? 'eye' : (open ? 'y' : 'igh');
+        else if (hit[0] === 'ər' && stressed) v = 'ur';
+        const out = cons(on) + v + cons(co);
+        return stressed ? out.toUpperCase() : out;
+      }
+      const out = cons(syl);
+      return stressed ? out.toUpperCase() : out;
+    }).join('-')).join(' ');
+  }
+  // One word or phrase in MW: { mw, audio, page, ref } or null.
+  async function _mwLookup(word, keys) {
+    const fold = x => String(x || '').replace(/\*/g, '').replace(/:.*$/, '').toLowerCase();
+    for (const ref of ['medical', 'collegiate']) {
+      if (!keys[ref]) continue;
+      const j = await _getJson('https://www.dictionaryapi.com/api/v3/references/' + ref + '/json/'
+        + encodeURIComponent(word.toLowerCase()) + '?key=' + encodeURIComponent(keys[ref])).catch(() => null);
+      if (!Array.isArray(j)) continue;
+      for (const e of j) {
+        if (!e || typeof e !== 'object') continue;                 // strings = spelling suggestions
+        const cands = [{ hw: (e.hwi && e.hwi.hw) || (e.meta && e.meta.id), prs: (e.hwi && e.hwi.prs) || e.prs }]
+          .concat((e.uros || []).map(u => ({ hw: u.ure, prs: u.prs })));
+        const c = cands.find(x => fold(x.hw) === fold(word) && Array.isArray(x.prs) && x.prs.some(p => p.mw));
+        if (!c) continue;
+        const pr = c.prs.find(p => p.mw);
+        return { mw: pr.mw, audio: _mwAudioUrl(pr.sound && pr.sound.audio), ref,
+          page: 'https://www.merriam-webster.com/' + (ref === 'medical' ? 'medical' : 'dictionary') + '/' + encodeURIComponent(word.toLowerCase()) };
+      }
+    }
+    return null;
+  }
+  // The whole label, else every word of it (all or nothing).
+  async function mwPronunciation(words) {
+    const keys = await _mwKeys();
+    if (!keys || !(keys.medical || keys.collegiate)) return null;
+    const whole = await _mwLookup(words.join(' '), keys);
+    if (whole) return { mw: whole.mw, say: mwToRespell(whole.mw), audio: whole.audio, page: whole.page };
+    if (words.length < 2) return null;
+    const parts = [];
+    for (const w of words) { const x = await _mwLookup(w, keys); if (!x) return null; parts.push(x); }
+    return { mw: parts.map(x => x.mw.split(/\s*[,;]\s*/)[0]).join(' '), say: parts.map(x => mwToRespell(x.mw)).join(' '),
+      audio: parts[0].audio, page: parts[0].page };
+  }
+
+  async function lookupNameSays(tags, onStep, opts) {
     const step = onStep || (() => {});
     const jobs = tags.map(t => {
       const words = String(t.label || '').trim().split(/\s+/).filter(w => /^[A-Za-z-]+$/.test(w));
@@ -1230,6 +1313,20 @@
       }
       out.set(j.t.id, { say, partial, missing, sources });
     });
+    // (dev1178) Merriam-Webster, while Phil compares formats: its own notation
+    // goes on an "M-W:" line under ours, and when no one else published a
+    // pronunciation, ours is re-written from MW's.
+    if (opts && opts.mw) {
+      for (const j of jobs) {
+        const m = await mwPronunciation(j.words).catch(() => null);
+        if (!m) continue;
+        const e = out.get(j.t.id);
+        if (!e.say) { e.say = m.say; e.partial = ''; e.missing = []; }
+        e.say = e.say + '\nM-W: ' + m.mw;
+        e.sources.push({ name: 'Merriam-Webster', url: m.page });
+        e.mwAudio = m.audio;
+      }
+    }
     return out;
   }
 
@@ -1245,7 +1342,7 @@
         const ti = window.taxonInfo;
         if (ti && ti.load && ti.loaded && !ti.loaded()) await ti.load().catch(() => {});
         const fails = _netFails;
-        const m = kind === 'origin' ? await lookupNameOrigins([t], null, { deep: true }) : await lookupNameSays([t]);
+        const m = kind === 'origin' ? await lookupNameOrigins([t], null, { deep: true }) : await lookupNameSays([t], null, { mw: true });
         const r = Object.assign({}, m.get(t.id) || {});
         // A service that didn't answer: say so, and look again next time.
         if (_netFails > fails) { r.incomplete = true; _autoCache.delete(key); }
@@ -3697,7 +3794,8 @@
             : retry ? 'A source didn’t answer — R looks again.'
             : 'No source found for this name (WoRMS, GBIF, Wiktionary, Wikipedia) — ✎ type one.';
         }
-        if (r && r.say) return 'From ' + srcLinks(r.sources) + ' — saved.';
+        if (r && r.say) return 'From ' + srcLinks(r.sources) + ' — saved.'
+          + (r.mwAudio ? ' <a href="' + escapeAttr(r.mwAudio) + '" target="_blank" rel="noopener">▶ M-W audio</a>' : '');
         if (v) return 'Published for part of the name only (' + srcLinks(r.sources) + ') — <i>'
           + escapeHtml(r.missing.join(', ')) + '</i> is left as spelled. Saved.';
         return retry ? 'Wikipedia or Wiktionary didn’t answer — R looks again.'
