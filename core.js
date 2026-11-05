@@ -895,6 +895,38 @@ function orientFromDims(w, h) {
 }
 window.orientFromDims = orientFromDims;
 
+// (dev1170) Instagram rows get their Mode from the post's real dimensions, once
+// per load, so every route that adds an IG row is covered. Done in the app, not
+// by a script: a script's ml.json edit is wiped by the next save from an open
+// page. Only blank Modes are filled, so a hand-set letter stands. A reel with no
+// dimensions on file is P, the same rule as Fill Mode. Dev box only: ml.json can
+// only be saved from there.
+window._igFillModes = function() {
+  if (!window._salIsLocalHost || !window._salIsLocalHost()) return;
+  if (typeof _isUserMode === 'function' && _isUserMode()) return;
+  if (!window.igMetaFetch || !window.isInstagramLink || !window.getInstagramKind) return;
+  if (typeof _cMode !== 'undefined' && _cMode) return;
+  const rows = data.filter(r => r && r.link && window.isInstagramLink(r.link) && !rowMode(r));
+  if (!rows.length) return;
+  window.igMetaFetch(rows.map(r => r.link)).then(cache => {
+    if (typeof _cMode !== 'undefined' && _cMode) return;   // data is c.json's now
+    const col = getModeCol();
+    let n = 0;
+    rows.forEach(r => {
+      const k = window.getInstagramKind(r.link);
+      const m = (k && k.id && cache) ? cache[k.id] : null;
+      const letter = (m && m.w > 0 && m.h > 0) ? orientFromDims(m.w, m.h)
+        : /\/reel\//i.test(r.link) ? 'P' : '';
+      if (letter && !rowMode(r)) { r[col] = letter; n++; }
+    });
+    if (n) {
+      save();
+      if (typeof render === 'function') render();
+      toast('📐 Mode filled on ' + n + ' Instagram row' + (n === 1 ? '' : 's'), 2200);
+    }
+  }).catch(() => {});
+};
+
 // Mojibake fix
 function fixMojibake(s) {
   if (typeof s !== 'string') return s;
@@ -1852,6 +1884,7 @@ async function load() {
   _tEnsureOpenFocus();   // (dev0538) focus the first row on initial load (no _lastUID yet)
   render();
   window._mlLoadDone = true;   // (dev1052) d_yt.js waits on this before its FTLsaved backfill
+  setTimeout(window._igFillModes, 1500);   // (dev1170) after video.js has loaded
 }
 
 // (dev0515) One-time in-memory migration of the orientation column to 'Mode' with

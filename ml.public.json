@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1793900006647,
+    "_salPushTime": 1793901046107,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -98,7 +98,6 @@
       "dir": "desc"
     },
     "_salGsize": 5,
-    "_salLayout": "P12",
     "_salViews": {
       "view1": {
         "name": "view1",
@@ -522,7 +521,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1793900006647
+    "_salSavedAt": 1793901046107
   },
   {
     "UID": "1",
@@ -51164,7 +51163,7 @@
   },
   {
     "UID": "2306_d",
-    "cell": "",
+    "cell": "2e",
     "show": "1",
     "VidRange": "text",
     "DateAdded": "2026-09-28 01:49:01",

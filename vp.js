@@ -14389,8 +14389,18 @@ function vpMountInstagram(host, link) {
   var clipBox = document.createElement('div');
   // Sized for desktop viewing of vertical reels (≈3:5 portrait). The caps
   // collapse to 95vw / 95% on phones so the embed still fits.
+  // (dev1170) That box only suits a tall post. A square or landscape one is
+  // shorter than the box, so IG's caption showed underneath: cut the box to the
+  // post's real shape (ig dimensions, else the row's Mode).
+  var _igH = 'min(893px,95%)';
+  var _igK = window.getInstagramKind ? window.getInstagramKind(link) : null;
+  var _igM = (_igK && _igK.id && window._igMetaCache) ? window._igMetaCache[_igK.id] : null;
+  var _igCur = window._vpCurrentRow;
+  var _igR = (_igM && _igM.w > 0 && _igM.h > 0) ? _igM.h / _igM.w
+    : (_igCur && _igCur.link === link && window.rowMode && window.rowMode(_igCur) === 'S') ? 1 : 0;
+  if (_igR > 0 && _igR < 1.2) _igH = 'min(' + Math.round(634 * _igR) + 'px,95%)';
   clipBox.style.cssText = 'position:relative;width:min(634px,95vw);'
-    + 'height:min(893px,95%);overflow:hidden;background:#000;';
+    + 'height:' + _igH + ';overflow:hidden;background:#000;';
   var iframe = document.createElement('iframe');
   iframe.src = src;
   iframe.setAttribute('frameborder', '0');

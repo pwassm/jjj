@@ -3588,15 +3588,14 @@
           const resultEl = editEl.querySelector('#de-gbif-result');
           // Read whatever's currently in the label field (even unsaved edits)
           const queryName = editEl.querySelector('#de-label').value.trim() || t.label;
-          resultEl.innerHTML = '<div style="padding:10px;color:#888;font-size:11px;">🔎 Querying GBIF…</div>';
+          resultEl.innerHTML = '<div style="padding:10px;color:#888;font-size:11px;">🔎 Looking up scientific and common names…</div>';
           gbifBtn.disabled = true;
           try {
-            const resolution = await resolveTaxon(queryName, {
+            const { res, resolution } = await resolveTaxonOrCommon(queryName, {
               rankHint: editEl.querySelector('#de-rank').value || t.rank || null,
               compare: true,
               vernacular: true
             });
-            const res = resolution.primary || { matchType: 'NONE', _source: 'worms' };
             renderTaxonResult(resultEl, id, queryName, res, resolution);
           } catch (e) {
             resultEl.innerHTML = '<div style="padding:10px 12px;background:rgba(255,80,80,0.1);border:1px solid #533;border-radius:5px;color:#f88;font-size:11px;">'
@@ -5356,6 +5355,163 @@
     return out;
   }
 
+  // ── common names (dev1169) ───────────────────────────────────────────────
+  // No single source is good enough: over 161 test names, exact common-name
+  // answers put the right species first for iNaturalist 77%, GBIF about 76%,
+  // WoRMS 53%. Together, voting, 88%. So each source votes, every answer is
+  // folded to its WoRMS accepted name first (WoRMS says Sepia latimanus where
+  // iNat and GBIF say Ascarosepion latimanus; same animal, one vote pile), and
+  // WoRMS stays the taxonomy authority: iNat and Wikipedia only say WHICH name.
+  // Only an EXACT common-name match votes (hyphens, case, accents ignored). The
+  // loose search results are offered as candidates and never chosen.
+  const _vKey = s => String(s || '').toLowerCase().normalize('NFD')
+    .replace(/[̀-ͯ]/g, '').replace(/[^a-z]/g, '');
+
+  async function commonNameVotes(query, rankHint) {
+    const q = String(query || '').trim();
+    const key = _vKey(q), enc = encodeURIComponent;
+    const failed = [];
+    const ask = async (label, url) => {
+      try {
+        const r = await fetch(url);
+        if (r.status === 204 || r.status === 404) return null;
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const txt = await r.text();
+        return txt ? JSON.parse(txt) : null;
+      } catch (e) { if (label) failed.push(label); return null; }
+    };
+    const GBIF_BACKBONE = 'd7dddbf4-2cf0-4f39-9b2a-bb099caae36c';
+    const [nat, gb, wo, wp] = await Promise.all([
+      ask('iNaturalist', 'https://api.inaturalist.org/v1/taxa?per_page=8&q=' + enc(q)),
+      ask('GBIF', 'https://api.gbif.org/v1/species/search?q=' + enc(q) + '&qField=VERNACULAR&datasetKey='
+        + GBIF_BACKBONE + '&limit=20'),
+      ask('WoRMS', WORMS_REST + '/AphiaRecordsByVernacular/' + enc(q) + '?like=false&offset=1'),
+      ask('Wikipedia', 'https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1'
+        + '&prop=pageprops&ppprop=wikibase_item&titles=' + enc(q))
+    ]);
+    const natRows = (nat && nat.results) || [];
+    const lists = {
+      iNaturalist: natRows.filter(x => _vKey(x.matched_term) === key)
+        .map(x => ({ name: x.name, rank: x.rank, iconic: x.iconic_taxon_name })),
+      GBIF: ((gb && gb.results) || [])
+        .filter(c => (c.vernacularNames || []).some(v => _vKey(v.vernacularName) === key))
+        .map(c => ({ name: c.species || c.canonicalName, rank: String(c.rank || '').toLowerCase() })),
+      WoRMS: (Array.isArray(wo) ? wo : []).map(x => ({ name: x.scientificname, rank: String(x.rank || '').toLowerCase() })),
+      Wikipedia: []
+    };
+    // A Wikipedia title (or redirect) counts only if Wikidata says it is a taxon.
+    const page = wp && wp.query && wp.query.pages && Object.values(wp.query.pages)[0];
+    const qid = page && page.pageprops && page.pageprops.wikibase_item;
+    if (qid) {
+      const e = await ask('', 'https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&props=claims&ids=' + qid);
+      const c = e && e.entities && e.entities[qid] && e.entities[qid].claims && e.entities[qid].claims.P225;
+      const nm = c && c[0] && c[0].mainsnak && c[0].mainsnak.datavalue && c[0].mainsnak.datavalue.value;
+      if (nm) lists.Wikipedia.push({ name: nm, rank: '' });
+    }
+    // Fold everything to the WoRMS accepted name. A name WoRMS doesn't hold (land
+    // animals, plants) keeps its own spelling, which GBIF resolves later.
+    const raw = [...new Set(Object.values(lists).flat().map(x => x.name).filter(Boolean))].slice(0, 40);
+    const valid = new Map();
+    if (raw.length) {
+      const m = await ask('', WORMS_REST + '/AphiaRecordsByMatchNames?marine_only=false&'
+        + raw.map(n => 'scientificnames[]=' + enc(n)).join('&'));
+      if (Array.isArray(m)) m.forEach((rows, i) => {
+        const a = (rows || []).filter(x => x.valid_name && x.match_type === 'exact');
+        const p = a.find(x => x.status === 'accepted') || a[0];
+        if (p) valid.set(raw[i], p.valid_name);
+      });
+    }
+    const want = rankHint ? rankTier(rankHint) : '';
+    const piles = new Map();
+    Object.keys(lists).forEach(src => {
+      const mine = new Set();
+      lists[src].forEach(x => {
+        if (!x.name) return;
+        const accepted = valid.get(x.name) || x.name;
+        const k = accepted.toLowerCase();
+        if (mine.has(k)) return;
+        mine.add(k);
+        const pile = piles.get(k) || { name: accepted, rank: '', srcs: [], score: 0, oldNames: [], iconic: '' };
+        pile.score += 1 / mine.size;          // a source's 2nd answer counts half
+        pile.srcs.push(src);
+        if (!pile.rank) pile.rank = x.rank;
+        if (x.iconic) pile.iconic = x.iconic;
+        if (x.name.toLowerCase() !== k && !pile.oldNames.includes(x.name)) pile.oldNames.push(x.name);
+        piles.set(k, pile);
+      });
+    });
+    const ranked = [...piles.values()];
+    ranked.forEach(p => { if (want && rankTier(p.rank) === want) p.score += 0.5; });
+    ranked.sort((a, b) => b.score - a.score);
+    const top = ranked[0];
+    return {
+      query: q, ranked, failed,
+      // Sure = two sources name it and nothing else ties with it.
+      agreed: !!top && top.srcs.length >= 2 && !(ranked[1] && ranked[1].score >= top.score),
+      // Near misses for a mistyped name. Offered, never chosen.
+      loose: natRows.filter(x => x.name && !piles.has(String(x.name).toLowerCase()))
+        .map(x => ({ name: x.name, rank: x.rank, common: x.preferred_common_name || '' })).slice(0, 5)
+    };
+  }
+
+  // Mark a result as "this is what the typed common name means", so the box and
+  // Apply All treat the typed text as a common name and not as an old binomial.
+  function markCommonResult(res, votes, sciName) {
+    const k = String(sciName || res.canonicalName || '').toLowerCase();
+    const pile = votes.ranked.find(p => p.name.toLowerCase() === k
+      || p.oldNames.some(o => o.toLowerCase() === k)) || null;
+    res._commonName = votes.query;
+    res._commonSrcs = pile ? pile.srcs : [];
+    res._commonAgreed = !!(pile && votes.agreed && votes.ranked[0] === pile);
+    const old = (pile ? pile.oldNames : []).slice();
+    if (res._supersededFrom && res._queried && !old.includes(res._queried)) old.push(res._queried);
+    res._commonOld = old;
+    return res;
+  }
+
+  // A kingdom clash means the winning name is a homonym in the other register:
+  // iNat's bird genus Sagittarius is not WoRMS's arrow worm. Same trap as Mertensia.
+  function _kingdomClash(pile, res) {
+    const ic = String(pile && pile.iconic || ''), k = String(res && res.kingdom || '').toLowerCase();
+    if (!ic || !k) return false;
+    const natKingdom = ic === 'Plantae' ? 'plantae' : ic === 'Fungi' ? 'fungi'
+      : (ic === 'Protozoa' || ic === 'Chromista') ? '' : 'animalia';
+    return !!natKingdom && natKingdom !== k;
+  }
+
+  // Scientific look-up first, always. The vernacular stage runs only when that
+  // found nothing usable, so a real scientific name behaves exactly as before.
+  async function resolveTaxonOrCommon(name, opts) {
+    const resolution = await resolveTaxon(name, opts);
+    const res = resolution.primary || { matchType: 'NONE', _source: 'worms' };
+    const mt = res.matchType || 'NONE';
+    const hint = opts && opts.rankHint;
+    // "Axolotl" is also a WoRMS genus: one word, wrong rank for what you recorded.
+    const wrongRankWord = mt === 'EXACT' && !/\s/.test(String(name).trim()) && hint
+      && rankTier(res.rank) !== rankTier(hint);
+    if (mt === 'EXACT' && !wrongRankWord) return { res, resolution };
+
+    const votes = await commonNameVotes(name, hint);
+    const top = votes.ranked[0];
+    if (top) {
+      let rr = await resolveTaxon(top.name, { rankHint: top.rank || hint, vernacular: true });
+      let pick = rr.primary;
+      if (pick && _kingdomClash(top, pick)) {
+        const g = await queryGbif(top.name).catch(() => null);
+        if (g && g.matchType && g.matchType !== 'NONE' && g.matchType !== 'HIGHERRANK' && !_kingdomClash(top, g)) {
+          g._source = 'gbif'; pick = g; rr = { query: top.name, gbif: g, primary: g, source: 'gbif', errors: [] };
+        } else pick = null;
+      }
+      if (pick && (pick.matchType === 'EXACT' || pick.matchType === 'FUZZY')) {
+        markCommonResult(pick, votes, top.name);
+        rr.common = votes;
+        return { res: pick, resolution: rr };
+      }
+    }
+    if (mt === 'NONE' || mt === 'HIGHERRANK') resolution.common = votes;
+    return { res, resolution };
+  }
+
   // species/match answers NONE for a name GBIF holds only as a synonym — it is
   // a matcher, not a lookup. species/search does hold the synonym rows, with the
   // accepted taxon attached. That is the difference between "GBIF has never
@@ -5417,8 +5573,22 @@
       : '';
 
     let headerHtml, bgColor, borderColor;
+    const votes = (resolution && resolution.common) || null;
 
-    if (matchType === 'EXACT') {
+    if (res._commonName) {
+      // The typed text is a common name and this is the species it means.
+      const srcs = res._commonSrcs || [];
+      const sure = !!res._commonAgreed;
+      const who = !srcs.length ? 'Your pick from the list.'
+        : srcs.length === 1 ? 'Only ' + srcs[0] + ' lists this name, so check it.'
+        : srcs.join(' · ') + (sure ? ' agree.' : ' list it, but another species ties. Check the candidates below.');
+      headerHtml = '<span style="color:' + (sure ? '#afa' : '#fc8') + ';font-weight:bold;">'
+        + (sure ? '✓' : '⚠') + ' Common name: "' + escapeHtml(res._commonName) + '" = <i>'
+        + escapeHtml(canonical) + '</i></span> ' + srcBadge
+        + '<div style="color:#9a9;margin-top:4px;font-size:11px;">' + escapeHtml(who) + '</div>';
+      bgColor = sure ? 'rgba(80,200,80,0.08)' : 'rgba(255,200,100,0.08)';
+      borderColor = sure ? '#484' : '#764';
+    } else if (matchType === 'EXACT') {
       headerHtml = '<span style="color:#afa;font-weight:bold;">✓ Exact match</span> ' + srcBadge
         + (res._source === 'gbif' && resolution && resolution.worms
             ? ' <span style="color:#888;font-size:10px;">(WoRMS has no record — not a marine taxon)</span>'
@@ -5443,11 +5613,14 @@
       bgColor = 'rgba(100,100,255,0.08)';
       borderColor = '#446';
     } else {
-      // NONE — likely a common name or misspelling
-      headerHtml = '<span style="color:#f88;font-weight:bold;">✗ Not found in WoRMS or GBIF</span>'
+      // NONE. By here the common-name sources have been asked too, so this box
+      // and the list below can't disagree: anything listed is a near miss.
+      const down = votes && votes.failed.length
+        ? ' ' + votes.failed.join(', ') + ' didn\'t answer, so try again later.' : '';
+      headerHtml = '<span style="color:#f88;font-weight:bold;">✗ No exact match</span>'
         + '<div style="color:#f99;margin-top:4px;font-size:11px;">"<b>' + escapeHtml(query) + '</b>" is not a '
-        + 'scientific name either register holds. Common names work too — both are searched for vernaculars '
-        + 'in the candidate list below.</div>';
+        + 'scientific name in WoRMS or GBIF, and no source lists it as an exact common name.' + escapeHtml(down)
+        + ' Check the spelling. Any near matches are listed below.</div>';
       bgColor = 'rgba(255,100,100,0.08)';
       borderColor = '#633';
     }
@@ -5463,7 +5636,9 @@
     if ((matchType === 'EXACT' || matchType === 'FUZZY') && rank && rank !== (t.rank || '').toLowerCase()) {
       individualBtns.push({ id:'apply-rank', label:'Set rank → ' + rank });
     }
-    if (matchType === 'EXACT' || matchType === 'FUZZY') {
+    // A common-name result skips this: the typed text is not an old binomial to
+    // rename, and the scientific name is no alias of it. Apply All files both.
+    if ((matchType === 'EXACT' || matchType === 'FUZZY') && !res._commonName) {
       const sciAlias = stripAuthorship(res.canonicalName || res.scientificName);
       const sciAliasLc = sciAlias.toLowerCase();
       // (dev1116) An out-of-date name is renamed in place — the accepted name
@@ -5517,7 +5692,12 @@
     // The name you asked about is no longer the accepted one. This is the single
     // most useful thing WoRMS says and GBIF's matcher never does: it is what
     // renames Sepia latimanus to Ascarosepion latimanus.
-    const supersededHtml = res._supersededFrom
+    const supersededHtml = res._commonName
+      ? ((res._commonOld || []).length
+          ? '<div style="margin-top:6px;color:#fc8;font-size:11px;">↳ Older name: <b>'
+            + escapeHtml(res._commonOld.join(', ')) + '</b>. Apply All files it under Formerly.</div>'
+          : '')
+      : res._supersededFrom
       ? '<div style="margin-top:6px;padding:6px 9px;background:rgba(255,200,100,0.10);border:1px solid #764;'
         + 'border-radius:4px;color:#fc8;font-size:11px;">↳ <b>' + escapeHtml(query) + '</b> is '
         + escapeHtml(res._supersededFrom) + ' in WoRMS. The accepted name is <b>'
@@ -5554,7 +5734,7 @@
 
     // Always also fetch common-name candidates so user can pick a different
     // species if the auto-match was wrong.
-    fetchAndRenderCandidates(query, container.querySelector('#gbif-candidates'), tagId);
+    fetchAndRenderCandidates(res._commonName || query, container.querySelector('#gbif-candidates'), tagId, votes);
 
     // Wire apply buttons
     [...container.querySelectorAll('button[data-action]')].forEach(btn => {
@@ -5592,7 +5772,7 @@
   // Fetch a list of GBIF candidates (matches scientific OR common names)
   // and render them as clickable rows. Clicking a candidate re-runs the
   // detail flow against that specific entry.
-  async function fetchAndRenderCandidates(query, container, tagId) {
+  async function fetchAndRenderCandidates(query, container, tagId, votes) {
     if (!container) return;
     container.innerHTML = '<div style="padding:8px;color:#666;font-size:11px;">Searching common names too…</div>';
     try {
@@ -5609,8 +5789,27 @@
         wormsRows = [].concat(vern || [], byName || []);
       } catch (e) { /* WoRMS silent — GBIF candidates still render below */ }
       const seenW = new Set();
+      // (dev1169) Exact common-name matches lead, under their accepted names. A
+      // row that is only an older spelling of one of them is dropped, so Sepia
+      // latimanus doesn't list beside Ascarosepion latimanus as a second choice.
+      const votedNames = new Set(), votedOld = new Set();
+      const voteCands = [];
+      if (votes) {
+        votes.ranked.slice(0, 8).forEach(p => {
+          votedNames.add(p.name.toLowerCase());
+          p.oldNames.forEach(o => votedOld.add(o.toLowerCase()));
+          voteCands.push({ _source: 'votes', _srcs: p.srcs, canonicalName: p.name, scientificName: p.name, rank: p.rank || 'species' });
+        });
+        (votes.ranked.length ? [] : votes.loose).forEach(x => {
+          votedNames.add(x.name.toLowerCase());
+          voteCands.push({ _source: 'votes', _srcs: ['iNaturalist near match'], canonicalName: x.name,
+            scientificName: x.name, rank: x.rank, _nearCommon: x.common });
+        });
+      }
+      const alreadyVoted = n => { const l = String(n || '').toLowerCase(); return votedNames.has(l) || votedOld.has(l); };
       const wormsCands = wormsRows.filter(r => {
         if (!r || !r.scientificname || !r.rank) return false;
+        if (alreadyVoted(r.scientificname) || (r.valid_name && votedNames.has(String(r.valid_name).toLowerCase()))) return false;
         const k = r.scientificname.toLowerCase() + '|' + String(r.rank).toLowerCase();
         if (seenW.has(k)) return false;
         seenW.add(k);
@@ -5633,14 +5832,16 @@
       const gbifUsable = candidates.filter(c => c.scientificName && c.rank)
         .map(c => Object.assign({ _source: 'gbif' }, c));
       // Drop GBIF rows WoRMS already offered under the same name+rank.
-      const usable = wormsCands.concat(
-        gbifUsable.filter(c => !seenW.has(String(c.canonicalName || c.scientificName).toLowerCase()
+      const usable = voteCands.concat(wormsCands, gbifUsable.filter(c =>
+        !alreadyVoted(c.canonicalName || c.scientificName)
+        && !seenW.has(String(c.canonicalName || c.scientificName).toLowerCase()
           + '|' + String(c.rank).toLowerCase())));
       if (!usable.length) {
-        container.innerHTML = '<div style="padding:6px;color:#777;font-size:10px;">No candidates from the WoRMS or GBIF common-name search.</div>';
+        container.innerHTML = '<div style="padding:6px;color:#777;font-size:10px;">No candidates from any source.</div>';
         return;
       }
-      let html = '<div style="font-size:10px;color:#888;margin-bottom:5px;">CANDIDATES — WoRMS then GBIF, scientific AND common names <span style="color:#666;">(deduped; click to preview, double-click to Apply All)</span>:</div>';
+      let html = '<div style="font-size:10px;color:#888;margin-bottom:5px;">CANDIDATES — '
+        + (votes ? 'common-name matches first, then ' : '') + 'WoRMS and GBIF search results <span style="color:#666;">(deduped; click to preview, double-click to Apply All)</span>:</div>';
       html += usable.map((c, i) => {
         const v = pickVernacular(c);
         const vennHtml = v
@@ -5654,9 +5855,12 @@
         const chain = chainParts.slice(-3).join(' → ');
         const author = c.authorship ? ' <span style="color:#666;font-size:10px;">' + escapeHtml(c.authorship) + '</span>' : '';
         const badge = ' <span style="padding:0 4px;border-radius:3px;font-size:9px;'
-          + (c._source === 'worms' ? 'background:rgba(80,200,180,0.16);color:#7dd;'
-                                   : 'background:rgba(100,140,255,0.16);color:#9bf;')
-          + '">' + (c._source === 'worms' ? 'WoRMS' : 'GBIF') + '</span>';
+          + (c._source === 'votes' ? 'background:rgba(120,220,120,0.14);color:#9d9;'
+            : c._source === 'worms' ? 'background:rgba(80,200,180,0.16);color:#7dd;'
+                                    : 'background:rgba(100,140,255,0.16);color:#9bf;')
+          + '">' + (c._source === 'votes' ? escapeHtml(c._srcs.join(' · '))
+            : c._source === 'worms' ? 'WoRMS' : 'GBIF') + '</span>'
+          + (c._nearCommon ? ' <span style="color:#cb8;">' + escapeHtml(c._nearCommon) + '</span>' : '');
         const superseded = (c._source === 'worms' && c.status && c.status !== 'accepted' && c.validName)
           ? '<div style="color:#fc8;font-size:9px;margin-top:2px;">' + escapeHtml(c.status)
             + ' — accepted name is <b>' + escapeHtml(c.validName) + '</b></div>'
@@ -5686,11 +5890,15 @@
           // A WoRMS candidate resolves through WoRMS — by its own name, with its
           // own rank as the hint — so the chain and any superseded-name notice
           // come from the register that offered it.
-          if (c._source === 'worms') {
+          if (c._source === 'worms' || c._source === 'votes') {
             const nm = c.canonicalName || c.scientificName;
             const rr = await resolveTaxon(nm, { rankHint: c.rank, vernacular: true, compare: true });
             const pick2 = rr.primary;
             if (pick2) {
+              if (votes && (pick2.matchType === 'EXACT' || pick2.matchType === 'FUZZY')) {
+                markCommonResult(pick2, votes, nm);
+                rr.common = votes;
+              }
               const scope2 = el.closest('#dictEdit') || document.getElementById('dictEdit');
               const out2 = scope2 ? scope2.querySelector('#de-gbif-result') : null;
               if (out2) renderTaxonResult(out2, tagId, nm, pick2, rr);
@@ -5724,7 +5932,8 @@
           }
           const editElScope = el.closest('#dictEdit') || document.getElementById('dictEdit');
           const resultEl = editElScope ? editElScope.querySelector('#de-gbif-result') : null;
-          if (resultEl) renderTaxonResult(resultEl, tagId, c.scientificName, synth);
+          if (votes) markCommonResult(synth, votes, synth.canonicalName);
+          if (resultEl) renderTaxonResult(resultEl, tagId, c.scientificName, synth, votes ? { common: votes } : undefined);
           if (alsoApplyAll) {
             requestAnimationFrame(() => {
               applyChainImport(tagId, synth, { withAliasAndCommon: true });
@@ -5872,8 +6081,13 @@
             patch.aliases = [...(target.aliases || []), sci];
             aliasAdded = true;
           }
+          // A typed common name wins over a register's first English one; it is
+          // saved further down. Older binomials the look-up found go to Formerly.
+          if (res._commonName) (res._commonOld || []).forEach(o => {
+            if (o.toLowerCase() !== String(target.label || '').toLowerCase()) addFormerly(mostSpecificId, o);
+          });
           // 2) Set English common name if target lacks one
-          if (!target.common) {
+          if (!target.common && !res._commonName) {
             const v = pickVernacular(res);
             if (v && v.lang === 'en') {
               patch.common = v.name;
@@ -5922,8 +6136,10 @@
         // through to the test below and, on a species with no English common
         // name, was saved AS the common name (the old binomial shown as the
         // vernacular). Formerly names the original already had come along too.
-        const supersededName = !!res._supersededFrom
-          || String(res.status || '').toUpperCase() === 'SYNONYM';
+        // (dev1169) Not when the label is a common name: "Broadclub cuttlefish"
+        // reached a superseded binomial, but it isn't itself the former name.
+        const supersededName = !res._commonName && (!!res._supersededFrom
+          || String(res.status || '').toUpperCase() === 'SYNONYM');
         if (target && (t.formerly || []).length) {
           updateTag(mostSpecific, { formerly: (target.formerly || []).concat(t.formerly) });
         }
@@ -5942,7 +6158,7 @@
             const canonicalLc = String(res.canonicalName || '').toLowerCase();
             const looksLikeScientificName = canonicalLc && lc === canonicalLc;
             if (!target.common && !looksLikeScientificName) {
-              updateTag(mostSpecific, { common: t.label });
+              updateTag(mostSpecific, { common: res._commonName || t.label });
             } else {
               updateTag(mostSpecific, { aliases: [...existingAliases, t.label] });
             }

@@ -345,6 +345,8 @@ function _igMediaNatH(cellEl, natW) {
   const k = (link && window.getInstagramKind) ? window.getInstagramKind(link) : null;
   const m = (k && k.id && window._igMetaCache) ? window._igMetaCache[k.id] : null;
   if (m && m.w > 0 && m.h > 0) ratio = Math.min(m.h / m.w, FALLBACK);
+  // (dev1170) No dimensions on hand, but the row's Mode says square.
+  else if (cellEl && cellEl._rowData && rowMode(cellEl._rowData) === 'S') ratio = 1;
   return Math.round(natW * ratio);
 }
 
@@ -413,7 +415,14 @@ function fitGridIgFrame(cellEl, iframe) {
     // the YT tile spinner). Raising the scale shrinks the visible natural-px
     // window below, so the fx/fy crop re-anchors on its own.
     const _z = (typeof _gridZoomForCell === 'function') ? _gridZoomForCell(cellEl) : 1;
-    const scale = Math.max(cw / NAT_W, ch / MEDIA_H) * (_z > 0 ? _z : 1);
+    // (dev1170) A row whose Mode is P or S shows its whole shape, centred with
+    // black either side, the way G already shows other videos. Fitting the height
+    // does that in a wide cell and is the same as the cover-fit in a tall one, so
+    // the caption stays out of view either way. A COI or a portrait grid keeps the
+    // cover-fit, the same test ordinary videos use (_gridVideoCovers).
+    const _md = cellEl._rowData ? rowMode(cellEl._rowData) : '';
+    const _whole = (_md === 'P' || _md === 'S') && ch > 0 && !_gridVideoCovers(cellEl);
+    const scale = (_whole ? ch / MEDIA_H : Math.max(cw / NAT_W, ch / MEDIA_H)) * (_z > 0 ? _z : 1);
     // (dev0541) Vertical pan from the row's COI fy. A short landscape cell only
     // shows a thin top strip of the scaled IG picture, hiding a subject in its
     // lower half. fy=0 keeps the old top-aligned crop; higher fy slides the
@@ -436,7 +445,8 @@ function fitGridIgFrame(cellEl, iframe) {
     const _pan = (typeof _gridCellPanForCell === 'function') ? _gridCellPanForCell(cellEl) : null;
     const _px = _pan ? (_pan.x || 0) : 0, _py = _pan ? (_pan.y || 0) : 0;
     iframe.style.transform = 'scale(' + scale + ')';
-    iframe.style.left = (-panNatX * scale + _px) + 'px';
+    const _ox = Math.max(0, (cw - NAT_W * scale) / 2);   // (dev1170) centre a narrower picture
+    iframe.style.left = (_ox - panNatX * scale + _px) + 'px';
     iframe.style.top = (-(HEADER + panNat) * scale + _py) + 'px';
   }
   iframe._igFit = fit;   // (dev0541) let gridSetCOI re-run the fit after a COI change
