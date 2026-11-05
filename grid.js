@@ -4831,7 +4831,20 @@ function gridShowContextMenu(x, y, cellStr, row) {
     toast(fname.trim() ? '✓ Quiz file set: ' + fname.trim() : '✓ Quiz file cleared', 1500);
   };
   _gridContextMenu.appendChild(quizBtn);
-  
+
+  // (dev1169) Add row — put an ml.json row in this cell, picked from the
+  // most-recently-used list or by typing its UID. See gridOpenAddPicker.
+  const addBtn = document.createElement('div');
+  addBtn.innerHTML = '<u>A</u>dd row…';
+  addBtn.style.cssText = 'padding:8px 16px; color:#8f8; cursor:pointer; font-size:13px;';
+  addBtn.onmouseenter = () => addBtn.style.background = '#1a2e1a';
+  addBtn.onmouseleave = () => addBtn.style.background = '';
+  addBtn.onclick = () => {
+    gridHideContextMenu();
+    gridOpenAddPicker(x, y, cellStr);
+  };
+  _gridContextMenu.appendChild(addBtn);
+
   // View option (if has content)
   if (row) {
     const viewBtn = document.createElement('div');
@@ -4958,6 +4971,14 @@ function gridShowContextMenu(x, y, cellStr, row) {
       ctextBtn.onclick();
       return;
     }
+    if (e.key === 'a' || e.key === 'A') {
+      // (dev1169) preventDefault keeps this "a" out of the picker's input, and
+      // the stop keeps it from reaching G's own a hotkey now the menu is gone.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      addBtn.onclick();
+      return;
+    }
     if (e.key === 't' || e.key === 'T') {
       e.preventDefault();
       gridOpenTextEditor(cellStr, row);
@@ -5007,6 +5028,171 @@ function gridHideContextMenu() {
     _gridContextMenu.remove();
     _gridContextMenu = null;
   }
+}
+
+// (dev1169) ADD ROW. An input over a list of recent rows ("UID -- VidTitle").
+// The cell it fills: the one right-clicked if empty, otherwise the grid's first
+// empty cell, so Add can never overwrite anything. Typing filters the list, and a
+// UID that isn't recent still resolves against all of ml.json.
+function _gridAddLabel(row) {
+  const t = String(row.VidTitle || row.n1 || row.link || '').trim();
+  return row.UID + ' -- ' + (t || '(untitled)');
+}
+
+function _gridAddTargetCell(cellStr, list) {
+  if (!getRowByCellForGrid(cellStr)) return cellStr;
+  const free = list.find(s => !getRowByCellForGrid(s.cs));
+  return free ? free.cs : null;
+}
+
+function gridOpenAddPicker(x, y, cellStr) {
+  const list = _gridCellList(_gridGsize, _gridCurrentLayout());
+  const target = _gridAddTargetCell(cellStr, list);
+  if (!target) { toast('Grid is full — delete a cell first', 1800); return; }
+
+  const rows = window.teMlRows ? window.teMlRows() : data;
+  const byUid = new Map();
+  rows.forEach(r => { if (r && r.UID !== undefined) byUid.set(String(r.UID), r); });
+  const inGrid = {};   // uid → the cell already holding it, shown as a hint only
+  list.forEach(s => {
+    const r = getRowByCellForGrid(s.cs);
+    if (r && r.UID !== undefined) inGrid[String(r.UID)] = s.cs;
+  });
+  const recent = window._salMruGet().map(u => byUid.get(u)).filter(Boolean);
+
+  const box = document.createElement('div');
+  box.id = 'gridAddPicker';
+  box.style.cssText = 'position:fixed; left:' + x + 'px; top:' + y + 'px; z-index:30000;'
+    + 'width:440px; max-width:90vw; background:#1a1a2e; border:1px solid #444; border-radius:6px;'
+    + 'padding:8px; box-shadow:0 4px 12px rgba(0,0,0,0.5); font-size:13px; color:#ccc;';
+  const head = document.createElement('div');
+  head.textContent = 'Add to cell ' + target + (target !== cellStr ? ' (' + cellStr + ' is taken)' : '');
+  head.style.cssText = 'color:#8f8; margin-bottom:6px;';
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.placeholder = 'Type a UID, or pick a recent row';
+  inp.style.cssText = 'width:100%; box-sizing:border-box; padding:5px 8px; background:#0d0d1a;'
+    + 'color:#fff; border:1px solid #555; border-radius:4px; font-size:13px;';
+  const ul = document.createElement('div');
+  ul.style.cssText = 'margin-top:6px; max-height:300px; overflow-y:auto;';
+  box.append(head, inp, ul);
+
+  let shown = [], sel = 0;
+  const paint = () => {
+    ul.innerHTML = '';
+    if (!shown.length) {
+      const q = inp.value.trim();
+      const none = document.createElement('div');
+      none.textContent = q ? 'No row matches "' + q + '" (' + byUid.size + ' rows loaded)'
+                           : 'No recent rows yet — type a UID';
+      none.style.cssText = 'padding:6px 8px; color:#888;';
+      ul.appendChild(none);
+      return;
+    }
+    shown.forEach((r, i) => {
+      const d = document.createElement('div');
+      const uid = String(r.UID);
+      d.textContent = _gridAddLabel(r) + (inGrid[uid] ? '  · already in ' + inGrid[uid] : '');
+      d.title = d.textContent;
+      d.style.cssText = 'padding:4px 8px; cursor:pointer; white-space:nowrap; overflow:hidden;'
+        + 'text-overflow:ellipsis; border-radius:3px;'
+        + (i === sel ? 'background:#2a2a4e; color:#fff;' : '');
+      d.onmouseenter = () => { if (sel !== i) { sel = i; paint(); } };
+      d.onmousedown = e => e.preventDefault();   // keep the caret in the input
+      d.onclick = () => { close(); _gridAddRowToCell(target, r); };
+      ul.appendChild(d);
+    });
+    const on = ul.children[sel];
+    if (on) on.scrollIntoView({ block: 'nearest' });
+  };
+  const refilter = () => {
+    const q = inp.value.trim().toLowerCase();
+    shown = !q ? recent.slice() : recent.filter(r => _gridAddLabel(r).toLowerCase().includes(q));
+    const exact = byUid.get(q);
+    if (exact) shown = [exact].concat(shown.filter(r => r !== exact));
+    sel = 0;
+    paint();
+  };
+  // On window in capture, so it sees every key before G's own handlers, none of
+  // which should act while this is open. Typing still lands: stopping an event
+  // doesn't cancel its default.
+  const onKey = e => {
+    e.stopImmediatePropagation();
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (shown.length) { sel = (sel + (e.key === 'ArrowDown' ? 1 : -1) + shown.length) % shown.length; paint(); }
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const r = shown[sel];
+      if (r) { close(); _gridAddRowToCell(target, r); }
+      return;
+    }
+    if (document.activeElement !== inp) inp.focus();   // core's Esc-blur, a list click
+  };
+  const onDown = e => { if (!box.contains(e.target)) close(); };
+  function close() {
+    window.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('pointerdown', onDown, true);
+    box.remove();
+  }
+  inp.addEventListener('input', refilter);
+  window.addEventListener('keydown', onKey, true);
+  window.addEventListener('pointerdown', onDown, true);
+  (window.salOverlayRoot ? window.salOverlayRoot() : document.body).appendChild(box);
+  refilter();
+  _gridClampContextMenu(box, x, y);
+  inp.focus();
+}
+
+// Put a row in an empty cell and save it. A c.json collection stores the UID in
+// its own row and writes c.json straight away; ml.json is not touched, since the
+// row itself didn't change. A grid loaded from T has no c.json row, so there
+// row.cell is the store and the save goes to ml.json.
+async function _gridAddRowToCell(cellStr, row) {
+  const uid = String(row.UID);
+  const std = parseGridCell(cellStr) ? cellStr : '';
+  let msg = '➕ UID ' + uid + ' → ' + cellStr;
+  let ok = true;
+
+  if (_gridSource === 'C' && _gridActiveConfig) {
+    const cfg = _gridActiveConfig;
+    cfg[cellStr] = uid;
+    cfg.DateModified = isoNow();
+    row.cell = std;
+    gridUpdateCell(cellStr, row);
+    // cSaveToFile writes _cData, so the edit must be on the row in there.
+    await _cEnsureLoaded();
+    const live = _cData.indexOf(cfg) >= 0 ? cfg : _cData.find(c => c.gname === cfg.gname);
+    if (live) {
+      if (live !== cfg) { live[cellStr] = uid; live.DateModified = cfg.DateModified; }
+      ok = await cSaveToFile();
+      msg += ok ? ' · saved to c.json' : ' · ⚠ localStorage only — re-grant project folder';
+    } else {
+      ok = false;
+      msg += ' · ⚠ NOT saved: "' + (cfg.gname || '?') + '" is not in c.json';
+    }
+  } else {
+    const was = row.cell;
+    row.cell = cellStr;
+    row.DateModified = isoNow();
+    if (was && was !== cellStr) { gridUpdateCell(was, null); msg += ' (moved from ' + was + ')'; }
+    gridUpdateCell(cellStr, row);
+    save();
+    msg += ' · T grid, saved to ml.json';
+  }
+
+  window._salMruNote(uid);
+  // Same counter gridShow writes: "… · 12/25 cells".
+  const info = document.getElementById('gridInfo');
+  if (info) {
+    const list = _gridCellList(_gridGsize, _gridCurrentLayout());
+    const n = list.filter(s => getRowByCellForGrid(s.cs)).length;
+    info.textContent = info.textContent.replace(/\d+\/(\d+) cells/, n + '/$1 cells');
+  }
+  toast(msg, ok ? 1800 : 3500);
 }
 
 function gridDeleteCell(cellStr) {

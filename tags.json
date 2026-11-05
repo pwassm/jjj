@@ -8339,5 +8339,46 @@
     ],
     "aliases": [],
     "rank": "genus"
+  },
+  {
+    "id": "polybius-henslowii",
+    "label": "Polybius henslowii",
+    "kind": "taxon",
+    "parents": [
+      "polybius"
+    ],
+    "aliases": [],
+    "rank": "species",
+    "NameSay": "puh-LIB-ee-uhs henslowii",
+    "NameOrigin": "Described by William Elford Leach in 1820.\nThe genus name \"Polybius\" may be in reference to the Greek historian Polybius; the specific epithet henslowii honours John Stevens Henslow, Professor of Botany at Cambridge University, who had collected the specimens used by Leach from a herring fisherman in North Devon in 1817. ([Wikipedia](https://en.wikipedia.org/wiki/Polybius_henslowii))",
+    "common": "Henslow's swimming crab"
+  },
+  {
+    "id": "polybiidae",
+    "label": "Polybiidae",
+    "kind": "taxon",
+    "parents": [
+      "decapoda"
+    ],
+    "aliases": [],
+    "rank": "family"
+  },
+  {
+    "id": "polybius",
+    "label": "Polybius",
+    "kind": "taxon",
+    "parents": [
+      "polybiidae"
+    ],
+    "aliases": [],
+    "rank": "genus"
+  },
+  {
+    "id": "broadclub-cuttlefish",
+    "label": "Broadclub cuttlefish",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "rank": "species"
   }
 ]

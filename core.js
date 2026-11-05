@@ -58,11 +58,37 @@
 
 window._lastUID = null;
 
+// (dev1169) MOST-RECENTLY-USED ml.json ROWS, for G's right-click "Add row". Fed
+// from setLastUID, which every screen already calls. T calls it on each arrow
+// press, so a row only counts once it has held for _SAL_MRU_DWELL_MS: scrolling
+// past thirty rows must not push out the ones actually worked on. Per-browser
+// (localStorage); UIDs only, so a row deleted later just drops out of the list.
+var _SAL_MRU_KEY = 'salMruUids', _SAL_MRU_MAX = 30, _SAL_MRU_DWELL_MS = 1200;
+var _salMruTimer = null;
+window._salMruGet = function() {
+  try {
+    var a = JSON.parse(localStorage.getItem(_SAL_MRU_KEY) || '[]');
+    return Array.isArray(a) ? a.map(String) : [];
+  } catch (_) { return []; }
+};
+window._salMruNote = function(uid) {
+  var s = String(uid == null ? '' : uid);
+  if (!/^\d+$/.test(s)) return;   // synthesized rows (pres:…, link cells) aren't ml.json rows
+  var a = window._salMruGet().filter(function(u) { return u !== s; });
+  a.unshift(s);
+  try { localStorage.setItem(_SAL_MRU_KEY, JSON.stringify(a.slice(0, _SAL_MRU_MAX))); } catch (_) {}
+};
+window._salMruDwell = function(uid) {
+  clearTimeout(_salMruTimer);
+  _salMruTimer = setTimeout(function() { window._salMruNote(uid); }, _SAL_MRU_DWELL_MS);
+};
+
 window.setLastUID = function(uid) {
   if (uid === undefined || uid === null || uid === '') return;
   const s = String(uid);
   if (window._lastUID === s) return;          // no change, skip render
   window._lastUID = s;
+  window._salMruDwell(s);   // (dev1169) G right-click → Add row list
   const el = document.getElementById('uid-badge');
   if (!el) return;
   el.style.display = 'block';
