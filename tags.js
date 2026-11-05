@@ -1300,6 +1300,13 @@
     // (dev1172) Lowercase the common names already stored, once. Done here for the
     // same reason as `def`, and flagged so a capital Phil restores by hand in D
     // isn't lowered again on every load. Nothing is written until the next save.
+    // (dev1173) Same reason: clear the split-authorship aliases already stored.
+    // Repeats harmlessly on each load until the next save writes them out.
+    tagsArr.forEach(t => {
+      if (!Array.isArray(t.aliases) || !t.aliases.length) return;
+      const c = cleanAliasList(t.aliases, t.label);
+      if (c.length !== t.aliases.length || c.some((x, i) => x !== t.aliases[i])) t.aliases = c;
+    });
     if (tagsMeta && !tagsMeta._commonCaseDone) {
       tagsArr.forEach(t => { if (t.common) t.common = commonCase(t.common, t.label); });
       tagsMeta._commonCaseDone = true;
@@ -1407,8 +1414,35 @@
   // own separator). Strip authorship, replace any remaining comma with a space,
   // collapse whitespace, drop empties, dedupe case-insensitively. Applied at
   // every write point so the comma-separated editor round-trips losslessly.
-  function cleanAliasList(arr) {
+  // (dev1173) An authorship split on its commas left aliases like
+  // ["Thermarces cerberus Rosenblatt & Cohen", "1986"]: the first piece is the
+  // label plus its author, the pieces after it are more authors up to the year.
+  // stripAuthorship can't see that (no year or "(A" in the first piece), so with
+  // the tag's label in hand: drop label+author, then author-only pieces until a
+  // year. A real alias after the year (Cockatiel, Wobbegong) is kept.
+  const AUTH_WORD = /^(?:\(?[A-ZÀ-Þ][A-Za-zÀ-ÿ.'’-]*\)?|&|ex|in|et|de|del|da|van|von|der|f\.)$/;
+  function isAuthorTail(s) {
+    const w = String(s || '').trim().split(/\s+/);
+    return w[0] !== '' && /^[(A-ZÀ-Þ]/.test(w[0]) && w.every(x => AUTH_WORD.test(x));
+  }
+  function dropAuthorFragments(arr, label) {
+    const lbl = String(label || '').trim(), lc = lbl.toLowerCase();
+    const out = [];
+    let inAuth = false;
+    arr.forEach(a => {
+      const s = String(a == null ? '' : a).trim();
+      if (/^\(?\d{4}\)?$/.test(s)) { inAuth = false; return; }
+      if (inAuth && isAuthorTail(s)) return;
+      inAuth = false;
+      if (lbl && s.toLowerCase().startsWith(lc + ' ') && isAuthorTail(s.slice(lbl.length))) { inAuth = true; return; }
+      out.push(a);
+    });
+    return out;
+  }
+
+  function cleanAliasList(arr, label) {
     if (!Array.isArray(arr)) return [];
+    arr = dropAuthorFragments(arr, label);
     const out = [], seen = new Set();
     arr.forEach(a => {
       let s = stripAuthorship(a).replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1682,7 +1716,7 @@
       label,
       kind: kind || 'topic',
       parents: Array.isArray(partial.parents) ? partial.parents.filter(Boolean) : [],
-      aliases: cleanAliasList(partial.aliases),
+      aliases: cleanAliasList(partial.aliases, label),
     };
     // (dev1148) `def` still accepted from older callers; it lands as facts1.
     const f1 = partial.facts1 || plainToHtml(partial.def);
@@ -1710,7 +1744,7 @@
       } else if (k === 'parents' && Array.isArray(patch.parents)) {
         t.parents = patch.parents.filter(Boolean);
       } else if (k === 'aliases' && Array.isArray(patch.aliases)) {
-        t.aliases = cleanAliasList(patch.aliases);
+        t.aliases = cleanAliasList(patch.aliases, patch.label != null ? patch.label : t.label);
       } else if (k === 'formerly') {
         t.formerly = Array.isArray(patch.formerly) ? patch.formerly : [];
       } else {
@@ -1788,7 +1822,7 @@
         aliasesAdded++;
       }
     });
-    to.aliases = cleanAliasList(mergedAliases);
+    to.aliases = cleanAliasList(mergedAliases, to.label);
     const formerly = (to.formerly || []).concat(from.formerly || [], opts.asFormerly ? [from.label] : []);
     if (formerly.length) { to.formerly = formerly; tidyFormerly(to); }
 
