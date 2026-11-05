@@ -173,6 +173,17 @@
           const lc = kv['lang' + (i + 1)];
           return (lc ? _wtLang(lc) + ' ' : '') + gl(t, kv['t' + (i + 1)] || kv['gloss' + (i + 1)] || kv['pos' + (i + 1)] || '');
         }).filter(Boolean).join(' + ');
+      // (dev1176) A name built in New Latin from Greek parts (Arthropoda):
+      // {{pseudo-loan|mul|grc|ἄρθρον|t1=joint|πούς|t2=foot}}.
+      case 'pseudo-loan': case 'pseudo-borrowing': {
+        const ln = _wtLang(pos[1] || '');
+        const terms = pos.slice(2).map((t, i) => {
+          if (!t || t === '-') return '';
+          const g = String(kv['t' + (i + 1)] || kv['gloss' + (i + 1)] || kv['pos' + (i + 1)] || '').split(';')[0].trim();
+          return gl(t, g);
+        }).filter(Boolean);
+        return terms.length ? 'From ' + (ln ? ln + ' ' : '') + terms.join(' + ') : '';
+      }
       case 'taxlink': case 'taxfmt': case 'vern':
         return pos[0] || '';
       case 'w': case 'wp': case 'glossary':
@@ -669,7 +680,7 @@
     // the open tag WoRMS's own synonym list, which knows more original names.
     step('Wikidata: the authors’ full names…');
     const wd = await _wdTaxa(jobs.filter(j => auths.has(j.name)).map(j => j.name)).catch(() => new Map());
-    const who = new Map();
+    const who = new Map(), wikiEty = new Map(), wikiTitle = new Map();
     jobs.forEach(j => {
       const a = auths.get(j.name);
       const m = a ? _wdMatch(wd.get(j.name), a.auth, j.genus, j.epithet) : null;
@@ -690,7 +701,11 @@
         // self = the tag's own article; for a species the second is the genus's.
         const person = _eponymStem(j.epithet);
         wiki.set(j.t.id, (await Promise.all(titles.map((ti, k) => wikiNamingSentences(ti, keys, k === 0 ? person : '')
-          .then(a => a.map(s => Object.assign(s, { self: k === 0 }))).catch(() => [])))).flat());
+          .then(a => {
+            if (k === 0 && a.etyPar) wikiEty.set(j.t.id, a.etyPar);
+            if (k === 0 && a.title) wikiTitle.set(j.t.id, a.title);
+            return a.map(s => Object.assign(s, { self: k === 0 }));
+          }).catch(() => [])))).flat());
       }));
     }
     const out = new Map();
@@ -723,6 +738,10 @@
       const isGenus = !!j.genus || j.t.rank === 'genus';
       const wikiFor = (word, epi) => {
         for (const s of ws) { const c = !s.who && _wikiClause(s.text, word); if (c) return { c, src: s.src }; }
+        const alt = !epi && j.word ? wikiTitle.get(j.t.id) : '';
+        if (alt && /^\S+$/.test(alt) && alt.toLowerCase() !== String(word).toLowerCase()) {
+          for (const s of ws) { const c = !s.who && s.self && _wikiClause(s.text, alt); if (c) return { c, src: s.src }; }
+        }
         for (const s of ws) {
           if (s.who || (s.subject && s.subject.toLowerCase() !== gWord)) continue;
           const own = j.word ? s.self : !s.self;
@@ -750,7 +769,18 @@
         // the other: keep the longer, once.
         let g2 = wG, e2 = wE;
         if (g2 && e2 && (g2.c.includes(e2.c) || e2.c.includes(g2.c))) { g2 = g2.c.length >= e2.c.length ? g2 : e2; e2 = null; }
-        if (g2) lines.push(wikiLine(g2));
+        // (dev1176) The article has an Etymology paragraph: Wiktionary's short
+        // breakdown first, then that paragraph whole; a sentence it already holds goes.
+        const ep = wikiEty.get(j.t.id);
+        const inEp = x => !!(ep && x && ep.text.toLowerCase().includes(x.c.toLowerCase().replace(/\.$/, '').slice(1)));
+        if (ep) {
+          if (ety) { lines.push(nameWord + ': ' + ety + '.'); wt.push(etySrc.get(nameWord)); }
+          lines.push(ep.text + ' ([Wikipedia](' + ep.src + '))');
+          if (!sources.some(x => x.name === 'Wikipedia')) sources.push({ name: 'Wikipedia', url: ep.src });
+          if (inEp(g2)) g2 = null;
+          if (inEp(e2)) e2 = null;
+          if (g2) lines.push(wikiLine(g2));
+        } else if (g2) lines.push(wikiLine(g2));
         else if (ety) { lines.push(nameWord + ': ' + ety + '.'); wt.push(etySrc.get(nameWord)); }
         // (dev1153) An eponym whose person the article names: "darwinii: “of
         // Darwin”, after Charles Darwin. It was discovered by Charles Darwin …".
@@ -786,21 +816,30 @@
       + '&format=json&formatversion=2&redirects=1&origin=*&titles=' + encodeURIComponent(title)).catch(() => null);
     const p = j && j.query && j.query.pages && j.query.pages[0];
     if (!p || !p.extract) return [];
-    const keys = (keyWords || []).map(w => String(w).toLowerCase()).filter(Boolean);
+    // (dev1176) The article's title is a key too: "Arthropoda" lands on
+    // "Arthropod", whose etymology says "The word arthropod comes from …".
+    const keys = (keyWords || []).map(w => String(w).toLowerCase()).filter(Boolean)
+      .concat(/^\S+$/.test(p.title) ? [String(p.title).toLowerCase()] : []);
     const src = 'https://en.wikipedia.org/wiki/' + encodeURIComponent(String(p.title).replace(/ /g, '_'));
     // (dev1152) Paragraph by paragraph: `subject` is the name a paragraph opens
     // on ("Metasepia was described …"), so a "The name …" inside it is that name's.
     const sents = [];
+    let section = '', etyPar = '';
     p.extract.split(/\n+/).forEach(par => {
       par = par.trim();
-      if (!par || /^=+[^=]*=+$/.test(par)) return;
+      if (!par) return;
+      const h = /^=+\s*([^=]*?)\s*=+$/.exec(par);
+      if (h) { section = h[1]; return; }
+      // (dev1176) First paragraph under an Etymology / Naming heading: the
+      // whole story of the name, which Phil wants rather than one sentence.
+      if (!etyPar && /^(?:etymology|naming|names?|nomenclature)\b|\betymology$/i.test(section)) etyPar = par;
       const m = /^["“]?([A-Z][a-z]+)\s+(?:was|is|were|are|has|had)\b/.exec(par);
       const subject = m && !_NOT_SUBJECT.test(m[1]) ? m[1] : '';
       _sentences(par).forEach(s => sents.push({ s: s.replace(/\s+/g, ' ').trim(), subject }));
     });
     let whoS = null;
     if (person) for (const x of sents) { const who = _personIn(x.s, person); if (who) { whoS = { text: x.s, src, score: 0, who }; break; } }
-    return sents
+    const out = sents
       .filter(x => x.s.length > 25 && x.s.length < 450 && _NAMING_RE.test(x.s))
       .map(({ s, subject }) => {
         const ls = s.toLowerCase();
@@ -815,6 +854,13 @@
       })
       .filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 4)
       .concat(whoS ? [whoS] : []);
+    out.title = p.title;
+    if (etyPar) {
+      let t = '';
+      for (const x of _sentences(etyPar).slice(0, 4)) { if ((t + ' ' + x).length > 900) break; t = (t ? t + ' ' : '') + x; }
+      if (t.length > 40) out.etyPar = { text: t.replace(/\s+/g, ' ').trim(), src };
+    }
+    return out;
   }
   const _NOT_SUBJECT = /^(?:It|Its|This|That|These|Those|There|They|Their|He|She|One|Each|All|Both|Some|Most|Many|Several|Such|Which|What|Who|Here)$/;
   // Sentences, without breaking after an initial or a short abbreviation
@@ -3446,10 +3492,10 @@
             <button data-facts-edit="${f}" title="Edit Facts ${i + 1} in Xe" style="padding:4px 9px;border:1px solid #4af;background:rgba(0,40,100,0.35);color:#8ef;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;white-space:nowrap;">✎ Xe</button>
           </div>`).join('')}
 
-          <label style="color:#6af;padding-top:5px;" title="How the binomial was given: who named it, when, and what the Latin or Greek means">Name origin<span data-name-flag="origin"></span></label>
+          <label style="color:#6af;padding-top:5px;" title="How the name was made: what the Latin or Greek means, and the story of the name. Who and when go in Named by/date.">Name origin<span data-name-flag="origin"></span></label>
           <div style="min-width:0;">
             <div style="display:flex;gap:6px;align-items:flex-start;">
-              <textarea id="de-nameorigin" rows="3" placeholder="who named it, when, and what the Latin or Greek means"
+              <textarea id="de-nameorigin" rows="3" placeholder="what the Latin or Greek means, and how the name came about"
                 style="flex:1;min-width:0;padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#ccc;border-radius:4px;font-family:system-ui,sans-serif;font-size:12px;outline:none;resize:vertical;">${escapeHtml(t.NameOrigin || '')}</textarea>
               ${t.kind === 'taxon' ? `<div style="display:flex;flex-direction:column;gap:4px;">
                 <button data-name-edit="origin" title="Change the looked-up text. Once you change it and press ✓ Save it is yours: it is flagged “edited” and no look-up replaces it." class="de-name-btn">✎ Edit</button>
