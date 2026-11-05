@@ -1297,6 +1297,13 @@
         delete t.def;
       }
     });
+    // (dev1172) Lowercase the common names already stored, once. Done here for the
+    // same reason as `def`, and flagged so a capital Phil restores by hand in D
+    // isn't lowered again on every load. Nothing is written until the next save.
+    if (tagsMeta && !tagsMeta._commonCaseDone) {
+      tagsArr.forEach(t => { if (t.common) t.common = commonCase(t.common, t.label); });
+      tagsMeta._commonCaseDone = true;
+    }
     if (tagsMeta && Array.isArray(tagsMeta._salColOrder)) {
       const co = tagsMeta._salColOrder.map(c => c === 'def' ? 'facts1' : c);
       let at = co.indexOf('facts1');
@@ -1541,6 +1548,61 @@
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
+  // (dev1172) Common names are lowercase unless a word comes from a place or a
+  // person. Sources and our own label capitalizing both hand us "Broadclub
+  // cuttlefish" and "Knobby Sea Star". A word keeps its capital if it is:
+  //   on this list; a possessive (Darwin's, Lewis'); an abbreviation (P.);
+  //   mixed-case (McCosker); the genus of a binomial misfiled here; or a capital
+  //   in the middle of an otherwise lowercase name, typed on purpose.
+  // Not on the list and first in the name? It gets lowered. D's Save lets Phil
+  // put the capital back: retyping only the case of the stored name sticks.
+  const PROPER_WORDS = new Set(('African Alaska Alaskan Aleutian Amazon Amazonian America American Andaman '
+    + 'Antarctic Antarctica Arabian Arctic Argentine Asia Asian Atlantic Australia Australian Azores Bahama '
+    + 'Bahamas Baja Bali Balinese Baltic Banggai Bengal Bering Bermuda Bornean Borneo Brazil Brazilian Britain '
+    + 'British California Californian Canada Canadian Canary Cape Caribbean Caspian Celebes Chesapeake Chile '
+    + 'Chilean China Chinese Congo Cortez Cuba Cuban Dungeness Dutch Egypt Egyptian England English Eurasian '
+    + 'Europe European Falkland Fiji Florida French Galapagos Galápagos Georgia German Greek Greenland Guam '
+    + 'Guinea Hawaii Hawaiian Himalayan Hudson Humboldt Iberian India Indian Indo Indonesia Indonesian Irish '
+    + 'Italian Jamaica Jamaican Japan Japanese Java Javan Kerguelen Korea Korean Madagascar Malay Malayan '
+    + 'Malaysian Maldives Mariana Maui Mediterranean Mexican Mexico Midlands Monterey Moorish Napoleon Nassau '
+    + 'Natal Nile Nordic Norway Norwegian Okinawa Oregon Pacific Panama Patagonia Patagonian Persian Peru '
+    + 'Peruvian Philippine Philippines Polynesian Portuguese Prideaux Puget Russian Sahara Sally Samoan Sargasso '
+    + 'Scotland Scottish Siamese Siberian Spanish Sulawesi Sumatra Sumatran Tahiti Tasman Tasmanian Texas Thai '
+    + 'Tonga Turkish Vietnam Vietnamese Virginia Xantic Zanzibar Zealand '
+    // Latin genera misfiled as common names in tags.json.
+    + 'Astraea Bacillaria Globicephalus').split(' ').map(w => w.toLowerCase()));
+  // Capitalized only ahead of a proper word: South African, New Zealand.
+  const PROPER_LEADS = new Set(['north', 'south', 'east', 'west', 'new']);
+
+  function commonCase(str, label) {
+    const own = new Set(String(label || '').toLowerCase().split(/\s+/).filter(Boolean));
+    return String(str == null ? '' : str).split(/(,\s*)/).map(part => {
+      if (/^,\s*$/.test(part)) return part;
+      const words = part.split(/(\s+)/);
+      const real = words.filter(w => /\S/.test(w));
+      const titleCase = real.length > 1 && real.every(w => /^[^a-z]/.test(w));
+      let seen = 0;
+      return words.map((w, i) => {
+        if (!/\S/.test(w)) return w;
+        const first = seen++ === 0;
+        const next = String(words[i + 2] || '').replace(/[^\p{L}]/gu, '').toLowerCase();
+        return w.split('-').map((piece, pi) => {
+          const bare = piece.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '').toLowerCase();
+          if (!/^\P{Ll}/u.test(piece) || !/\p{Lu}/u.test(piece.charAt(0))) return piece;  // already lowercase
+          if (PROPER_WORDS.has(bare)) return piece;
+          // A binomial misfiled as a common name (Bathynomus vaderii), not "Octopus" in
+          // Wolf's pygmy octopus just because the tag is Octopus wolfi.
+          if (first && real.length === 2 && own.has(bare)) return piece;
+          if (/['’]s$|s['’]$/i.test(piece) || /\.$/.test(piece)) return piece;
+          if (/\p{Lu}/u.test(piece.slice(1))) return piece;
+          if (PROPER_LEADS.has(bare) && PROPER_WORDS.has(next)) return piece;
+          if (!first && !titleCase && pi === 0) return piece;              // typed on purpose
+          return piece.charAt(0).toLowerCase() + piece.slice(1);
+        }).join('-');
+      }).join('');
+    }).join('');
+  }
+
   // Guess the rank of a scientific name based on its ending or word pattern.
   // Returns { kind, rank } or null if no confident guess.
   // Conservative by design — false positives (calling common names taxa) are
@@ -1627,7 +1689,7 @@
     if (f1) rec.facts1 = f1;
     TEXT_FIELDS.slice(1).forEach(f => { if (partial[f]) rec[f] = partial[f]; });
     if (rank) rec.rank = rank;
-    if (partial.common) rec.common = formatTagLabel(partial.common);
+    if (partial.common) rec.common = commonCase(partial.common, label);
     if (partial.extinct) rec.extinct = true;
     if (Array.isArray(partial.formerly)) { rec.formerly = partial.formerly; tidyFormerly(rec); }
     enforceParentRule(rec);
@@ -1641,8 +1703,11 @@
     const t = byId.get(id);
     if (!t) return { ok: false, err: 'not found' };
     Object.keys(patch).forEach(k => {
-      if (k === 'id') return;              // immutable
-      if (k === 'parents' && Array.isArray(patch.parents)) {
+      if (k === 'id' || k === '_commonAsTyped') return;              // immutable / a flag, not a field
+      if (k === 'common') {
+        const lbl = patch.label != null ? patch.label : t.label;
+        t.common = patch._commonAsTyped ? patch.common : commonCase(patch.common, lbl);
+      } else if (k === 'parents' && Array.isArray(patch.parents)) {
         t.parents = patch.parents.filter(Boolean);
       } else if (k === 'aliases' && Array.isArray(patch.aliases)) {
         t.aliases = cleanAliasList(patch.aliases);
@@ -3552,9 +3617,17 @@
           patch[st.field] = v;
           if (isTaxon) patch[st.flagKey] = true;
         });
+        // (dev1172) Unchanged, or only its case changed: that's Phil's capital, keep it.
+        const storedCommon = String(stored.common || '');
+        const caseOnly = patch.common.toLowerCase() === storedCommon.toLowerCase();
+        if (caseOnly) patch._commonAsTyped = true;
         const r = updateTag(id, patch);
         if (r.ok) {
-          if (typeof toast === 'function') toast('✓ Saved: ' + patch.label, 1000);
+          const savedCommon = (byId.get(id) || {}).common || '';
+          if (typeof toast === 'function') toast(savedCommon !== patch.common
+            ? '✓ Saved: ' + patch.label + '\nCommon name lowercased: ' + savedCommon
+              + '\nIf a word is a proper name, retype it with the capital and Save again.'
+            : '✓ Saved: ' + patch.label, savedCommon !== patch.common ? 4500 : 1000);
           if (typeof render === 'function') render();
           renderView();
           selectTag(id);
@@ -3596,6 +3669,17 @@
               compare: true,
               vernacular: true
             });
+            // (dev1172) The saved label is a common name and a binomial was typed over
+            // it, unsaved: keep the saved one as the common name. A shared word means
+            // the label was only corrected (a typo, a new genus) and is no common name.
+            const wordsOf = s => String(s || '').toLowerCase().trim().split(/\s+/);
+            const was = wordsOf(t.label), now = wordsOf(queryName);
+            if ((res.matchType === 'EXACT' || res.matchType === 'FUZZY') && !res._commonName
+                && !was.some(w => now.includes(w))) {
+              res._commonName = t.label;
+              res._commonTypedSci = true;
+              res._commonOld = res._supersededFrom ? [queryName] : [];
+            }
             renderTaxonResult(resultEl, id, queryName, res, resolution);
           } catch (e) {
             resultEl.innerHTML = '<div style="padding:10px 12px;background:rgba(255,80,80,0.1);border:1px solid #533;border-radius:5px;color:#f88;font-size:11px;">'
@@ -5512,8 +5596,62 @@
         return { res: pick, resolution: rr };
       }
     }
-    if (mt === 'NONE' || mt === 'HIGHERRANK') resolution.common = votes;
+    if (mt === 'NONE' || mt === 'HIGHERRANK') {
+      votes.mentions = await wikiMentions(name, votes);
+      resolution.common = votes;
+    }
     return { res, resolution };
+  }
+
+  // (dev1172) Last resort when no source lists the name exactly: Wikipedia pages
+  // whose text mentions it, kept only if Wikidata says the page is a taxon. In a
+  // small test this put the right species first for 2 of 5, so it is a suggestion:
+  // shown as unconfirmed, never chosen, and silent if Wikipedia is unavailable.
+  async function wikiMentions(query, votes) {
+    try {
+      const base = 'https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*';
+      const s = await (await fetch(base + '&list=search&srlimit=5&srsearch=' + encodeURIComponent(query))).json();
+      const titles = ((s.query && s.query.search) || []).map(x => x.title);
+      if (!titles.length) return [];
+      const p = await (await fetch(base + '&redirects=1&prop=pageprops&ppprop=wikibase_item&titles='
+        + encodeURIComponent(titles.join('|')))).json();
+      const qidOf = {};
+      Object.values((p.query && p.query.pages) || {}).forEach(x => {
+        if (x.pageprops && x.pageprops.wikibase_item) qidOf[x.title] = x.pageprops.wikibase_item;
+      });
+      const ids = Object.values(qidOf);
+      if (!ids.length) return [];
+      const e = await (await fetch('https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&props=claims&ids='
+        + ids.join('|'))).json();
+      const known = new Set(((votes && votes.loose) || []).map(x => String(x.name).toLowerCase()));
+      const out = [];
+      titles.forEach(title => {
+        const ent = e.entities && e.entities[qidOf[title]];
+        const c = ent && ent.claims && ent.claims.P225;
+        const nm = c && c[0] && c[0].mainsnak && c[0].mainsnak.datavalue && c[0].mainsnak.datavalue.value;
+        if (!nm || known.has(String(nm).toLowerCase())) return;
+        known.add(String(nm).toLowerCase());
+        out.push({ name: nm, page: title });
+      });
+      return out;
+    } catch (err) { return []; }
+  }
+
+  // Search-by-hand links for a name the look-ups couldn't settle.
+  function lookupLinksHtml(query) {
+    const q = encodeURIComponent(query);
+    const links = [
+      ['Google', 'https://www.google.com/search?q=' + encodeURIComponent('"' + query + '" species')],
+      ['iNaturalist', 'https://www.inaturalist.org/taxa/search?q=' + q],
+      ['Wikipedia', 'https://en.wikipedia.org/w/index.php?fulltext=1&search=' + q],
+      ['FishBase', 'https://www.fishbase.se/ComNames/CommonNameSearchList.php?CommonName=' + q],
+      ['SeaLifeBase', 'https://www.sealifebase.se/comnames/commonnamesearchlist.php?CommonName=' + q]
+    ];
+    return '<div style="margin-top:6px;font-size:11px;color:#aaa;">Search by hand: '
+      + links.map(l => '<a href="' + escapeHtml(l[1]) + '" target="_blank" rel="noopener" style="color:#6af;margin-right:9px;">'
+        + l[0] + ' ↗</a>').join('')
+      + '<div style="color:#888;font-size:10px;margin-top:3px;">Found it? Type the binomial over the Label without saving and press '
+      + 'Check taxonomy. Apply All keeps this name as the common name.</div></div>';
   }
 
   // species/match answers NONE for a name GBIF holds only as a synonym — it is
@@ -5582,14 +5720,16 @@
     if (res._commonName) {
       // The typed text is a common name and this is the species it means.
       const srcs = res._commonSrcs || [];
-      const sure = !!res._commonAgreed;
-      const who = !srcs.length ? 'Your pick from the list.'
+      const sure = !!res._commonAgreed || !!res._commonTypedSci;
+      const who = res._commonTypedSci ? 'You typed the scientific name. Apply All keeps "' + res._commonName + '" as the common name.'
+        : !srcs.length ? 'Your pick from the list.'
         : srcs.length === 1 ? 'Only ' + srcs[0] + ' lists this name, so check it.'
         : srcs.join(' · ') + (sure ? ' agree.' : ' list it, but another species ties. Check the candidates below.');
       headerHtml = '<span style="color:' + (sure ? '#afa' : '#fc8') + ';font-weight:bold;">'
         + (sure ? '✓' : '⚠') + ' Common name: "' + escapeHtml(res._commonName) + '" = <i>'
         + escapeHtml(canonical) + '</i></span> ' + srcBadge
-        + '<div style="color:#9a9;margin-top:4px;font-size:11px;">' + escapeHtml(who) + '</div>';
+        + '<div style="color:#9a9;margin-top:4px;font-size:11px;">' + escapeHtml(who) + '</div>'
+        + (sure ? '' : lookupLinksHtml(res._commonName));
       bgColor = sure ? 'rgba(80,200,80,0.08)' : 'rgba(255,200,100,0.08)';
       borderColor = sure ? '#484' : '#764';
     } else if (matchType === 'EXACT') {
@@ -5624,7 +5764,8 @@
       headerHtml = '<span style="color:#f88;font-weight:bold;">✗ No exact match</span>'
         + '<div style="color:#f99;margin-top:4px;font-size:11px;">"<b>' + escapeHtml(query) + '</b>" is not a '
         + 'scientific name in WoRMS or GBIF, and no source lists it as an exact common name.' + escapeHtml(down)
-        + ' Check the spelling. Any near matches are listed below.</div>';
+        + ' Check the spelling. Any near matches are listed below.</div>'
+        + lookupLinksHtml(query);
       bgColor = 'rgba(255,100,100,0.08)';
       borderColor = '#633';
     }
@@ -5738,7 +5879,8 @@
 
     // Always also fetch common-name candidates so user can pick a different
     // species if the auto-match was wrong.
-    fetchAndRenderCandidates(res._commonName || query, container.querySelector('#gbif-candidates'), tagId, votes);
+    fetchAndRenderCandidates(res._commonTypedSci ? query : (res._commonName || query),
+      container.querySelector('#gbif-candidates'), tagId, votes);
 
     // Wire apply buttons
     [...container.querySelectorAll('button[data-action]')].forEach(btn => {
@@ -5808,6 +5950,12 @@
           votedNames.add(x.name.toLowerCase());
           voteCands.push({ _source: 'votes', _srcs: ['iNaturalist near match'], canonicalName: x.name,
             scientificName: x.name, rank: x.rank, _nearCommon: x.common });
+        });
+        (votes.mentions || []).forEach(x => {
+          if (votedNames.has(x.name.toLowerCase())) return;
+          votedNames.add(x.name.toLowerCase());
+          voteCands.push({ _source: 'votes', _srcs: ['Wikipedia mention, unconfirmed'], canonicalName: x.name,
+            scientificName: x.name, rank: '', _nearCommon: x.page });
         });
       }
       const alreadyVoted = n => { const l = String(n || '').toLowerCase(); return votedNames.has(l) || votedOld.has(l); };
