@@ -5,7 +5,8 @@
       "Lock": 64,
       "active": 130,
       "cells": 129,
-      "ctype": 54
+      "ctype": 54,
+      "Zoom": 57
     },
     "_salColOrder": [
       "gname",
@@ -186,7 +187,7 @@
       }
     },
     "_salActiveView": "ctypetabsontop",
-    "_salLayout": "P3"
+    "_salLayout": "square"
   },
   {
     "Kind": "intro",
@@ -2509,7 +2510,7 @@
     "gname": "mollym1",
     "cells": 9,
     "Zoom": 1,
-    "DateModified": "2026-11-05 14:31:26",
+    "DateModified": "2026-11-05 15:16:16",
     "1a": "2255",
     "1b": "2257",
     "1c": "2270",
@@ -2524,7 +2525,7 @@
     "ss": "mollym1",
     "ctxt": "MollyMoonsnail",
     "active": " ",
-    "ctype": "u"
+    "ctype": ""
   },
   {
     "gname": "Hummingbird211",
@@ -2549,7 +2550,7 @@
     "gname": "moon25",
     "cells": 25,
     "Zoom": 1,
-    "DateModified": "2026-09-28 03:09:32",
+    "DateModified": "2026-11-05 15:16:18",
     "1a": "2255",
     "1b": "2257",
     "1c": "2270",
@@ -2578,7 +2579,9 @@
     "DateAdded": "2026-09-14 04:25:56",
     "Label": "1",
     "ctxt": "moon25",
-    "ss": "moon25"
+    "ss": "moon25",
+    "ctype": "u",
+    "active": "1"
   },
   {
     "gname": "Moonsnail30",
