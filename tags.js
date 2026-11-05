@@ -20,7 +20,7 @@
  *   Each tag record:
  *     { id, label, kind, rank?, parents:[], aliases?:[], formerly?:[], common?:"", authority?:"",
  *       facts1?:"", facts2?:"", facts3?:"", NameOrigin?:"", NameSay?:"",
- *       NameOriginEdited?:true, NameSayEdited?:true }
+ *       NameOriginEdited?:true, NameSayEdited?:true, NameOriginSrc?:[{name,url}] }
  *   authority (dev1174) = who named it and when, "Rosenblatt & Cohen, 1986" (D: Named by/date).
  *   No extinct flag since dev1175: a taxon is extinct when its facts say "extinct".
  *   formerly (dev1116) = older scientific names the label replaced (Pleuroncodes
@@ -795,8 +795,10 @@
         return null;
       };
       const wG = wikiFor(nameWord, false), wE = j.epithet ? wikiFor(j.epithet, true) : null;
-      const wikiLine = x => x.c + ' ([Wikipedia](' + x.src + '))';
-      if (wG || wE) sources.push({ name: 'Wikipedia', url: (wG || wE).src });
+      // (dev1180) Credits are not in the text any more: every page used is a
+      // source, shown small under the box and kept on the tag (NameOriginSrc).
+      const addWiki = url => { if (url && !sources.some(x => x.url === url)) sources.push({ name: 'Wikipedia', url }); };
+      const wikiLine = x => { addWiki(x.src); return x.c; };
       const wt = [];                                   // Wiktionary pages the draft used
       const tauto = !!(j.genus && j.epithet && j.genus.toLowerCase() === j.epithet);
       if (tauto) {
@@ -816,8 +818,8 @@
         const inEp = x => !!(ep && x && ep.text.toLowerCase().includes(x.c.toLowerCase().replace(/\.$/, '').slice(1)));
         if (ep) {
           if (ety) { lines.push(nameWord + ': ' + ety + '.'); wt.push(etySrc.get(nameWord)); }
-          lines.push(ep.text + ' ([Wikipedia](' + ep.src + '))');
-          if (!sources.some(x => x.name === 'Wikipedia')) sources.push({ name: 'Wikipedia', url: ep.src });
+          lines.push(ep.text);
+          addWiki(ep.src);
           if (inEp(g2)) g2 = null;
           if (inEp(e2)) e2 = null;
           if (g2) lines.push(wikiLine(g2));
@@ -830,8 +832,8 @@
         if (e2) lines.push(wikiLine(e2));
         else if (!wE && whoS) {
           lines.push(j.epithet + ': ' + meaning.replace(/after (?:a person named )?[^,;“”]*$/, 'after ' + whoS.who) + '. '
-            + whoS.text + ' ([Wikipedia](' + whoS.src + '))');
-          if (!sources.some(x => x.name === 'Wikipedia')) sources.push({ name: 'Wikipedia', url: whoS.src });
+            + whoS.text);
+          addWiki(whoS.src);
           wt.push(lemmas.get(j.epithet) || (pages.has(j.epithet) ? j.epithet : ''));
         } else if (!wE && meaning) {
           lines.push(j.epithet + ': ' + meaning + '.');
@@ -1322,7 +1324,11 @@
         if (!m) continue;
         const e = out.get(j.t.id);
         if (!e.say) { e.say = m.say; e.partial = ''; e.missing = []; }
-        e.say = e.say + '\nM-W: ' + m.mw;
+        // (dev1180) Phil: M-W's own notation first, unlabelled; the respelling under it.
+        e.say = m.mw + '\n' + e.say.split('\n').map(l => {
+          const v = /^(US|GB|Classical):\s*(.*)$/.exec(l);
+          return v ? 'Respelling (' + v[1] + '): ' + v[2] : 'Respelling: ' + l;
+        }).join('\n');
         e.sources.push({ name: 'Merriam-Webster', url: m.page });
         e.mwAudio = m.audio;
       }
@@ -1509,7 +1515,15 @@
     // (dev1177) Looked-up Name origins in Latin letters (Phil's own text is left alone).
     tagsArr.forEach(t => {
       if (typeof t.NameOrigin === 'string' && !t.NameOriginEdited) {
-        const v = latinOnly(t.NameOrigin);
+        let v = latinOnly(t.NameOrigin);
+        // (dev1180) " ([Wikipedia](url))" out of the text, into NameOriginSrc.
+        const urls = [];
+        v = v.replace(/\s*\(\[Wikipedia\]\((https?:\/\/[^)\s]+)\)\)/g, (m, u) => { urls.push(u); return ''; });
+        if (urls.length) {
+          const src = Array.isArray(t.NameOriginSrc) ? t.NameOriginSrc : [];
+          urls.forEach(u => { if (!src.some(x => x.url === u)) src.push({ name: 'Wikipedia', url: u }); });
+          t.NameOriginSrc = src;
+        }
         if (v !== t.NameOrigin) t.NameOrigin = v;
       }
     });
@@ -3592,6 +3606,7 @@
           #de-namesay-keybox td:first-child { font-family:monospace; color:#fff; }
           .de-auto-note { color:#678; font:10.5px/1.5 system-ui,sans-serif; margin-top:2px; }
           .de-auto-note:empty { display:none; }
+          #de-origin-auto { font-size:9.5px; color:#567; }
           .de-auto-note a { color:#68a; }
           .de-auto-note button { margin-left:4px; padding:0 6px; border:1px solid #456; background:#14142a; color:#9ab;
             border-radius:3px; cursor:pointer; font:10px monospace; }
@@ -3790,7 +3805,9 @@
         say:    { kind: 'say',    field: 'NameSay',    box: sayBox,    note: editEl.querySelector('#de-namesay-auto') },
       };
       const live = () => selectedId === id && originBox.isConnected;
-      const srcLinks = srcs => (srcs || []).map(s => '<a href="' + escapeAttr(s.url) + '" target="_blank" rel="noopener">'
+      const srcLinks = srcs => (srcs || []).map(s => ({ ...s, name: s.name === 'Wikipedia' && (srcs || []).filter(x => x.name === 'Wikipedia').length > 1
+          ? 'Wikipedia: ' + decodeURIComponent(String(s.url).split('/wiki/')[1] || '').replace(/_/g, ' ') : s.name }))
+        .map(s => '<a href="' + escapeAttr(s.url) + '" target="_blank" rel="noopener">'
         + escapeHtml(s.name) + '</a>').join(' · ');
       const normName = (st, s) => st.kind === 'say'
         ? String(s || '').split('\n').map(x => x.trim()).filter(Boolean).join('\n') : String(s || '').trim();
@@ -3815,7 +3832,7 @@
             : 'No source found for this name (WoRMS, GBIF, Wiktionary, Wikipedia) — ✎ type one.';
         }
         if (r && r.say) return 'From ' + srcLinks(r.sources) + ' — saved.'
-          + (r.mwAudio ? ' <a href="' + escapeAttr(r.mwAudio) + '" target="_blank" rel="noopener">▶ M-W audio</a>' : '');
+          + (r.mwAudio ? ' <button type="button" data-mw-audio="' + escapeAttr(r.mwAudio) + '" title="Play Merriam-Webster’s recording">▶ listen</button>' : '');
         if (v) return 'Published for part of the name only (' + srcLinks(r.sources) + ') — <i>'
           + escapeHtml(r.missing.join(', ')) + '</i> is left as spelled. Saved.';
         return retry ? 'Wikipedia or Wiktionary didn’t answer — R looks again.'
@@ -3828,6 +3845,18 @@
       };
       // A look-up → the tag, saved at once. Never over Phil's own text, and
       // never a blank over something already there (a source may be down).
+      // (dev1180) ▶ listen plays M-W's mp3 right here, no new window.
+      if (!editEl._mwAudioWired) {
+        editEl._mwAudioWired = true;
+        editEl.addEventListener('click', e => {
+          const b = e.target.closest && e.target.closest('[data-mw-audio]');
+          if (!b) return;
+          e.preventDefault();
+          if (window._salMwAudio) window._salMwAudio.pause();
+          window._salMwAudio = new Audio(b.dataset.mwAudio);
+          window._salMwAudio.play().catch(err => { if (typeof toast === 'function') toast('Could not play: ' + (err && err.message || err), 2500); });
+        });
+      }
       const applyLook = (st, r) => {
         const cur = byId.get(id);
         const v = valueOf(st, r);
@@ -3838,7 +3867,11 @@
           updateTag(id, { authority: found });
           if (live()) aBox.value = found;
         }
-        if (cur && !cur[st.flagKey] && !st.typed && v && cur[st.field] !== v) updateTag(id, { [st.field]: v });
+        if (cur && !cur[st.flagKey] && !st.typed && v && cur[st.field] !== v) {
+          const patch = { [st.field]: v };
+          if (st.kind === 'origin') patch.NameOriginSrc = (r.sources || []).map(x => ({ name: x.name, url: x.url }));
+          updateTag(id, patch);
+        }
         if (!live()) return;
         if (st.edited() || st.typed) { st.note.textContent = st.edited() ? MINE : ''; return; }
         if (v) show(st, v);
@@ -4085,7 +4118,9 @@
           withBatchedSave(() => {
             todo.forEach(x => {
               const r = res.get(x.id), cur = byId.get(x.id);
-              if (r && r.draft && cur && cur.NameOrigin === undefined) { updateTag(x.id, { NameOrigin: r.draft }); n++; }
+              if (r && r.draft && cur && cur.NameOrigin === undefined) {
+                updateTag(x.id, { NameOrigin: r.draft, NameOriginSrc: (r.sources || []).map(y => ({ name: y.name, url: y.url })) }); n++;
+              }
               if (r && r.auth && r.auth.auth && cur && !cur.authority) updateTag(x.id, { authority: String(r.auth.auth).trim() });
             });
             todoSay.forEach(x => {
