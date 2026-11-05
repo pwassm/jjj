@@ -5493,7 +5493,11 @@
 
     const votes = await commonNameVotes(name, hint);
     const top = votes.ranked[0];
-    if (top) {
+    // (dev1171) iNat and Wikipedia also answer to scientific names: Retaria "wins"
+    // as its own common name. That answer means the typed text was scientific all
+    // along, and Apply All must not save a binomial as the common name.
+    const typedIsSci = top && [top.name].concat(top.oldNames).some(n => _vKey(n) === _vKey(name));
+    if (top && !typedIsSci) {
       let rr = await resolveTaxon(top.name, { rankHint: top.rank || hint, vernacular: true });
       let pick = rr.primary;
       if (pick && _kingdomClash(top, pick)) {
