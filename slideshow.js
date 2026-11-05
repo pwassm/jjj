@@ -4567,7 +4567,12 @@ function _slideshowWireMenu(menu) {
   const srcPick = menu.querySelector('#ssSourcePick');
   if (srcPick) {
     // 📁 always opens the picker so the user can choose a different folder.
-    srcPick.onclick = e => { e.stopPropagation(); slideshowOpenSourceFolder(false); };
+    // (dev1166) Keep the current mode, as the dropdown does (dev0304) — this used to
+    // drop Review to a plain slideshow, so a/s/d/f stopped rating in the new folder.
+    srcPick.onclick = e => {
+      e.stopPropagation();
+      slideshowOpenSourceFolder(false, (_slideshowState && _slideshowState.mode) || 'slideshow');
+    };
   }
 
   // Clicking on the menu background shouldn't dismiss either.
