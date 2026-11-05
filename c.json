@@ -2752,5 +2752,17 @@
     "ctxt": "trematode10",
     "Label": "1",
     "ss": "trematode10"
+  },
+  {
+    "gname": "2IgOneHcrab",
+    "cells": 3,
+    "Zoom": 1,
+    "DateModified": "2026-11-05 05:27:11",
+    "1a": "2727",
+    "1b": "2726",
+    "1c": "2724",
+    "DateAdded": "2026-11-05 05:19:12",
+    "active": "1",
+    "ctxt": "IgOnCell?"
   }
 ]
