@@ -4,7 +4,8 @@
     "_salColWidths": {
       "Lock": 64,
       "active": 130,
-      "cells": 129
+      "cells": 129,
+      "ctype": 54
     },
     "_salColOrder": [
       "gname",
@@ -2508,7 +2509,7 @@
     "gname": "mollym1",
     "cells": 9,
     "Zoom": 1,
-    "DateModified": "2026-09-28 03:09:30",
+    "DateModified": "2026-11-05 14:31:26",
     "1a": "2255",
     "1b": "2257",
     "1c": "2270",
@@ -2522,7 +2523,8 @@
     "Label": "1",
     "ss": "mollym1",
     "ctxt": "MollyMoonsnail",
-    "active": " "
+    "active": " ",
+    "ctype": "u"
   },
   {
     "gname": "Hummingbird211",
