@@ -117,6 +117,47 @@
   // (dev1150) NameOrigin is plain text; a credit link is written [Wikipedia](https://…)
   // so it reads fine in D's textarea. This turns it into HTML for display:
   // escaped text, <br> per line, and only http(s) links become <a>.
+  // (dev1177) Name origin in Latin letters only. Accents and umlauts stay; Greek
+  // is written in Latin letters (ἄρθρον → arthron), and where Wikipedia already
+  // gives the Latin form next to it ("ἄρθρον árthron") that one is kept. Other
+  // scripts (Cyrillic, Hebrew, Arabic, Asian) are dropped.
+  const _GR = { 'α': 'a', 'β': 'b', 'γ': 'g', 'δ': 'd', 'ε': 'e', 'ζ': 'z', 'η': 'e', 'θ': 'th', 'ι': 'i', 'κ': 'k',
+    'λ': 'l', 'μ': 'm', 'ν': 'n', 'ξ': 'x', 'ο': 'o', 'π': 'p', 'ρ': 'r', 'σ': 's', 'ς': 's', 'τ': 't', 'υ': 'y',
+    'φ': 'ph', 'χ': 'ch', 'ψ': 'ps', 'ω': 'o', 'ϝ': 'w', 'ϲ': 's' };
+  function _grLatin(w) {
+    const d = String(w).normalize('NFD');
+    const cap = /^[\u0391-\u03A9]/.test(d);
+    let rough = false;
+    const L = [];
+    for (const c of d.toLowerCase()) {
+      if (c === '\u0314') rough = true;
+      else if (c === '\u0345') L.push('\u03b9');                // iota under a vowel: \u03b6\u1ff7\u03b1 \u2192 zoia
+      else if (!/[\u0300-\u036f]/.test(c)) L.push(c);
+    }
+    let out = '';
+    L.forEach((c, i) => {
+      if (c === 'υ' && 'αεοη'.includes(L[i - 1] || '-')) out += 'u';
+      else if (c === 'γ' && 'γκξχ'.includes(L[i + 1] || '-')) out += 'n';
+      else out += _GR[c] != null ? _GR[c] : c;
+    });
+    if (rough) out = L[0] === 'ρ' ? 'rh' + out.slice(1) : 'h' + out;
+    return cap ? out.charAt(0).toUpperCase() + out.slice(1) : out;
+  }
+  const _GRW = '[\\u0370-\\u03FF\\u1F00-\\u1FFF][\\u0370-\\u03FF\\u1F00-\\u1FFF\\u0300-\\u036f]*';
+  const _foldL = x => String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '');
+  function latinOnly(text) {
+    let s = String(text || '').normalize('NFC');
+    if (!/[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F\u20A0-\u20CF\u2100-\u214F]/.test(s)) return s;
+    // "ἄρθρον árthron" → "árthron" (close enough: same start, length within 2).
+    s = s.replace(new RegExp('(-?)(' + _GRW + ')\\s+(-?[A-Za-zÀ-ÿĀ-ɏḀ-ỿ]+)', 'g'), (m, dash, gr, lat) => {
+      const a = _foldL(_grLatin(gr)), b = _foldL(lat);
+      return a.slice(0, 3) === b.slice(0, 3) && Math.abs(a.length - b.length) <= 2 ? lat : m;
+    });
+    s = s.replace(new RegExp(_GRW, 'g'), g => _grLatin(g));
+    s = s.replace(/[\u0400-\u052F\u0590-\u06FF\u0900-\u0DFF\u0E00-\u0EFF\u1100-\u11FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]+/g, '');
+    return s.replace(/\(\s*[“"]?\s*[”"]?\s*\)/g, '').replace(/[ \t]{2,}/g, ' ').replace(/ ([,.;:)])/g, '$1').trim();
+  }
+
   function nameOriginHtml(s) {
     return escapeHtml(String(s || ''))
       .replace(/\[([^\]\n]{1,80})\]\((https?:\/\/[^\s)]+)\)/g, (m, txt, url) =>
@@ -799,7 +840,7 @@
       }
       const wt1 = wt.find(Boolean);
       if (wt1) sources.push({ name: 'Wiktionary', url: _wtUrl(wt1) });
-      out.set(j.t.id, { draft: lines.map(l => l.replace(/\.{2,}$/, '.').replace(/([.!?])\.$/, '$1')).join('\n'),
+      out.set(j.t.id, { draft: latinOnly(lines.map(l => l.replace(/\.{2,}$/, '.').replace(/([.!?])\.$/, '$1')).join('\n')),
                         sources, auth: a || null, ety, meaning, word: j.word, epithet: j.epithet });
     });
     return out;
@@ -1368,6 +1409,13 @@
     // (dev1175) Name origin is how a taxon was named; who and when moved to
     // Named by/date. Strip the old look-up's "Described by …" line once (flagged,
     // so a line Phil types later stays), keeping an original name if it gave one.
+    // (dev1177) Looked-up Name origins in Latin letters (Phil's own text is left alone).
+    tagsArr.forEach(t => {
+      if (typeof t.NameOrigin === 'string' && !t.NameOriginEdited) {
+        const v = latinOnly(t.NameOrigin);
+        if (v !== t.NameOrigin) t.NameOrigin = v;
+      }
+    });
     if (tagsMeta && !tagsMeta._originWhoDone) {
       tagsArr.forEach(t => {
         if (typeof t.NameOrigin !== 'string' || !/^Described by /m.test(t.NameOrigin)) return;
@@ -3509,7 +3557,7 @@
           <label style="color:#6af;padding-top:5px;" title="Respelled pronunciation, one line per variant">Name say<span data-name-flag="say"></span></label>
           <div style="min-width:0;">
             <div style="display:flex;gap:6px;align-items:flex-start;">
-              <textarea id="de-namesay" rows="2" placeholder="US: or-SY-nuhs OR-kuh&#10;GB: aw-SY-nuhs AW-kuh"
+              <textarea id="de-namesay" rows="2" placeholder="e.g. for Orcinus orca:&#10;US: or-SY-nuhs OR-kuh · GB: aw-SY-nuhs AW-kuh"
                 style="flex:1;min-width:0;padding:5px 8px;background:#0a0a1a;border:1px solid #333;color:#fff;border-radius:4px;font-family:monospace;font-size:12px;outline:none;resize:vertical;">${escapeHtml(t.NameSay || '')}</textarea>
               ${t.kind === 'taxon' ? `<button data-name-edit="say" title="Change the looked-up pronunciation. Once you change it and press ✓ Save it is flagged “edited” and no look-up replaces it." class="de-name-btn">✎ Edit</button>` : ''}
               <button id="de-namesay-key" title="Respelling key" style="padding:4px 9px;border:1px solid #556;background:#14142a;color:#9ab;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;">?</button>
@@ -3606,10 +3654,9 @@
           cur = pid ? byId.get(pid) : null;
           if (cur && cur.NameOrigin && cur.label !== genusWord) inh.push(cur);
         }
-        editEl.querySelector('#de-origin-inherit').innerHTML = inh.slice(0, 2).map(a =>
-          '<div style="color:#789;font:11px/1.45 system-ui,sans-serif;margin-top:4px;">'
-          + '<b style="color:#9ab;">' + escapeHtml((a.rank ? a.rank + ' ' : '') + a.label) + ':</b> '
-          + nameOriginHtml(a.NameOrigin) + '</div>').join('');
+        // (dev1177) Phil: a higher rank's origin doesn't belong on this tag's page
+        // (Animalia under Arthropoda), so the greyed lines are no longer shown.
+        void inh;
       }
       // (dev1152) Name origin / Name say fill AND SAVE themselves for a taxon:
       // no ↓ Use / + add, no ✓ Save. The first time a tag is opened in a session
@@ -3632,6 +3679,16 @@
         ? String(s || '').split('\n').map(x => x.trim()).filter(Boolean).join('\n') : String(s || '').trim();
       const MINE = 'Your text — look-ups leave it alone.';
       const valueOf = (st, r) => (st.kind === 'origin' ? r && r.draft : r && (r.say || r.partial)) || '';
+      // (dev1177) Places to hear a name said, for Phil to type it from (links only).
+      const hearLinks = lbl => {
+        const q = String(lbl || '').trim();
+        const one = /^\S+$/.test(q);
+        return [['YouGlish', 'https://youglish.com/pronounce/' + encodeURIComponent(q.toLowerCase()) + '/english'],
+          one ? ['Merriam-Webster', 'https://www.merriam-webster.com/dictionary/' + encodeURIComponent(q.toLowerCase())] : null,
+          one ? ['Biology Online', 'https://www.biologyonline.com/dictionary/' + encodeURIComponent(q.toLowerCase())] : null,
+          ['Google', 'https://www.google.com/search?q=' + encodeURIComponent('how to pronounce ' + q)]]
+          .filter(Boolean).map(([n, u]) => '<a href="' + escapeAttr(u) + '" target="_blank" rel="noopener">' + n + '</a>').join(' · ');
+      };
       const noteFor = (st, r) => {
         const v = valueOf(st, r);
         const retry = r && r.incomplete ? ' (A source didn’t answer — R looks again.)' : '';
@@ -3644,7 +3701,7 @@
         if (v) return 'Published for part of the name only (' + srcLinks(r.sources) + ') — <i>'
           + escapeHtml(r.missing.join(', ')) + '</i> is left as spelled. Saved.';
         return retry ? 'Wikipedia or Wiktionary didn’t answer — R looks again.'
-          : 'No published pronunciation (Wikipedia, Wiktionary) — ✎ type one with the ? key.';
+          : 'No published pronunciation (Wikipedia, Wiktionary) — ✎ type one with the ? key. Hear it: ' + hearLinks(t.label);
       };
       const show = (st, v) => {
         st.box.value = v;
