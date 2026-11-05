@@ -1536,6 +1536,26 @@
       tagsArr.forEach(t => { if (t.common) t.common = commonCase(t.common, t.label); });
       tagsMeta._commonCaseDone = true;
     }
+    // (dev1179) Malacostraca and Thoracica hung off Arthropoda (Malacostraca also
+    // off a rankless "crustacean" group tag) while the Crustacea subphylum had no
+    // children. File them under Crustacea, and fold the unused group tag into it
+    // as an alias. Once, in the app, for the same reason as the fixes above.
+    if (tagsMeta && !tagsMeta._crustaceaDone) {
+      const crus = tagsArr.find(t => t.id === 'crustacea' && t.kind === 'taxon');
+      if (crus) {
+        tagsArr.forEach(t => {
+          if ((t.id === 'malacostraca' || t.id === 'thoracica') && t.kind === 'taxon') {
+            t.parents = ['crustacea'].concat((t.parents || []).filter(p => !['arthropoda', 'crustacean', 'crustacea'].includes(p)));
+          }
+        });
+        const gi = tagsArr.findIndex(t => t.id === 'crustacean' && t.kind === 'group');
+        if (gi >= 0 && !tagsArr.some(t => (t.parents || []).includes('crustacean'))) {
+          crus.aliases = cleanAliasList((crus.aliases || []).concat('Crustacean'), crus.label);
+          tagsArr.splice(gi, 1);
+        }
+      }
+      tagsMeta._crustaceaDone = true;
+    }
     if (tagsMeta && Array.isArray(tagsMeta._salColOrder)) {
       const co = tagsMeta._salColOrder.map(c => c === 'def' ? 'facts1' : c);
       let at = co.indexOf('facts1');
