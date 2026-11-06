@@ -2860,6 +2860,11 @@ function _richCellPreview(html) {
   s = s.replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ');
   // Block boundaries → newlines so "first line" means the first block of text.
   s = s.replace(/<\s*(?:\/p|\/div|\/h[1-6]|\/li|\/tr|\/summary|br|hr)\b[^>]*>/gi, '\n');
+  // (dev1182) Numbered citation marks are not prose - drop them from the preview.
+  s = s.replace(/<a\b[^>]*class="te-cite"[^>]*>[\s\S]*?<\/a>/gi, '');
+  // (dev1182) INLINE tags join their text with no gap: <strong>He</strong>rmit was
+  // shown as "He rmit" (UID 2742). Every other tag still separates words.
+  s = s.replace(/<\/?(?:a|b|strong|em|i|u|s|span|small|sub|sup|code|mark|font)\b[^>]*>/gi, '');
   s = s.replace(/<[^>]+>/g, ' ');
   s = s.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
        .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
@@ -9218,7 +9223,9 @@ function _sanitizePastedHtml(html) {
 
   const KEEP = new Set(['H1','H2','H3','H4','H5','H6','P','UL','OL','LI','A',
     'STRONG','B','EM','I','U','BR','IMG','BLOCKQUOTE','DIV','SMALL',
-    'DETAILS','SUMMARY']);
+    'DETAILS','SUMMARY',
+    // (dev1182) Tables stay tables (Perplexity answers); the xe2 schema has them.
+    'TABLE','THEAD','TBODY','TFOOT','TR','TH','TD']);
 
   // Depth-first: unwrap disallowed tags (keep their children); strip attrs on
   // kept tags. Static list because we mutate the tree as we go.
@@ -9235,7 +9242,8 @@ function _sanitizePastedHtml(html) {
     for (const attr of Array.from(el.attributes)) {
       const name = attr.name.toLowerCase();
       const keep = (tag === 'A' && name === 'href') ||
-                   (tag === 'IMG' && (name === 'src' || name === 'alt'));
+                   (tag === 'IMG' && (name === 'src' || name === 'alt')) ||
+                   ((tag === 'TD' || tag === 'TH') && (name === 'colspan' || name === 'rowspan'));
       if (!keep) el.removeAttribute(attr.name);
     }
     if (tag === 'A' && el.getAttribute('href')) {
@@ -9243,6 +9251,8 @@ function _sanitizePastedHtml(html) {
       el.setAttribute('rel', 'noopener');
     }
   }
+
+  _salNumberBracketCites(doc, body);
 
   // Drop now-empty wrappers (no text, no media). Repeat until stable so
   // <div><div></div></div> fully collapses.
@@ -9258,6 +9268,51 @@ function _sanitizePastedHtml(html) {
 
   const out = _literalTagsToReal(body.innerHTML.trim());
   return typeof _linkifyHtml === 'function' ? _linkifyHtml(out) : out;
+}
+
+// (dev1182) Perplexity (and similar AI answers) cite as "text [<a>site</a>][<a>site</a>]."
+// Each bracketed web link becomes a small raised NUMBER (the te-cite link style of
+// the @@@ marker), one number per distinct URL in first-seen order, and the paste
+// ends with a References list: "1. site/path" lines. Clicking either the number or
+// the reference line opens the web page. Plain <p> lines, not <ol>: Xs hides list
+// numbers. Needs 2+ bracketed links so an ordinary "[link]" paste is left alone.
+function _salNumberBracketCites(doc, body) {
+  body.normalize();
+  const hits = [];
+  body.querySelectorAll('a[href]').forEach(a => {
+    const href = a.getAttribute('href') || '';
+    if (!/^https?:\/\//i.test(href)) return;
+    const prev = a.previousSibling, next = a.nextSibling;
+    if (!prev || prev.nodeType !== 3 || !/\[\s*$/.test(prev.nodeValue)) return;
+    if (!next || next.nodeType !== 3 || !/^\s*\]/.test(next.nodeValue)) return;
+    hits.push({ a, href, prev, next });
+  });
+  if (hits.length < 2) return;
+  const num = new Map();
+  for (const h of hits) {
+    if (!num.has(h.href)) num.set(h.href, num.size + 1);
+    h.prev.nodeValue = h.prev.nodeValue.replace(/\s*\[\s*$/, '');
+    h.next.nodeValue = h.next.nodeValue.replace(/^\s*\]/, '');
+    h.a.textContent = String(num.get(h.href));
+    h.a.setAttribute('class', 'te-cite');
+    h.a.setAttribute('title', h.href);
+  }
+  const head = doc.createElement('h4');
+  head.textContent = 'References';
+  body.appendChild(head);
+  for (const [href, n] of num) {
+    let label = href.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '');
+    try { label = decodeURI(label); } catch (e) {}
+    if (label.length > 90) label = label.slice(0, 87) + '...';
+    const p = doc.createElement('p');
+    const a = doc.createElement('a');
+    a.setAttribute('href', href);
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener');
+    a.textContent = n + '. ' + label;
+    p.appendChild(a);
+    body.appendChild(p);
+  }
 }
 
 // (dev1168) AI-written text often carries formatting tags AS TEXT — "(<em>Polybius
