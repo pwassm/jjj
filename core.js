@@ -10325,6 +10325,7 @@ window.pinterestHousekeeping = _pinterestHousekeeping;
 // Local-dev only (needs the 127.0.0.1:8081 proxy), like Flickr and Pinterest.
 async function _fetchRedditForNewRows(rows) {
   let direct = 0, silent = 0, failed = 0, images = 0;
+  const imgRows = [];   // (dev1186) measured below for MPix + P/L
   const errs = [];
   for (const row of rows) {
     const src = (row.linkpage && window.getRedditPostId && window.getRedditPostId(row.linkpage))
@@ -10338,7 +10339,7 @@ async function _fetchRedditForNewRows(rows) {
         continue;
       }
       _redditApplyResolved(row, j);
-      if (j.kind === 'image') { images++; continue; }   // (dev1184) image / gallery post
+      if (j.kind === 'image') { images++; imgRows.push(row); continue; }   // (dev1184) image / gallery post
       direct++;
       // A post whose audio is a SEPARATE stream plays silent from the direct MP4.
       // Counted separately because it is the one outcome with an action attached:
@@ -10347,6 +10348,9 @@ async function _fetchRedditForNewRows(rows) {
     } catch (e) { failed++; }
   }
   if (direct || images) { save(); if (typeof render === 'function') render(); }
+  // (dev1186) A Reddit IMAGE row gets MPix and P/L/S the way any image row does:
+  // _fetchMetaForNewRows' image branch measures the (now i.redd.it) link itself.
+  if (imgRows.length) _fetchMetaForNewRows(imgRows);
   let msg = '✓ Reddit: ' + direct + ' resolved to direct MP4';
   if (images) msg = '✓ Reddit: ' + (direct ? direct + ' resolved to direct MP4, ' : '') + images + ' image post(s) added as images';
   if (silent) msg += ' — ' + silent + ' has separate audio (plays silent; ⬇ Download for sound)';
