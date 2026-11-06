@@ -1324,11 +1324,9 @@
         if (!m) continue;
         const e = out.get(j.t.id);
         if (!e.say) { e.say = m.say; e.partial = ''; e.missing = []; }
-        // (dev1180) Phil: M-W's own notation first, unlabelled; the respelling under it.
-        e.say = m.mw + '\n' + e.say.split('\n').map(l => {
-          const v = /^(US|GB|Classical):\s*(.*)$/.exec(l);
-          return v ? 'Respelling (' + v[1] + '): ' + v[2] : 'Respelling: ' + l;
-        }).join('\n');
+        // (dev1180) Phil: M-W's own notation first, the respelling under it.
+        // (dev1181) No "Respelling:" label: "all I want is the pronunciations".
+        e.say = m.mw + '\n' + e.say;
         e.sources.push({ name: 'Merriam-Webster', url: m.page });
         e.mwAudio = m.audio;
       }
@@ -1514,6 +1512,13 @@
     // so a line Phil types later stays), keeping an original name if it gave one.
     // (dev1177) Looked-up Name origins in Latin letters (Phil's own text is left alone).
     tagsArr.forEach(t => {
+      // (dev1181) Looked-up Name say: drop the "Respelling:" / "M-W:" labels.
+      if (typeof t.NameSay === 'string' && !t.NameSayEdited) {
+        const v = t.NameSay.split('\n')
+          .map(l => l.replace(/^Respelling \((US|GB|Classical)\):\s*/, '$1: ').replace(/^(?:Respelling|M-W):\s*/, ''))
+          .join('\n');
+        if (v !== t.NameSay) t.NameSay = v;
+      }
       if (typeof t.NameOrigin === 'string' && !t.NameOriginEdited) {
         let v = latinOnly(t.NameOrigin);
         // (dev1180) " ([Wikipedia](url))" out of the text, into NameOriginSrc.

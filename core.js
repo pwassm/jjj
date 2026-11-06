@@ -9602,6 +9602,18 @@ function _flickrPhotoId(url) {
   return null;
 }
 
+// (dev1181) iNaturalist photo id from a photo page (inaturalist.org/photos/<id>)
+// or either image host. The page itself is behind a Cloudflare check, so it can't
+// be read (it fell to the article reader: "cannot fetch"). The image is at a
+// predictable address instead: inaturalist-open-data (CC-licensed photos, CORS
+// open) or static.inaturalist.org (all-rights-reserved ones).
+function _inatPhotoId(url) {
+  if (!url) return null;
+  const m = String(url).match(/(?:inaturalist\.org\/photos|inaturalist-open-data\.s3\.amazonaws\.com\/photos|static\.inaturalist\.org\/photos)\/(\d+)/i);
+  return m ? m[1] : null;
+}
+const _inatIsPage = url => /inaturalist\.org\/photos\/\d+/i.test(String(url || '')) && !/\/photos\/\d+\/[a-z]+\.[a-z]+/i.test(String(url || ''));
+
 // (dev1024) An import leaves exactly the rows it ADDED checked, replacing whatever was
 // checked before, so the next step (Brief / Transcribe only / Download ...) can act on
 // the batch straight away. Updated duplicates are not checked, since nothing new arrived.
@@ -9646,6 +9658,7 @@ async function _importBareLinks(lines, opts) {
   // (dev0599) Same idea for Flickr: index by photo id (from link OR linkpage) so a
   // re-paste as page URL / CDN URL / already-upgraded best-res URL is caught.
   const flickrIdToDi = new Map();
+  const inatIdToDi = new Map();   // (dev1181)
   // (dev0693) And for Pinterest â€” this one MATTERS, because a resolved pin's link is
   // an i./v1.pinimg.com file that looks nothing like the pin URL that was pasted. The
   // id only survives in linkpage, so without indexing it every re-paste of an
@@ -9658,6 +9671,8 @@ async function _importBareLinks(lines, opts) {
       if (yid) ytIdToDi.set(yid, di);
       const fpid = _flickrPhotoId(r.link) || _flickrPhotoId(r.linkpage);
       if (fpid) flickrIdToDi.set(fpid, di);
+      const ipid = _inatPhotoId(r.link) || _inatPhotoId(r.linkpage);
+      if (ipid) inatIdToDi.set(ipid, di);
       const ppid = window.getPinterestId
         && (window.getPinterestId(r.link) || window.getPinterestId(r.linkpage));
       if (ppid) pinIdToDi.set(ppid, di);
@@ -9689,6 +9704,13 @@ async function _importBareLinks(lines, opts) {
     // isn't mis-classified as a web article (ltype='w').
     if (_flickrPhotoId(link)) {
       row.VidRange = 'i';
+      return row;
+    }
+    // (dev1181) iNaturalist photo (page or image URL) ’ image row; linkpage is the
+    // photo page. A pasted page is turned into the image URL by _fetchInatForNewRows.
+    if (_inatPhotoId(link)) {
+      row.VidRange = 'i';
+      row.linkpage = 'https://www.inaturalist.org/photos/' + _inatPhotoId(link);
       return row;
     }
     // (dev0693) Pinterest pin â†’ hand straight to the resolver below, which decides
@@ -9764,7 +9786,9 @@ async function _importBareLinks(lines, opts) {
     const yid = _extractYTVideoId(link) || (window.getYouTubeId && window.getYouTubeId(link));
     const fpid = _flickrPhotoId(link);
     const ppid = window.getPinterestId ? window.getPinterestId(link) : null;
-    const dupDi = linkToDi.has(link) ? linkToDi.get(link)
+    const ipid = _inatPhotoId(link);
+    const dupDi = (ipid && inatIdToDi.has(ipid)) ? inatIdToDi.get(ipid)
+                : linkToDi.has(link) ? linkToDi.get(link)
                 : (yid && ytIdToDi.has(yid) ? ytIdToDi.get(yid)
                 : (fpid && flickrIdToDi.has(fpid) ? flickrIdToDi.get(fpid)
                 : (ppid && pinIdToDi.has(ppid) ? pinIdToDi.get(ppid) : undefined)));
@@ -9784,6 +9808,7 @@ async function _importBareLinks(lines, opts) {
     linkToDi.set(link, data.length - 1);
     if (yid) ytIdToDi.set(yid, data.length - 1);   // catch later dups within the same paste
     if (fpid) flickrIdToDi.set(fpid, data.length - 1);
+    if (ipid) inatIdToDi.set(ipid, data.length - 1);
     if (ppid) pinIdToDi.set(ppid, data.length - 1);
     added++;
   }
@@ -9848,7 +9873,9 @@ async function _importBareLinks(lines, opts) {
   // fight it - the image probe over link/MPix, _fetchYtdlpMetaForNewRows by
   // writing an IG-shaped ftext over the Reddit one.
   const _isReddit = r => !!(r && r.link && window.isRedditLink && window.isRedditLink(r.link));
-  _fetchMetaForNewRows(newRows.filter(r => !_flickrPhotoId(r.link) && !_isPin(r) && !_isReddit(r)));
+  _fetchMetaForNewRows(newRows.filter(r => !_flickrPhotoId(r.link) && !_isPin(r) && !_isReddit(r) && !_inatIsPage(r.link)));
+  const inatRows = newRows.filter(r => r && _inatIsPage(r.link));
+  if (inatRows.length) _fetchInatForNewRows(inatRows);
   const flickrRows = newRows.filter(r => r && _flickrPhotoId(r.link));
   if (flickrRows.length) _fetchFlickrForNewRows(flickrRows);
   const pinRows = newRows.filter(_isPin);
@@ -9893,6 +9920,45 @@ async function _importBareLinks(lines, opts) {
 // Local-dev only (needs the 127.0.0.1:8081 proxy); on the live site the row simply
 // stays as the pasted link. Fresh rows have empty title/comment so the guards just
 // fill them; link/MPix/Mode are always taken from the API (authoritative).
+// (dev1181) iNaturalist photo page ’ the largest image. Tries the open-data
+// bucket first, then static.inaturalist.org, as .jpeg/.jpg/.png (iNat keeps the
+// uploaded extension). An <img> load needs no CORS and no proxy, so this works on
+// the live site too. Then the normal image probe fills MPix / orientation.
+function _inatTryImg(url, ms) {
+  return new Promise(res => {
+    const img = new Image();
+    const t = setTimeout(() => { img.src = ''; res(null); }, ms || 20000);
+    img.onload = () => { clearTimeout(t); res(img.naturalWidth ? url : null); };
+    img.onerror = () => { clearTimeout(t); res(null); };
+    img.src = url;
+  });
+}
+async function _inatImageUrl(id) {
+  for (const host of ['https://inaturalist-open-data.s3.amazonaws.com', 'https://static.inaturalist.org'])
+    for (const ext of ['jpeg', 'jpg', 'png']) {
+      const u = await _inatTryImg(host + '/photos/' + id + '/original.' + ext);
+      if (u) return u;
+    }
+  return null;
+}
+async function _fetchInatForNewRows(rows) {
+  let done = 0; const failed = [];
+  for (const row of rows) {
+    const id = _inatPhotoId(row.link);
+    const u = id ? await _inatImageUrl(id) : null;
+    if (!u) { failed.push(id || row.link); continue; }
+    row.link = u;
+    row.linkpage = 'https://www.inaturalist.org/photos/' + id;
+    row.VidRange = 'i';
+    row.DateModified = isoNow();
+    done++;
+  }
+  if (done) { save(); if (typeof render === 'function') render(); }
+  toast(' iNaturalist: ' + done + ' photo link(s) found'
+    + (failed.length ? ', ' + failed.length + ' not found (' + failed.join(', ') + ')' : ''), 3200);
+  if (done) _fetchMetaForNewRows(rows.filter(r => !_inatIsPage(r.link)));
+}
+
 async function _fetchFlickrForNewRows(rows) {
   let done = 0, failed = 0;
   for (const row of rows) {
