@@ -10271,7 +10271,7 @@ window.pinterestHousekeeping = _pinterestHousekeeping;
 //
 // Local-dev only (needs the 127.0.0.1:8081 proxy), like Flickr and Pinterest.
 async function _fetchRedditForNewRows(rows) {
-  let direct = 0, silent = 0, failed = 0;
+  let direct = 0, silent = 0, failed = 0, images = 0;
   const errs = [];
   for (const row of rows) {
     const src = (row.linkpage && window.getRedditPostId && window.getRedditPostId(row.linkpage))
@@ -10285,6 +10285,7 @@ async function _fetchRedditForNewRows(rows) {
         continue;
       }
       _redditApplyResolved(row, j);
+      if (j.kind === 'image') { images++; continue; }   // (dev1184) image / gallery post
       direct++;
       // A post whose audio is a SEPARATE stream plays silent from the direct MP4.
       // Counted separately because it is the one outcome with an action attached:
@@ -10292,8 +10293,9 @@ async function _fetchRedditForNewRows(rows) {
       if (j.hasAudio) silent++;
     } catch (e) { failed++; }
   }
-  if (direct) { save(); if (typeof render === 'function') render(); }
+  if (direct || images) { save(); if (typeof render === 'function') render(); }
   let msg = '✓ Reddit: ' + direct + ' resolved to direct MP4';
+  if (images) msg = '✓ Reddit: ' + (direct ? direct + ' resolved to direct MP4, ' : '') + images + ' image post(s) added as images';
   if (silent) msg += ' — ' + silent + ' has separate audio (plays silent; ⬇ Download for sound)';
   if (failed) {
     msg += (direct ? ', ' : '') + failed + ' failed';
@@ -10319,8 +10321,12 @@ function _redditApplyResolved(row, j, fresh) {
   if (j.comment && (fresh || !row.comment))   row.comment = j.comment;
   if (j.MPix) row.MPix = j.MPix;
   if (j.Mode) row[(typeof getModeCol === 'function') ? getModeCol() : 'Mode'] = j.Mode;
+  // (dev1184) An image or gallery post: link = the i.redd.it original (or its preview).
+  if (j.kind === 'image') { row.VidRange = 'i'; row.ltype = 'i'; }
+  else {
   row.ltype = 'v';
   if (row.VidRange === 'i') row.VidRange = '';   // was mis-typed as an image
+  }
   // A post with no audio stream at all is genuinely silent — Mute stays as the
   // import set it. A post WITH a separate audio stream is silent only because the
   // direct MP4 is the video-only rung, which is not the same thing and must not be
@@ -10350,7 +10356,9 @@ function _redditBuildFtext(j) {
   // is still readable after a reload without re-running the resolver.
   const size = (j.width && j.height) ? ' · ' + j.width + '×' + j.height : '';
   const dur  = j.duration ? ' · ' + j.duration + 's' : '';
-  const badge = j.hasAudio
+  const badge = j.kind === 'image'
+    ? '🖼 image' + (j.gallery ? ' · first image of a gallery post' : '')
+    : j.hasAudio
     ? '▶ direct MP4' + size + dur + ' · video only — Reddit serves this post’s audio as a '
       + 'separate stream, so it plays SILENT. Use the T row ⬇ Download for a muxed copy.'
     : '▶ direct MP4' + size + dur + ' · no audio track in this post (silent as posted)';
