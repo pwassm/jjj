@@ -1189,6 +1189,42 @@ async function writePublicMl(allRows) {
 }
 window.writePublicMl = writePublicMl;
 
+// (dev1185) STALE-TAB GUARD. Every save writes the tab's WHOLE copy of ml.json,
+// so a tab opened hours ago (an old VECT tab, a second SLAM tab) wiped every row
+// added or edited elsewhere since it loaded - 14 rows on 2026-11-05, recovered only
+// from Chrome's cache. Each save stamps the meta row with _salSavedAt (dev0499).
+// A tab remembers the stamp of the ml.json it loaded and of each one it wrote;
+// when the file on disk carries a LATER stamp, another tab saved after this one
+// loaded, so this tab refuses to write ml.json (and ml.public.json) until reload.
+let _mlDiskStamp = 0;            // newest _salSavedAt this tab has seen or written
+let _mlStale = false;            // true once disk was found newer: no more ml.json writes
+function _mlStampOf(rows) {
+  const m = Array.isArray(rows) && rows[0] && rows[0]._salMeta ? rows[0] : null;
+  return (m && typeof m._salSavedAt === 'number') ? m._salSavedAt : 0;
+}
+function _mlStaleWarn() {
+  const now = Date.now();
+  if (now - (_mlStaleWarn._t || 0) < 8000) return;
+  _mlStaleWarn._t = now;
+  try { toast('⚠ NOT SAVED: another SLAM tab saved ml.json after this tab loaded it.\n'
+    + 'Saving here would wipe that work. Reload this tab (Ctrl+R) - edits made here since are lost.', 9000); } catch (_) {}
+  try { setFsaStatus('⚠ ml.json is newer on disk - reload this tab (Ctrl+R)', true); } catch (_) {}
+}
+// Is ml.json on disk newer than this tab's copy? Reads only the head of the file
+// (the meta row is first). Used before a Firefox add (d_yt.js) is claimed.
+async function _mlDiskIsNewer() {
+  if (_mlStale) return true;
+  try {
+    const dir = await _getDir();
+    if (!dir) return false;
+    const f = await (await dir.getFileHandle('ml.json', { create: false })).getFile();
+    const m = /"_salSavedAt"\s*:\s*(\d+)/.exec(await f.slice(0, 400000).text());
+    if (m && +m[1] > _mlDiskStamp) { _mlStale = true; return true; }
+  } catch (_) {}
+  return false;
+}
+window._mlDiskIsNewer = _mlDiskIsNewer;
+
 async function writeFileToDisk(name, jsonData) {
   // (dev0853) Guard against the worst case: a session that loaded the STRIPPED
   // public file must never write it back over the full ml.json. Same class of
@@ -1229,6 +1265,14 @@ async function writeFileToDisk(name, jsonData) {
     try {
       const cur = await dir.getFileHandle(name, {create:false});
       const prev = JSON.parse(await (await cur.getFile()).text());
+      // (dev1185) Another tab saved after this one loaded: refuse (see _mlDiskStamp).
+      if (_mlStampOf(prev) > _mlDiskStamp) _mlStale = true;
+      if (_mlStale) {
+        console.warn('writeFileToDisk: ml.json on disk (stamp ' + _mlStampOf(prev) + ') is newer than this tab ('
+          + _mlDiskStamp + ') - refusing to overwrite it. Reload this tab.');
+        _mlStaleWarn();
+        return false;
+      }
       const refilled = _rehydrateFtextFromPrev(jsonData, prev);
       if (refilled) console.warn('writeFileToDisk: ftext-loss guard refilled '
         + refilled + ' row(s) from disk before save (in-memory copy was ftext-stripped).');
@@ -1244,6 +1288,11 @@ async function writeFileToDisk(name, jsonData) {
       if (refilled) console.warn('writeFileToDisk: tags.json guard refilled '
         + refilled + ' facts/name field(s) from disk (this tab loaded tags.json before they were written).');
     } catch(e) { /* no existing file / parse fail — nothing to protect this write */ }
+  }
+  if (name === 'ml.json') {
+    if (_mlStale) { _mlStaleWarn(); return false; }
+    const st = _mlStampOf(jsonData);
+    if (st > _mlDiskStamp) _mlDiskStamp = st;      // (dev1185) our own write is not "another tab"
   }
   try {
     const fh = await dir.getFileHandle(name, {create:true});
@@ -1694,8 +1743,10 @@ function save() {
   // (dev0853) ...and the filtered copy the public site serves. Deliberately a
   // SEPARATE file: writeFileToDisk's ftext-loss guard only protects ml.json, so
   // a stripped row here can never be mistaken for a row that lost its ftext.
-  writePublicMl([meta].concat(mlRows));
+  // (dev1185) ml.public.json follows a SUCCESSFUL ml.json write, so a stale tab
+  // (refused above) can't republish its old rows either.
   writeFileToDisk('ml.json', [meta].concat(mlRows)).then(ok => {
+    if (ok) writePublicMl([meta].concat(mlRows));
     if (ok) setFsaStatus('📂 ' + (_fsaDir ? _fsaDir.name : '') + ' — saved ' + new Date().toTimeString().slice(0,8));
   });
 }
@@ -1722,6 +1773,8 @@ async function load() {
       if (r.ok) { raw = await r.json(); rawSource = 'fetch'; _mlLoadedFile = _mlF; break; }
     } catch(e) {}
   }
+  // (dev1185) The stamp of the ml.json this tab loaded (see _mlDiskStamp).
+  if (_mlLoadedFile === 'ml.json') { _mlDiskStamp = Math.max(_mlDiskStamp, _mlStampOf(raw)); _mlStale = false; }
 
   // (zip0165) Prefer localStorage if it's NEWER than the fetched ml.json.
   // This rescues edits when the disk write silently failed (FSA permission
