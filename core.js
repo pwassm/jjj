@@ -3940,6 +3940,54 @@ function _tCardSpecies(row) {
   return sci ? { sci: sci, common: strip(h1 && h1[1]) } : null;
 }
 
+// (dev1187) What to search for, for a row: its most specific TAXON tag (species
+// beats genus beats anything higher; the label is the scientific name), else the
+// title, else the first words of the ftext.
+function _tFinderQuery(row) {
+  if (!row) return '';
+  const L = window.tagsLib;
+  const RANK = { species: 0, subspecies: 0, genus: 1, family: 2 };
+  let best = null, bestScore = 99;
+  if (L && typeof L.get === 'function' && Array.isArray(row.tags)) {
+    row.tags.forEach(id => {
+      const t = L.get(id);
+      if (!t || t.kind !== 'taxon' || !t.label) return;
+      const s = (t.rank in RANK) ? RANK[t.rank] : 5;
+      if (s < bestScore) { best = t; bestScore = s; }
+    });
+  }
+  if (best) return String(best.label);
+  const title = String(row.VidTitle || row.title || '').trim();
+  if (title) return title.slice(0, 120);
+  if (/^\s*[{\[]/.test(String(row.ftext || ''))) return '';   // a quiz (JSON), not prose
+  const txt = String(row.ftext || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return txt.split(' ').slice(0, 8).join(' ');
+}
+
+// (dev1187) T's `p` key and row-menu items: ask the proxy to open the desktop
+// MEDIAFINDER (linkfinders/mediafinder.py) with a search for this row running.
+// kind omitted → videos for a video row, images for anything else. The window
+// is a separate program: results, History and "add to ml.json" all live there.
+async function tOpenMediaFinder(di, kind) {
+  if (typeof _isUserMode === 'function' && _isUserMode()) return;
+  const row = (di >= 0 && di < data.length) ? data[di] : null;
+  if (!row) { toast('No row focused', 1500); return; }
+  if (!kind) kind = (typeof isVideoRow === 'function' && isVideoRow(row)) ? 'video' : 'image';
+  const query = _tFinderQuery(row);
+  try {
+    const res = await fetch('http://127.0.0.1:8081/x/finder', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind, query })
+    });
+    const j = await res.json().catch(() => null);
+    if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
+    toast('🔍 Opening the media finder — ' + kind + 's: ' + (query || '(no search words)'), 2500);
+  } catch (e) {
+    toast('⚠ Media finder: ' + (e && e.message ? e.message : e)
+      + '\n(proxy not running on 8081, or an older proxy.js — restart it)', 4500);
+  }
+}
+
 // An existing tag always wins — label first, then aliases, then common name, so
 // a card naming Semicossyphus finds the tag even after the genus moved.
 function _tFindTaxonTag(sci) {
@@ -4112,6 +4160,13 @@ function showCtx(x, y, target) {
             '✂ Segment only: ' + s.name + '  (' + s.start + 's, ' + s.dur + 's)',
             ev => tDownloadRowSegment(di, si, !!(ev && ev.altKey))));
         }
+        addCS(menu);
+      }
+      // (dev1187) Open the desktop mediafinder (Images | Videos | History) already
+      // searching for this row's species — see tOpenMediaFinder.
+      if (!(typeof _isUserMode === 'function' && _isUserMode())) {
+        addCI(menu, '🔍 Find images for this row (p)', () => tOpenMediaFinder(di, 'image'));
+        addCI(menu, '🎞 Find videos for this row', () => tOpenMediaFinder(di, 'video'));
         addCS(menu);
       }
       // (dev0851) A MakeCard row (image + <hr> + text) can be exported back to
@@ -12637,6 +12692,15 @@ document.addEventListener('keydown', e => {
     if (!_tScreenActive()) return;
     e.preventDefault();
     if (typeof window._hkStagingToggle === 'function') window._hkStagingToggle('i');
+    return;
+  }
+  // (dev1187) p → the desktop media finder, searching for the focused row
+  // (videos for a video row, else images). Bare Table only, dev only.
+  if (e.key === 'p') {
+    if (!_tScreenActive()) return;
+    if (typeof focus === 'undefined' || focus === null) { toast('Focus a row first', 1500); return; }
+    e.preventDefault();
+    tOpenMediaFinder(vr(focus.r));
     return;
   }
   // (dev1165) R (capital only) → open ssmenu in Review mode (local-media triage; see localmedia-design.md)

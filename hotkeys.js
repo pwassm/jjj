@@ -569,6 +569,10 @@ window.HOTKEYS = [
     impl: 'core.js table-level handler (dev1165) → _hkStagingToggle(i)',
     desc: 'Open the I screen' },
 
+  { label: 'p', group: 'Table (window-capture)', scope: 'T', dev: true,
+    impl: 'core.js table-level handler (dev1187) → tOpenMediaFinder → proxy /x/finder',
+    desc: 'Open the desktop media finder (linkfinders/mediafinder.py — Images | Videos | History tabs) already searching for the focused row: its species tag, else its title. Video rows search videos, everything else images; the row right-click menu offers both. Needs proxy.js running.' },
+
   { label: 'Shift+R', group: 'Table (window-capture)', scope: 'T', dev: true,
     impl: 'core.js table-level handler',
     desc: 'Slideshow — Review mode (local-media triage)' },
