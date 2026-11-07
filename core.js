@@ -10055,7 +10055,9 @@ async function _importBareLinks(lines, opts) {
   const ytRows = _ytOk ? newRows.filter(r => r && r.link && _ytdlpSupports(r.link) && !_isPin(r) && !_isReddit(r)) : [];
   if (ytRows.length && typeof _fetchYtdlpMetaForNewRows === 'function') _fetchYtdlpMetaForNewRows(ytRows);
   const webRows = data.filter(r => r && r.ltype === 'w' && !r.ftext && r.DateAdded === now && !(_ytOk && _ytdlpSupports(r.link)));
-  if (webRows.length) _fetchWebTextForRows(webRows);
+  // (dev1188) The fetch's promise is handed back (below), so the Firefox web-page add
+  // (d_yt.js _slamInboxAdd, m.xe) can open Xe once the text attempt has finished.
+  const webText = webRows.length ? _fetchWebTextForRows(webRows) : null;
 
   const dupNote    = dupRecords.length ? '\n   ' + dupRecords.length + ' duplicate(s) → duplicateTries.txt' : '';
   const dupAddedNote = dupsAdded ? '\n   ' + dupsAdded + ' duplicate(s) added anyway' : '';
@@ -10072,6 +10074,7 @@ async function _importBareLinks(lines, opts) {
     + dupNote + dupAddedNote + pasteDupNote + ytNote + flickrNote + pinNote + rdNote + webNote + metaNote,
     3500
   );
+  return { added: added, newRows: newRows, webText: webText };
 }
 
 // (dev0599) ── Flickr enrichment (best-res link + split metadata) ───────────────

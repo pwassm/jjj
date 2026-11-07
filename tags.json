@@ -29,7 +29,10 @@
       "common": 140,
       "extinct": 60,
       "facts1": 320
-    }
+    },
+    "_commonCaseDone": true,
+    "_originWhoDone": true,
+    "_crustaceaDone": true
   },
   {
     "id": "life",
@@ -37,8 +40,7 @@
     "kind": "taxon",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "health",
@@ -46,8 +48,7 @@
     "kind": "root",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "activity",
@@ -71,7 +72,16 @@
       "animalia"
     ],
     "rank": "phylum",
-    "aliases": []
+    "aliases": [],
+    "NameSay": "ə-ˈnel-ə-də, a-\nuh-NEL-ih-duh",
+    "authority": "Lamarck, 1802 [as Annelides]",
+    "NameOrigin": "Annelida: From Latin annellus (“little ring”) ida.\nAnnelid translates to \"little ringed ones;\" literally, \"little ring-shaped.\" Annel + id = \"little ring\" + \"shape/form\". Annelid comes from the French annelés \"ringed ones\", derived from the Latin annulus \"little ring\" (itself derived from anus \"ring\").",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Annelid"
+      }
+    ]
   },
   {
     "id": "arthropoda",
@@ -81,7 +91,16 @@
       "animalia"
     ],
     "rank": "phylum",
-    "aliases": []
+    "aliases": [],
+    "authority": "Gravenhorst, 1843",
+    "NameOrigin": "Arthropoda: From Ancient Greek arthron (“joint”) + pous (“foot”) + -a (“neuter plural suffix”).\nThe word arthropod comes from the Greek árthron 'joint', and poús (gen. podós) 'foot' or 'leg', which together mean \"jointed leg\", with the word \"arthropodes\" initially used in anatomical descriptions by Barthélemy Charles Joseph Dumortier published in 1832. The designation \"Arthropoda\" appears to have been first used in 1843 by the German zoologist Johann Ludwig Christian Gravenhorst (1777–1857). The origin of the name has been the subject of considerable confusion, with credit often given erroneously to Pierre André Latreille or Karl Theodor Ernst von Siebold instead, among various others.",
+    "NameSay": "är-ˈthräp-əd-ə\nar-THROP-uhd-uh",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Arthropod"
+      }
+    ]
   },
   {
     "id": "brachiopoda",
@@ -402,7 +421,7 @@
     ],
     "rank": "phylum",
     "aliases": [],
-    "extinct": true
+    "facts1": "<p>Extinct.</p>"
   },
   {
     "id": "petalonamae",
@@ -413,7 +432,7 @@
     ],
     "rank": "phylum",
     "aliases": [],
-    "extinct": true
+    "facts1": "<p>Extinct.</p>"
   },
   {
     "id": "proarticulata",
@@ -424,7 +443,7 @@
     ],
     "rank": "phylum",
     "aliases": [],
-    "extinct": true
+    "facts1": "<p>Extinct.</p>"
   },
   {
     "id": "saccorhytida",
@@ -435,7 +454,7 @@
     ],
     "rank": "phylum",
     "aliases": [],
-    "extinct": true
+    "facts1": "<p>Extinct.</p>"
   },
   {
     "id": "trilobozoa",
@@ -446,7 +465,7 @@
     ],
     "rank": "phylum",
     "aliases": [],
-    "extinct": true
+    "facts1": "<p>Extinct.</p>"
   },
   {
     "id": "vetulicolia",
@@ -457,7 +476,7 @@
     ],
     "rank": "phylum",
     "aliases": [],
-    "extinct": true
+    "facts1": "<p>Extinct.</p>"
   },
   {
     "id": "crustacea",
@@ -467,7 +486,18 @@
       "arthropoda"
     ],
     "rank": "subphylum",
-    "aliases": []
+    "aliases": [
+      "Crustacean"
+    ],
+    "NameSay": "ˌkrəs-ˈtā-sh(ē-)ə\nkruh-STAY-shuh",
+    "authority": "Brünnich, 1772",
+    "NameOrigin": "Crustaceans (from Latin word \"crustacea\" meaning: \"those with shells\" or \"crusted ones\") are mandibulate arthropods that are traditionally a part of the paraphyletic subphylum Crustacea ().",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Crustacean"
+      }
+    ]
   },
   {
     "id": "chelicerata",
@@ -477,18 +507,27 @@
       "arthropoda"
     ],
     "rank": "subphylum",
-    "aliases": []
+    "aliases": [],
+    "NameOrigin": "Chelicerata: From Ancient Greek chele (“jawbone”) + keras (“horn”)."
   },
   {
     "id": "malacostraca",
     "label": "Malacostraca",
     "kind": "taxon",
     "parents": [
-      "arthropoda",
-      "crustacean"
+      "arthropoda"
     ],
     "rank": "class",
-    "aliases": []
+    "aliases": [],
+    "NameSay": "ma-luh-KOS-truh-kuh",
+    "authority": "Latreille, 1802",
+    "NameOrigin": "Malacostraca: New Latin, from Ancient Greek malakostraka, from malakos (“soft”) + ostrakon (“shell”).\nThe name Malacostraca is from Ancient Greek malakos (malakós) 'soft' and ostrakon (óstrakon) 'shell'. The word was used by Aristotle, who contrasted them with oysters, in comparison with which their shells are pliable.",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Malacostraca"
+      }
+    ]
   },
   {
     "id": "amphipoda",
@@ -501,6 +540,15 @@
     "aliases": [
       "amphipod",
       "amphipods"
+    ],
+    "authority": "Latreille, 1816",
+    "NameOrigin": "Amphipoda: New Latin, from Ancient Greek amphi (“all over, all around”) + pous (“foot”).\nThe name Amphipoda comes, via Neo-Latin amphipoda, from the Greek roots amphi 'on both/all sides' and pous 'foot'. This contrasts with the related Isopoda, which have a single kind of thoracic leg. Particularly among anglers, amphipods are known as freshwater shrimp, scuds, or sideswimmers. The common names relate to their swimming habits, described as \"scudding\" and often having the animal tilt to one side.",
+    "NameSay": "am-FIP-uh-duh",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Amphipoda"
+      }
     ]
   },
   {
@@ -514,6 +562,14 @@
     "aliases": [
       "isopod",
       "isopod crustacean"
+    ],
+    "authority": "Latreille, 1816",
+    "NameOrigin": "Isopoda: iso- + -poda, New Latin, from Ancient Greek isos (“equal”) and pous (“foot”).\nThe name Isopoda is derived from the Greek roots iso- (from ísos, meaning \"equal\") and -pod (from pod-, the stem of poús, genitive podós, meaning \"foot\"). This refers to the fact that they have seven pairs of similarly shaped legs.",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Isopoda"
+      }
     ]
   },
   {
@@ -738,8 +794,7 @@
       "sea urchin",
       "sea urchins"
     ],
-    "common": "sea urchin",
-    "extinct": false
+    "common": "sea urchin"
   },
   {
     "id": "astropyga",
@@ -926,8 +981,7 @@
     "aliases": [
       "giant anemone"
     ],
-    "common": "purple-tipped anemone",
-    "extinct": false
+    "common": "purple-tipped anemone"
   },
   {
     "id": "stomphia",
@@ -973,7 +1027,9 @@
       "mollusca"
     ],
     "rank": "class",
-    "aliases": []
+    "aliases": [],
+    "NameSay": "seh-fuh-LOP-uh-duh",
+    "NameOrigin": "Cephalopoda: From cephalo- + -poda, from Ancient Greek kephale (“head”) + pous (“foot”)."
   },
   {
     "id": "octopoda",
@@ -1063,7 +1119,14 @@
     "aliases": [
       "cambrian chelicerate"
     ],
-    "extinct": true
+    "facts1": "<p>Extinct.</p>",
+    "NameOrigin": "The genus name is intended to mean “large chelicera” (chelicera literally meaning “claw-horn”) in Greek.",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Megachelicerax"
+      }
+    ]
   },
   {
     "id": "megachelicerax-cousteaui",
@@ -1074,7 +1137,7 @@
     ],
     "rank": "species",
     "aliases": [],
-    "extinct": true
+    "facts1": "<p>Extinct.</p>"
   },
   {
     "id": "predation",
@@ -1205,8 +1268,7 @@
     "kind": "topic",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "swimming",
@@ -1270,8 +1332,7 @@
       "orchid-blossom mantis",
       "walking flower mantis"
     ],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "torquigener-albomaculosus",
@@ -1280,13 +1341,10 @@
     "parents": [
       "torquigener"
     ],
-    "aliases": [
-      "Torquigener albomaculosus Matsuura",
-      "2014"
-    ],
+    "aliases": [],
     "common": "white-spotted pufferfish",
-    "extinct": false,
-    "rank": "species"
+    "rank": "species",
+    "authority": "Matsuura, 2014"
   },
   {
     "id": "sarcastic-fringehead",
@@ -1297,8 +1355,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "sarcastic fringehead",
-    "extinct": false
+    "common": "sarcastic fringehead"
   },
   {
     "id": "core",
@@ -1320,8 +1377,7 @@
     "kind": "person",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "pp",
@@ -1333,8 +1389,7 @@
     "aliases": [
       "Ping Pong"
     ],
-    "common": "ping pong",
-    "extinct": false
+    "common": "ping pong"
   },
   {
     "id": "rally",
@@ -1381,8 +1436,7 @@
       "diet-nutrition"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "creatine",
@@ -1392,8 +1446,7 @@
       "supplements"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "hmb",
@@ -1403,8 +1456,7 @@
       "supplements"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "kick",
@@ -1414,8 +1466,7 @@
       "freestyle"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "flip-turn",
@@ -1425,8 +1476,7 @@
       "freestyle"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "freestyle",
@@ -1436,8 +1486,7 @@
       "swimming"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "animalia",
@@ -1449,7 +1498,15 @@
     "aliases": [
       "Metazoa"
     ],
-    "rank": "kingdom"
+    "rank": "kingdom",
+    "NameSay": "a-nih-MAY-lee-uh",
+    "NameOrigin": "Animalia: From Latin animal (“an animal, a living creature”).\nThe word animal comes from the Latin noun animal of the same meaning, which is itself derived from Latin animalis 'having breath or soul'. The biological definition includes all members of the kingdom Animalia. In colloquial usage, the term animal is often used to refer only to nonhuman animals. The term metazoa is derived from Ancient Greek meta 'after' (in biology, the prefix meta- stands for 'later') and zōia 'animals', plural of zōion 'animal'.",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Animal"
+      }
+    ]
   },
   {
     "id": "cirolanidae",
@@ -1468,13 +1525,10 @@
     "parents": [
       "cirolanidae"
     ],
-    "aliases": [
-      "Bathynomus A.Milne-Edwards",
-      "1879"
-    ],
+    "aliases": [],
     "rank": "genus",
     "common": "giant isopods",
-    "extinct": false
+    "authority": "A.Milne-Edwards, 1879"
   },
   {
     "id": "bathynomus-giganteus",
@@ -1606,8 +1660,7 @@
     "kind": "topic",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "fake-serve",
@@ -1617,8 +1670,7 @@
       "fake"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "serve",
@@ -1628,8 +1680,7 @@
       "pp"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "2id-skeleton-shrimp",
@@ -1639,8 +1690,7 @@
       "caprella"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "comatulida",
@@ -1651,8 +1701,7 @@
     ],
     "aliases": [],
     "rank": "order",
-    "common": "feather star",
-    "extinct": false
+    "common": "feather star"
   },
   {
     "id": "snowflake",
@@ -1676,8 +1725,7 @@
       "serve"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "actiniidae",
@@ -1735,8 +1783,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "barnacle goose",
-    "extinct": false
+    "common": "barnacle goose"
   },
   {
     "id": "flexibility",
@@ -1753,8 +1800,7 @@
       "targeted-exercise"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "targeted-exercise",
@@ -1764,8 +1810,7 @@
       "activity"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "forehand-loop",
@@ -1775,8 +1820,7 @@
       "pp"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "hip-pain",
@@ -1786,8 +1830,7 @@
       "targeted-exercise"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "pelagonemertes-rollestoni",
@@ -1848,8 +1891,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "crocodile icefish",
-    "extinct": false
+    "common": "crocodile icefish"
   },
   {
     "id": "chionodraco",
@@ -1961,8 +2003,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "bowhead whale",
-    "extinct": false
+    "common": "bowhead whale"
   },
   {
     "id": "gobiidae",
@@ -2004,8 +2045,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "ocean sunfish, sunfish",
-    "extinct": false
+    "common": "ocean sunfish, sunfish"
   },
   {
     "id": "molidae",
@@ -2066,8 +2106,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "African elephant",
-    "extinct": false
+    "common": "African elephant"
   },
   {
     "id": "arothron-hispidus",
@@ -2078,8 +2117,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "white spotted pufferfish",
-    "extinct": false
+    "common": "white spotted pufferfish"
   },
   {
     "id": "arothron",
@@ -2097,8 +2135,7 @@
     "kind": "topic",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "bradypodion-thamnobates",
@@ -2150,8 +2187,7 @@
     ],
     "aliases": [],
     "rank": "order",
-    "common": "owls",
-    "extinct": false
+    "common": "owls"
   },
   {
     "id": "gastropoda",
@@ -2161,7 +2197,10 @@
       "mollusca"
     ],
     "aliases": [],
-    "rank": "class"
+    "rank": "class",
+    "NameSay": "gas-TROP-uh-duh",
+    "authority": "Cuvier, 1795",
+    "NameOrigin": "Gastropoda: gastro- + -poda, New Latin, from Ancient Greek gaster (“stomach”) and pous (“foot”)."
   },
   {
     "id": "costasiellidae",
@@ -2195,8 +2234,7 @@
       "Costasiella kuroshimae"
     ],
     "rank": "species",
-    "common": "leaf sheep",
-    "extinct": false
+    "common": "leaf sheep"
   },
   {
     "id": "eunice-aphroditois",
@@ -2207,8 +2245,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "bobbit-worm",
-    "extinct": false
+    "common": "bobbit-worm"
   },
   {
     "id": "eunicida",
@@ -2290,13 +2327,6 @@
     "aliases": []
   },
   {
-    "id": "crustacean",
-    "label": "Crustacean",
-    "kind": "group",
-    "parents": [],
-    "aliases": []
-  },
-  {
     "id": "bobtail-squid",
     "label": "Bobtail squid",
     "kind": "group",
@@ -2345,8 +2375,7 @@
       "Enhydra lutis"
     ],
     "rank": "species",
-    "common": "southern sea otter",
-    "extinct": false
+    "common": "southern sea otter"
   },
   {
     "id": "mbaq",
@@ -2354,8 +2383,7 @@
     "kind": "place",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "dog",
@@ -2413,8 +2441,7 @@
     ],
     "aliases": [],
     "rank": "genus",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "vampyrella-lateritia",
@@ -2423,12 +2450,10 @@
     "parents": [
       "vampyrella"
     ],
-    "aliases": [
-      "Vampyrella lateritia (Fres.)"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "vampire amoeba",
-    "extinct": false
+    "authority": "(Fres.)"
   },
   {
     "id": "colony-animals",
@@ -2446,8 +2471,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "humpback whale",
-    "extinct": false
+    "common": "humpback whale"
   },
   {
     "id": "balaenopteridae",
@@ -2475,8 +2499,7 @@
     "kind": "other",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "orcinus-orca",
@@ -2516,13 +2539,10 @@
     "parents": [
       "phyllaplysia"
     ],
-    "aliases": [
-      "Phyllaplysia taylori Dall",
-      "1900"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "Taylor's sea hare, eelgrass sea hare, zebra leafslug",
-    "extinct": false
+    "authority": "Dall, 1900"
   },
   {
     "id": "aplysiida",
@@ -2545,8 +2565,7 @@
       "Aplisiidae"
     ],
     "rank": "family",
-    "common": "sea hares",
-    "extinct": false
+    "common": "sea hares"
   },
   {
     "id": "phyllaplysia",
@@ -2605,8 +2624,7 @@
     "kind": "group",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "hydrozoa",
@@ -2670,8 +2688,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "sea angel",
-    "extinct": false
+    "common": "sea angel"
   },
   {
     "id": "synapsids",
@@ -2682,7 +2699,7 @@
     ],
     "aliases": [],
     "common": "",
-    "extinct": true
+    "facts1": "<p>Extinct.</p>"
   },
   {
     "id": "pteropoda",
@@ -2723,8 +2740,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Gurney's sea pen, orange sea pen, fleshy sea pen",
-    "extinct": false
+    "common": "Gurney's sea pen, orange sea pen, fleshy sea pen"
   },
   {
     "id": "scleralcyonacea",
@@ -2765,15 +2781,14 @@
     ],
     "aliases": [],
     "rank": "family",
-    "common": "anglerfishes",
-    "extinct": false
+    "common": "anglerfishes"
   },
   {
     "id": "lophiiformes",
     "label": "Lophiiformes",
     "kind": "taxon",
     "parents": [
-      "chordata"
+      "teleostei"
     ],
     "aliases": [],
     "rank": "order"
@@ -2846,8 +2861,7 @@
     ],
     "aliases": [],
     "rank": "genus",
-    "common": "Globicephalus",
-    "extinct": false
+    "common": "Globicephalus"
   },
   {
     "id": "shark-metagenome",
@@ -2898,8 +2912,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "blue whale",
-    "extinct": false
+    "common": "blue whale"
   },
   {
     "id": "balaenoptera",
@@ -2924,8 +2937,7 @@
     "kind": "group",
     "parents": [],
     "aliases": [],
-    "common": "diatom",
-    "extinct": false
+    "common": "diatom"
   },
   {
     "id": "paracentrotus-lividus",
@@ -2936,8 +2948,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "rock urchin",
-    "extinct": false
+    "common": "rock urchin"
   },
   {
     "id": "camarodonta",
@@ -3017,8 +3028,7 @@
       "Astraea tecta"
     ],
     "rank": "species",
-    "common": "Astraea conehead snail",
-    "extinct": false
+    "common": "Astraea conehead snail"
   },
   {
     "id": "chiroptera",
@@ -3029,7 +3039,6 @@
     ],
     "aliases": [],
     "common": "bats",
-    "extinct": false,
     "rank": "order"
   },
   {
@@ -3055,7 +3064,6 @@
     ],
     "aliases": [],
     "common": "sea slug",
-    "extinct": false,
     "rank": "order"
   },
   {
@@ -3067,7 +3075,6 @@
     ],
     "aliases": [],
     "common": "trap jaw ant",
-    "extinct": false,
     "rank": "species"
   },
   {
@@ -3117,8 +3124,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "longarm octopus",
-    "extinct": false
+    "common": "longarm octopus"
   },
   {
     "id": "macrotritopus",
@@ -3213,13 +3219,10 @@
     "parents": [
       "life"
     ],
-    "aliases": [
-      "Thermarces cerberus Rosenblatt & Cohen",
-      "1986"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "pink vent fish",
-    "extinct": false
+    "authority": "Rosenblatt & Cohen, 1986"
   },
   {
     "id": "shopping",
@@ -3235,13 +3238,10 @@
     "parents": [
       "laminatubus"
     ],
-    "aliases": [
-      "Laminatubus alvini Hove & Zibrowius",
-      "1986"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "",
-    "extinct": false
+    "authority": "Hove & Zibrowius, 1986"
   },
   {
     "id": "serpulidae",
@@ -3280,14 +3280,10 @@
     "parents": [
       "paraescarpia"
     ],
-    "aliases": [
-      "Paraescarpia echinospica Southward",
-      "Schulze & Tunnicliffe",
-      "2002"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "P. echinospica",
-    "extinct": false
+    "authority": "Southward, Schulze & Tunnicliffe, 2002"
   },
   {
     "id": "microeledone-galapagensis",
@@ -3298,8 +3294,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "trachyphyllia",
@@ -3308,13 +3303,10 @@
     "parents": [
       "merulinidae"
     ],
-    "aliases": [
-      "Trachyphyllia Milne Edwards & Haime",
-      "1849"
-    ],
+    "aliases": [],
     "common": "rose coral",
     "rank": "genus",
-    "extinct": false
+    "authority": "Milne Edwards & Haime, 1849"
   },
   {
     "id": "scleractinia",
@@ -3351,8 +3343,7 @@
       "my"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "chiton",
@@ -3365,8 +3356,7 @@
       "Chiton (genus)"
     ],
     "rank": "genus",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "santabarbarite",
@@ -3384,8 +3374,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "tri-banded taco slug",
-    "extinct": false
+    "common": "tri-banded taco slug"
   },
   {
     "id": "plakobranchidae",
@@ -3435,13 +3424,10 @@
     "parents": [
       "graneledone"
     ],
-    "aliases": [
-      "Graneledone boreopacifica Nesis",
-      "1982"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "deep-sea octopus",
-    "extinct": false
+    "authority": "Nesis, 1982"
   },
   {
     "id": "megaleledonidae",
@@ -3470,12 +3456,10 @@
     "parents": [
       "aulacoctena"
     ],
-    "aliases": [
-      "Aulacoctena acuminata Mortensen"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "bottle comb jelly",
-    "extinct": false
+    "authority": "Mortensen"
   },
   {
     "id": "tentaculata",
@@ -3526,8 +3510,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Arctic comb jelly",
-    "extinct": false
+    "common": "Arctic comb jelly"
   },
   {
     "id": "mertensiidae",
@@ -3598,7 +3581,16 @@
       "mollusca"
     ],
     "aliases": [],
-    "rank": "class"
+    "rank": "class",
+    "NameSay": "POL-ee-pluh-KOF-er-uh",
+    "authority": "Gray, 1821",
+    "NameOrigin": "The name chiton is Neo-Latin derived from the Ancient Greek word khitōn, meaning tunic (which also is the source of the word chitin).",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Chiton"
+      }
+    ]
   },
   {
     "id": "chitonida",
@@ -3608,7 +3600,9 @@
       "polyplacophora"
     ],
     "aliases": [],
-    "rank": "order"
+    "rank": "order",
+    "authority": "Thiele, 1910",
+    "NameOrigin": "Chitonida: Chiton + ida."
   },
   {
     "id": "acanthochitonidae",
@@ -3618,7 +3612,11 @@
       "chitonida"
     ],
     "aliases": [],
-    "rank": "family"
+    "rank": "family",
+    "NameOrigin": "",
+    "authority": "Simroth, 1894 (1881)  Introduced as a replacement name for Acanthochitidae, because its type genus, Acanthochites, is a synonym of Acanthochiton [emendation of Acanthochitona]. Ashby [1925, Proceedings of the Royal Society of Victoria, new ser., 37(2): 178] discussed the nomenclature of Acanthochitidae vs. Acanthochitonidae and concluded that they are two different names with different authorship; however he missed the earliest introductions of both names. This is a situation, covered by Art. 40; Acanthochitonidae is in prevailing usage, and is conserved with the precedence of Acanthochitidae (1881)",
+    "common": "chiton",
+    "NameOriginEdited": true
   },
   {
     "id": "cryptochiton",
@@ -3639,8 +3637,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "gumboot chiton",
-    "extinct": false
+    "common": "gumboot chiton"
   },
   {
     "id": "spawning",
@@ -3690,8 +3687,7 @@
     "kind": "topic",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "vivo-x300-ultra",
@@ -3701,8 +3697,7 @@
       "shopping"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "short-returns",
@@ -3712,8 +3707,7 @@
       "ttennis"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "samsung-s25-ultra",
@@ -3730,8 +3724,7 @@
       "paguroidea"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "paguroidea",
@@ -3766,8 +3759,7 @@
     ],
     "aliases": [],
     "rank": "genus",
-    "common": "manta ray",
-    "extinct": false
+    "common": "manta ray"
   },
   {
     "id": "elasmobranchii",
@@ -3828,8 +3820,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "common remora",
-    "extinct": false
+    "common": "common remora"
   },
   {
     "id": "snipe-eel",
@@ -3837,8 +3828,7 @@
     "kind": "group",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "anguilliformes",
@@ -3900,8 +3890,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "flamboyant cuttlefish",
-    "extinct": false
+    "common": "flamboyant cuttlefish"
   },
   {
     "id": "acanthosepion",
@@ -3934,15 +3923,10 @@
     "parents": [
       "hypsibius"
     ],
-    "aliases": [
-      "Hypsibius exemplaris Gasiorek",
-      "Stec",
-      "Morek & Michalczyk",
-      "2018"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "water bear",
-    "extinct": false
+    "authority": "Gasiorek, Stec, Morek & Michalczyk, 2018"
   },
   {
     "id": "eutardigrada",
@@ -3993,8 +3977,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "water bear",
-    "extinct": false
+    "common": "water bear"
   },
   {
     "id": "richtersiusidae",
@@ -4025,8 +4008,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "water bear",
-    "extinct": false
+    "common": "water bear"
   },
   {
     "id": "heterotardigrada",
@@ -4076,8 +4058,7 @@
       "tardigrada"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "moray-eel",
@@ -4105,8 +4086,7 @@
     ],
     "aliases": [],
     "rank": "family",
-    "common": "moray eels",
-    "extinct": false
+    "common": "moray eels"
   },
   {
     "id": "calcinus-elegans",
@@ -4118,7 +4098,18 @@
     "aliases": [],
     "rank": "species",
     "common": "electric blue hermit crab",
-    "extinct": false
+    "authority": "(H. Milne Edwards, 1836)",
+    "NameOrigin": "First described as Pagurus elegans.\nelegans: Latin, “fine, elegant, handsome; tasteful”.",
+    "NameOriginSrc": [
+      {
+        "name": "WoRMS",
+        "url": "https://www.marinespecies.org/aphia.php?p=taxdetails&id=208679"
+      },
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/elegans"
+      }
+    ]
   },
   {
     "id": "decapoda",
@@ -4128,7 +4119,15 @@
       "malacostraca"
     ],
     "aliases": [],
-    "rank": "order"
+    "rank": "order",
+    "authority": "Latreille, 1802",
+    "NameOrigin": "As the name Decapoda (from the Greek deka, deca-, \"ten\", and pous / podos, -pod, \"foot\") implies, ten of these appendages are considered legs.",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Decapod"
+      }
+    ]
   },
   {
     "id": "diogenidae",
@@ -4138,7 +4137,8 @@
       "decapoda"
     ],
     "aliases": [],
-    "rank": "family"
+    "rank": "family",
+    "authority": "Ortmann, 1892"
   },
   {
     "id": "calcinus",
@@ -4148,7 +4148,8 @@
       "diogenidae"
     ],
     "aliases": [],
-    "rank": "genus"
+    "rank": "genus",
+    "authority": "Dana, 1851"
   },
   {
     "id": "ctenoides-mitis",
@@ -4159,8 +4160,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "smooth flame scallop",
-    "extinct": false
+    "common": "smooth flame scallop"
   },
   {
     "id": "bivalvia",
@@ -4170,7 +4170,16 @@
       "mollusca"
     ],
     "aliases": [],
-    "rank": "class"
+    "rank": "class",
+    "NameSay": "by-VAL-vee-uh",
+    "authority": "Linnaeus, 1758",
+    "NameOrigin": "The name \"bivalve\" is derived from the Latin bis, meaning 'two', and valvae, meaning 'leaves of a door' (\"leaf\" is an older word for the main, movable part of a door.",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Bivalvia"
+      }
+    ]
   },
   {
     "id": "limida",
@@ -4222,8 +4231,7 @@
     ],
     "aliases": [],
     "rank": "order",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "cassidae",
@@ -4350,7 +4358,8 @@
       "malacostraca"
     ],
     "aliases": [],
-    "rank": "order"
+    "rank": "order",
+    "NameOrigin": "Stomatopoda: stomato- + -poda, New Latin, from Ancient Greek stoma (“mouth”) and pous (“foot”)."
   },
   {
     "id": "odontodactylidae",
@@ -4446,8 +4455,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "red sea urchin",
-    "extinct": false
+    "common": "red sea urchin"
   },
   {
     "id": "mesocentrotus",
@@ -4487,13 +4495,10 @@
     "parents": [
       "cladorhizidae"
     ],
-    "aliases": [
-      "Chondrocladia Thomson",
-      "1873"
-    ],
+    "aliases": [],
     "rank": "genus",
     "common": "sponge",
-    "extinct": false
+    "authority": "Thomson, 1873"
   },
   {
     "id": "demospongiae",
@@ -4580,11 +4585,10 @@
       "vibrio"
     ],
     "aliases": [
-      "Bacillaria paxillifer (O.F.Müll.) Hendey"
+      "Bacillaria paxillifer"
     ],
     "rank": "species",
-    "common": "Bacillaria paxiliver",
-    "extinct": false
+    "common": "Bacillaria paxiliver"
   },
   {
     "id": "taurine",
@@ -4607,14 +4611,17 @@
     "parents": [
       "rhinoderma"
     ],
-    "aliases": [
-      "Rhinoderma darwinii Duméril & Bibron",
-      "1841"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "Darwin's frog",
-    "extinct": false,
-    "NameOrigin": "Described by André Marie Constant Duméril and Gabriel Bibron in 1841.\nRhinoderma: rhino- (“nose”) + -derma (“skin”).\nThis means that R. darwinii will be more localized to certain habitats in the future. ([Wikipedia](https://en.wikipedia.org/wiki/Darwin's_frog))"
+    "NameOrigin": "Rhinoderma: rhino- (“nose”) + -derma (“skin”).\nThis means that R. darwinii will be more localized to certain habitats in the future.",
+    "authority": "Duméril & Bibron, 1841",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Darwin's_frog"
+      }
+    ]
   },
   {
     "id": "amphibia",
@@ -4636,7 +4643,13 @@
     "aliases": [],
     "rank": "order",
     "NameSay": "uh-NOOR-uh",
-    "NameOrigin": "Described by Duméril in 1806.\nA frog is any member of a diverse and largely semiaquatic group of short-bodied, tailless amphibian vertebrates composing the order Anura (coming from the Ancient Greek ἀνούρα, literally 'without tail'). ([Wikipedia](https://en.wikipedia.org/wiki/Frog))"
+    "NameOrigin": "A frog is any member of a diverse and largely semiaquatic group of short-bodied, tailless amphibian vertebrates composing the order Anura (coming from the Ancient Greek anoura, literally 'without tail').",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Frog"
+      }
+    ]
   },
   {
     "id": "rhinodermatidae",
@@ -4665,13 +4678,10 @@
     "parents": [
       "bonellia"
     ],
-    "aliases": [
-      "Bonellia viridis Rolando",
-      "1822"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "green spoonworm",
-    "extinct": false
+    "authority": "Rolando, 1822"
   },
   {
     "id": "echiuroidea",
@@ -4711,8 +4721,7 @@
       "pp"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "voracious",
@@ -4733,8 +4742,7 @@
       "Cacatua galerita eleonora"
     ],
     "rank": "species",
-    "common": "sulphur-crested cockatoo",
-    "extinct": false
+    "common": "sulphur-crested cockatoo"
   },
   {
     "id": "psittaciformes",
@@ -4779,8 +4787,7 @@
     "kind": "topic",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "nymphicus",
@@ -4790,13 +4797,11 @@
       "psittacidae"
     ],
     "aliases": [
-      "Nymphicus Wagler",
-      "1832",
       "Cockatiel"
     ],
     "rank": "genus",
     "common": "cockatiels",
-    "extinct": false
+    "authority": "Wagler, 1832"
   },
   {
     "id": "hummingbird",
@@ -4814,8 +4819,7 @@
     ],
     "aliases": [],
     "rank": "family",
-    "common": "hummingbirds",
-    "extinct": false
+    "common": "hummingbirds"
   },
   {
     "id": "apodiformes",
@@ -4842,8 +4846,7 @@
       "targeted-exercise"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "monodontidae",
@@ -4874,8 +4877,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "beluga whale",
-    "extinct": false
+    "common": "beluga whale"
   },
   {
     "id": "my",
@@ -4891,8 +4893,7 @@
     "parents": [],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "caudata",
@@ -4935,8 +4936,7 @@
       "Axototl"
     ],
     "rank": "species",
-    "common": "axolotl",
-    "extinct": false
+    "common": "axolotl"
   },
   {
     "id": "caprella-mutica",
@@ -4945,13 +4945,10 @@
     "parents": [
       "caprella"
     ],
-    "aliases": [
-      "Caprella mutica Schurin",
-      "1935"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "Japanese skeleton shrimp",
-    "extinct": false
+    "authority": "Schurin, 1935"
   },
   {
     "id": "caprella",
@@ -4977,13 +4974,10 @@
     "parents": [
       "hymenocera"
     ],
-    "aliases": [
-      "Hymenocera picta Dana",
-      "1852"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "harlequin shrimp",
-    "extinct": false
+    "authority": "Dana, 1852"
   },
   {
     "id": "palaemonidae",
@@ -5014,8 +5008,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Cape gannet, South African gannet",
-    "extinct": false
+    "common": "Cape gannet, South African gannet"
   },
   {
     "id": "suliformes",
@@ -5068,13 +5061,10 @@
     "parents": [
       "actinoptychus"
     ],
-    "aliases": [
-      "Actinoptychus splendens (Shadbolt) Ralfs ex Pritchard",
-      "1861"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "",
-    "extinct": false
+    "authority": "(Shadbolt) Ralfs ex Pritchard, 1861"
   },
   {
     "id": "coscinodiscales",
@@ -5116,8 +5106,17 @@
     "aliases": [],
     "rank": "species",
     "common": "weedy scorpionfish",
-    "extinct": false,
-    "NameOrigin": "Described by Albert Günther in 1892 as Scorpaena frondosa.\nThe genus name is a combination of rhino meaning \"snout\" and op meaning \"eye\", an allusion to he upturned snout and raised orbits of R. frondosa with the suffix ias which is used in some Greek names for fishes, for example Xiphias. ([Wikipedia](https://en.wikipedia.org/wiki/Rhinopias))\nThe specific name frondosa means \"branched or full of leaves\", an allusion to the fleshy tentacles which cover most of the body of this fish. ([Wikipedia](https://en.wikipedia.org/wiki/Rhinopias_frondosa))"
+    "NameOrigin": "First described as Scorpaena frondosa.\nThe genus name is a combination of rhino meaning \"snout\" and op meaning \"eye\", an allusion to he upturned snout and raised orbits of R. frondosa with the suffix ias which is used in some Greek names for fishes, for example Xiphias.\nThe specific name frondosa means \"branched or full of leaves\", an allusion to the fleshy tentacles which cover most of the body of this fish.",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Rhinopias"
+      },
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Rhinopias_frondosa"
+      }
+    ]
   },
   {
     "id": "scorpaeniformes",
@@ -5148,7 +5147,13 @@
     ],
     "aliases": [],
     "rank": "genus",
-    "NameOrigin": "Described by Theodore Nicholas Gill in 1905.\nThe genus name is a combination of rhino meaning \"snout\" and op meaning \"eye\", an allusion to he upturned snout and raised orbits of R. frondosa with the suffix ias which is used in some Greek names for fishes, for example Xiphias. ([Wikipedia](https://en.wikipedia.org/wiki/Rhinopias))"
+    "NameOrigin": "The genus name is a combination of rhino meaning \"snout\" and op meaning \"eye\", an allusion to he upturned snout and raised orbits of R. frondosa with the suffix ias which is used in some Greek names for fishes, for example Xiphias.",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Rhinopias"
+      }
+    ]
   },
   {
     "id": "rhinopias-aphanes",
@@ -5158,14 +5163,22 @@
       "rhinopias"
     ],
     "aliases": [
-      "Rhinopias aphanes Eschmeyer",
-      "1973",
       "Rhinopias aphanus"
     ],
     "rank": "species",
     "common": "lacy scorpionfish",
-    "extinct": false,
-    "NameOrigin": "Described by William Eschmeyer in 1973.\nThe genus name is a combination of rhino meaning \"snout\" and op meaning \"eye\", an allusion to he upturned snout and raised orbits of R. frondosa with the suffix ias which is used in some Greek names for fishes, for example Xiphias. ([Wikipedia](https://en.wikipedia.org/wiki/Rhinopias))\nThe specific name aphanes means \"that which is unseen or inconspicuous\", an allusion to the camouflage created by its notable coloration and flaps of skin. ([Wikipedia](https://en.wikipedia.org/wiki/Rhinopias_aphanes))"
+    "NameOrigin": "The genus name is a combination of rhino meaning \"snout\" and op meaning \"eye\", an allusion to he upturned snout and raised orbits of R. frondosa with the suffix ias which is used in some Greek names for fishes, for example Xiphias.\nThe specific name aphanes means \"that which is unseen or inconspicuous\", an allusion to the camouflage created by its notable coloration and flaps of skin.",
+    "authority": "Eschmeyer, 1973",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Rhinopias"
+      },
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Rhinopias_aphanes"
+      }
+    ]
   },
   {
     "id": "orectolobiformes",
@@ -5195,13 +5208,11 @@
       "orectolobidae"
     ],
     "aliases": [
-      "Orectolobus Bonaparte",
-      "1834",
       "Wobbegong"
     ],
     "rank": "genus",
     "common": "typical wobbegongs",
-    "extinct": false
+    "authority": "Bonaparte, 1834"
   },
   {
     "id": "orectolobus-maculatus",
@@ -5212,8 +5223,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "spotted wobbegong",
-    "extinct": false
+    "common": "spotted wobbegong"
   },
   {
     "id": "pareidolia",
@@ -5237,8 +5247,7 @@
       "ttennis"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "periophthalmus",
@@ -5257,13 +5266,10 @@
     "parents": [
       "periophthalmus"
     ],
-    "aliases": [
-      "Periophthalmus argentilineatus Valenciennes",
-      "1837"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "barred mudskipper",
-    "extinct": false
+    "authority": "Valenciennes, 1837"
   },
   {
     "id": "aurelia-aurita",
@@ -5274,8 +5280,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "moon jelly, common jellyfish",
-    "extinct": false
+    "common": "moon jelly, common jellyfish"
   },
   {
     "id": "scyphozoa",
@@ -5324,13 +5329,10 @@
     "parents": [
       "phidiana"
     ],
-    "aliases": [
-      "Phidiana lynceus Bergh",
-      "1867"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "lynx nudibranch",
-    "extinct": false
+    "authority": "Bergh, 1867"
   },
   {
     "id": "facelinidae",
@@ -5359,13 +5361,10 @@
     "parents": [
       "myrionema"
     ],
-    "aliases": [
-      "Myrionema amboinense Pictet",
-      "1893"
-    ],
+    "aliases": [],
     "rank": "species",
     "common": "",
-    "extinct": false
+    "authority": "Pictet, 1893"
   },
   {
     "id": "eudendriidae",
@@ -5396,8 +5395,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Portuguese man-o'-war, bluebottle",
-    "extinct": false
+    "common": "Portuguese man-o'-war, bluebottle"
   },
   {
     "id": "privacy",
@@ -5437,8 +5435,7 @@
       "Lybia tesselata"
     ],
     "rank": "species",
-    "common": "common boxing crab",
-    "extinct": false
+    "common": "common boxing crab"
   },
   {
     "id": "haemulidae",
@@ -5471,7 +5468,7 @@
       "Anisostremus"
     ],
     "rank": "species",
-    "common": "Xantic Sargo"
+    "common": "Xantic sargo"
   },
   {
     "id": "anisotremus-virginicus",
@@ -5482,8 +5479,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "porkfish",
-    "extinct": false
+    "common": "porkfish"
   },
   {
     "id": "rhacochilus-vacca",
@@ -5494,7 +5490,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Pile Perch"
+    "common": "pile perch"
   },
   {
     "id": "embiotocidae",
@@ -5536,8 +5532,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Knobby Sea Star",
-    "extinct": false
+    "common": "knobby sea star"
   },
   {
     "id": "forcipulatida",
@@ -5578,8 +5573,7 @@
     ],
     "aliases": [],
     "rank": "genus",
-    "common": "seahorse",
-    "extinct": false
+    "common": "seahorse"
   },
   {
     "id": "gasterosteiformes",
@@ -5610,8 +5604,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Bargibant's Seahorse pygmy seahorse",
-    "extinct": false
+    "common": "Bargibant's Seahorse pygmy seahorse"
   },
   {
     "id": "syngnathiformes",
@@ -5632,8 +5625,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Giant Seahorse",
-    "extinct": false
+    "common": "giant seahorse"
   },
   {
     "id": "hippocampus-hippocampus",
@@ -5644,8 +5636,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "short-snouted seahorse",
-    "extinct": false
+    "common": "short-snouted seahorse"
   },
   {
     "id": "liparidae",
@@ -5656,8 +5647,7 @@
     ],
     "aliases": [],
     "rank": "family",
-    "common": "snailfish",
-    "extinct": false
+    "common": "snailfish"
   },
   {
     "id": "careproctus-rastrinus",
@@ -5668,8 +5658,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "salmon snailfish",
-    "extinct": false
+    "common": "salmon snailfish"
   },
   {
     "id": "careproctus",
@@ -5712,8 +5701,7 @@
       "Aeolodia papillosa"
     ],
     "rank": "species",
-    "common": "shag-rug nudibranch",
-    "extinct": false
+    "common": "shag-rug nudibranch"
   },
   {
     "id": "strongylocentrotus-droebachiensis",
@@ -5724,8 +5712,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "green sea urchin",
-    "extinct": false
+    "common": "green sea urchin"
   },
   {
     "id": "haliphron-atlanticus",
@@ -5736,7 +5723,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Seven-arm Octopus"
+    "common": "seven-arm octopus"
   },
   {
     "id": "alloposidae",
@@ -5819,8 +5806,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Rock wrasse",
-    "extinct": false
+    "common": "rock wrasse"
   },
   {
     "id": "halichoeres",
@@ -5848,8 +5834,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Nebulous wrasse",
-    "extinct": false
+    "common": "nebulous wrasse"
   },
   {
     "id": "epibulus",
@@ -5870,8 +5855,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "slingjaw wrasse",
-    "extinct": false
+    "common": "slingjaw wrasse"
   },
   {
     "id": "novaculichthys-taeniourus",
@@ -5882,8 +5866,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Rockmover wrasse",
-    "extinct": false
+    "common": "rockmover wrasse"
   },
   {
     "id": "novaculichthys",
@@ -5904,8 +5887,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Moon wrasse",
-    "extinct": false
+    "common": "moon wrasse"
   },
   {
     "id": "thalassoma",
@@ -5926,8 +5908,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "slingjaw wrasse",
-    "extinct": false
+    "common": "slingjaw wrasse"
   },
   {
     "id": "microbiome",
@@ -5990,8 +5971,7 @@
       "Oxyjulis californicus"
     ],
     "rank": "species",
-    "common": "señorita",
-    "extinct": false
+    "common": "señorita"
   },
   {
     "id": "juv",
@@ -6001,8 +5981,7 @@
       "stage"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "portrait",
@@ -6010,8 +5989,7 @@
     "kind": "topic",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "tendon",
@@ -6069,8 +6047,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "giant kelp",
-    "extinct": false
+    "common": "giant kelp"
   },
   {
     "id": "enteroctopus-dofleini",
@@ -6081,8 +6058,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "giant Pacific octopus",
-    "extinct": false
+    "common": "giant Pacific octopus"
   },
   {
     "id": "enteroctopodidae",
@@ -6112,8 +6088,7 @@
       "stage"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "stage",
@@ -6131,20 +6106,18 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "pale octopus",
-    "extinct": false
+    "common": "pale octopus"
   },
   {
     "id": "thoracica",
     "label": "Thoracica",
     "kind": "taxon",
     "parents": [
-      "arthropoda"
+      "crustacea"
     ],
     "aliases": [],
     "rank": "class",
-    "common": "barnacle",
-    "extinct": false
+    "common": "barnacle"
   },
   {
     "id": "pollicipes",
@@ -6155,8 +6128,7 @@
     ],
     "aliases": [],
     "rank": "genus",
-    "common": "acorn barnacle",
-    "extinct": false
+    "common": "acorn barnacle"
   },
   {
     "id": "octopus-wolfi",
@@ -6167,7 +6139,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Wolf's Pygmy Octopus"
+    "common": "Wolf's pygmy octopus"
   },
   {
     "id": "goniodorididae",
@@ -6200,7 +6172,7 @@
       "T euryeia"
     ],
     "rank": "species",
-    "common": "Dappled Pump Dorid"
+    "common": "dappled pump dorid"
   },
   {
     "id": "procellariiformes",
@@ -6241,8 +6213,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Albatross",
-    "extinct": false
+    "common": "albatross"
   },
   {
     "id": "phalaropus",
@@ -6253,7 +6224,7 @@
     ],
     "aliases": [],
     "rank": "genus",
-    "common": "Phalalarope"
+    "common": "phalalarope"
   },
   {
     "id": "photo-contest",
@@ -6285,8 +6256,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "green jacaranda",
-    "extinct": false
+    "common": "green jacaranda"
   },
   {
     "id": "viperidae",
@@ -6317,8 +6287,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "red-necked phalarope",
-    "extinct": false
+    "common": "red-necked phalarope"
   },
   {
     "id": "charadriiformes",
@@ -6353,8 +6322,7 @@
     "kind": "topic",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "dup",
@@ -6381,8 +6349,7 @@
       "Mobula mukiana"
     ],
     "rank": "species",
-    "common": "Munk's Pygmy Devil Ray",
-    "extinct": false
+    "common": "Munk's pygmy devil ray"
   },
   {
     "id": "chaunacops",
@@ -6393,8 +6360,7 @@
     ],
     "aliases": [],
     "rank": "genus",
-    "common": "coffinfish",
-    "extinct": false
+    "common": "coffinfish"
   },
   {
     "id": "chaunacidae",
@@ -6429,8 +6395,7 @@
     ],
     "aliases": [],
     "rank": "genus",
-    "common": "Damselfish",
-    "extinct": false
+    "common": "damselfish"
   },
   {
     "id": "strength-training",
@@ -6447,8 +6412,7 @@
       "ttennis"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "cooperative-hunting",
@@ -6466,8 +6430,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "sea bunny",
-    "extinct": false
+    "common": "sea bunny"
   },
   {
     "id": "discodorididae",
@@ -6497,8 +6460,7 @@
       "health"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "technique-tt",
@@ -6508,8 +6470,7 @@
       "pp"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "sulforafane",
@@ -6529,8 +6490,7 @@
       "Lophius vomerinus"
     ],
     "rank": "genus",
-    "common": "Monkfish",
-    "extinct": false
+    "common": "monkfish"
   },
   {
     "id": "eggs-cooking",
@@ -6593,8 +6553,7 @@
     ],
     "aliases": [],
     "rank": "order",
-    "common": "Radiolarian",
-    "extinct": false
+    "common": "radiolarian"
   },
   {
     "id": "retaria",
@@ -6658,8 +6617,7 @@
       "Hexacoralia"
     ],
     "rank": "order",
-    "common": "Colonial Anemones",
-    "extinct": false
+    "common": "colonial anemones"
   },
   {
     "id": "corals",
@@ -6684,8 +6642,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Abyssal Comb Jelly",
-    "extinct": false
+    "common": "abyssal comb jelly"
   },
   {
     "id": "nuda",
@@ -6736,8 +6693,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Big red jelly",
-    "extinct": false
+    "common": "big red jelly"
   },
   {
     "id": "tiburonia",
@@ -6767,8 +6723,7 @@
       "Nautilus"
     ],
     "rank": "order",
-    "common": "Nautiluses",
-    "extinct": false
+    "common": "nautiluses"
   },
   {
     "id": "soleus",
@@ -6826,8 +6781,7 @@
       "Stephanopyxis grunowii"
     ],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "foraminifera",
@@ -6838,8 +6792,7 @@
     ],
     "aliases": [],
     "rank": "order",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "sarcodina",
@@ -6880,7 +6833,7 @@
     ],
     "aliases": [],
     "rank": "genus",
-    "common": "Potoo"
+    "common": "potoo"
   },
   {
     "id": "nyctibiiformes",
@@ -6901,8 +6854,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Great Potoo",
-    "extinct": false
+    "common": "great potoo"
   },
   {
     "id": "bigif",
@@ -6928,7 +6880,14 @@
     "aliases": [],
     "rank": "species",
     "common": "",
-    "extinct": false
+    "authority": "Duffy, 1996",
+    "NameOrigin": "The species name \"regalis\" comes from the Latin regalis which means royal.",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Synalpheus_regalis"
+      }
+    ]
   },
   {
     "id": "alpheidae",
@@ -6938,7 +6897,8 @@
       "decapoda"
     ],
     "aliases": [],
-    "rank": "family"
+    "rank": "family",
+    "authority": "Rafinesque, 1815"
   },
   {
     "id": "synalpheus",
@@ -6948,7 +6908,8 @@
       "alpheidae"
     ],
     "aliases": [],
-    "rank": "genus"
+    "rank": "genus",
+    "authority": "Spence Bate, 1888"
   },
   {
     "id": "tetronarce-californica",
@@ -6959,8 +6920,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "pacific electric ray",
-    "extinct": false
+    "common": "pacific electric ray"
   },
   {
     "id": "torpediniformes",
@@ -7014,8 +6974,7 @@
       "Sepia latimanus"
     ],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "toxopneustes-pileolus",
@@ -7026,8 +6985,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "flower urchin",
-    "extinct": false
+    "common": "flower urchin"
   },
   {
     "id": "toxopneustidae",
@@ -7058,8 +7016,7 @@
     ],
     "aliases": [],
     "rank": "family",
-    "common": "true conch",
-    "extinct": false
+    "common": "true conch"
   },
   {
     "id": "llm-id",
@@ -7077,8 +7034,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Marsh Whorl Snail",
-    "extinct": false
+    "common": "marsh whorl snail"
   },
   {
     "id": "stylommatophora",
@@ -7133,8 +7089,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Asian sheephead wrass, kobudai",
-    "extinct": false
+    "common": "Asian sheephead wrass, kobudai"
   },
   {
     "id": "eupercaria-incertae-sedis",
@@ -7186,8 +7141,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "bowmouth guitarfish, shark ray",
-    "extinct": false
+    "common": "bowmouth guitarfish, shark ray"
   },
   {
     "id": "melibe-leonina",
@@ -7198,8 +7152,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "lion nudibranch",
-    "extinct": false
+    "common": "lion nudibranch"
   },
   {
     "id": "tethydidae",
@@ -7230,8 +7183,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "short dragonfish, sea moth",
-    "extinct": false
+    "common": "short dragonfish, sea moth"
   },
   {
     "id": "dactylopteriformes",
@@ -7272,8 +7224,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "longtail seamouth",
-    "extinct": false
+    "common": "longtail seamouth"
   },
   {
     "id": "pegasus",
@@ -7294,8 +7245,7 @@
     ],
     "aliases": [],
     "rank": "family",
-    "common": "lumpfishes, lumpsuckers",
-    "extinct": false
+    "common": "lumpfishes, lumpsuckers"
   },
   {
     "id": "phyllodesmium",
@@ -7326,8 +7276,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "ezetimibe",
@@ -7345,8 +7294,7 @@
     ],
     "aliases": [],
     "rank": "order",
-    "common": "siphonophore",
-    "extinct": false
+    "common": "siphonophore"
   },
   {
     "id": "praya-dubia",
@@ -7386,8 +7334,7 @@
       "supplements"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "wcs",
@@ -7397,8 +7344,7 @@
       "music"
     ],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "synopses-of-books",
@@ -7416,8 +7362,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "spiny sand star",
-    "extinct": false
+    "common": "spiny sand star"
   },
   {
     "id": "paxillosida",
@@ -7458,8 +7403,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "balanidae",
@@ -7486,8 +7430,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "dendronotus-venustus",
@@ -7498,8 +7441,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "dendronotidae",
@@ -7530,8 +7472,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "naked mole rat",
-    "extinct": false
+    "common": "naked mole rat"
   },
   {
     "id": "rodentia",
@@ -7572,8 +7513,7 @@
     ],
     "aliases": [],
     "rank": "family",
-    "common": "moon snails",
-    "extinct": false
+    "common": "moon snails"
   },
   {
     "id": "neverita-lewisii",
@@ -7584,8 +7524,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "Lewis' moonsnail",
-    "extinct": false
+    "common": "Lewis' moonsnail"
   },
   {
     "id": "neverita",
@@ -7596,8 +7535,7 @@
     ],
     "aliases": [],
     "rank": "genus",
-    "common": "moon snail",
-    "extinct": false
+    "common": "moon snail"
   },
   {
     "id": "transcribe",
@@ -7629,8 +7567,7 @@
     "parents": [],
     "aliases": [],
     "rank": "species",
-    "common": "common siphonophore",
-    "extinct": false
+    "common": "common siphonophore"
   },
   {
     "id": "nautichthys-oculofasciatus",
@@ -7641,8 +7578,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "sailfin sculpin",
-    "extinct": false
+    "common": "sailfin sculpin"
   },
   {
     "id": "nautichthyidae",
@@ -7673,8 +7609,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "graceful decorator crab",
-    "extinct": false
+    "common": "graceful decorator crab"
   },
   {
     "id": "oregoniidae",
@@ -7725,8 +7660,7 @@
     "parents": [],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "stargazerno",
@@ -7774,8 +7708,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "plainfin midshipman",
-    "extinct": false
+    "common": "plainfin midshipman"
   },
   {
     "id": "mirror-test",
@@ -7784,8 +7717,7 @@
     "parents": [],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "mnemiopsis-leidyi",
@@ -7796,8 +7728,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "sea walnut, warty comb jelly",
-    "extinct": false
+    "common": "sea walnut, warty comb jelly"
   },
   {
     "id": "bolinopsidae",
@@ -7875,8 +7806,7 @@
     ],
     "aliases": [],
     "rank": "family",
-    "common": "Stargazer",
-    "extinct": false
+    "common": "stargazer"
   },
   {
     "id": "astroscopus",
@@ -7897,8 +7827,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "purple-lipped jelly",
-    "extinct": false
+    "common": "purple-lipped jelly"
   },
   {
     "id": "leptothecata",
@@ -7942,8 +7871,7 @@
       "Pleuroncodes planipes"
     ],
     "rank": "species",
-    "common": "pelagic red crab",
-    "extinct": false
+    "common": "pelagic red crab"
   },
   {
     "id": "munididae",
@@ -7974,8 +7902,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "smooth stargazer",
-    "extinct": false
+    "common": "smooth stargazer"
   },
   {
     "id": "kathetostoma",
@@ -7994,8 +7921,7 @@
     "parents": [],
     "aliases": [],
     "rank": "species",
-    "common": "whitemargin stargazer",
-    "extinct": false
+    "common": "whitemargin stargazer"
   },
   {
     "id": "alderia-willowi",
@@ -8034,8 +7960,7 @@
     "parents": [],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "review",
@@ -8043,8 +7968,7 @@
     "kind": "topic",
     "parents": [],
     "aliases": [],
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "nervous-system",
@@ -8053,8 +7977,7 @@
     "parents": [],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "allulose",
@@ -8073,7 +7996,23 @@
     "aliases": [],
     "rank": "species",
     "common": "armored or black-eyed hermit crab",
-    "extinct": false
+    "NameSay": "PAG-yer-uhs armatus",
+    "authority": "(Dana, 1851)",
+    "NameOrigin": "First described as Bernhardus armatus.\nPagurus: Borrowed from Latin pagūrus (“a kind of crab”), from Ancient Greek pagouros (“crab”).\narmatus: Latin, “armed; equipped”.",
+    "NameOriginSrc": [
+      {
+        "name": "WoRMS",
+        "url": "https://www.marinespecies.org/aphia.php?p=taxdetails&id=366655"
+      },
+      {
+        "name": "Wikidata",
+        "url": "https://www.wikidata.org/wiki/Q1948810"
+      },
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/Pagurus"
+      }
+    ]
   },
   {
     "id": "paguridae",
@@ -8105,7 +8044,15 @@
     "aliases": [],
     "rank": "species",
     "common": "Prideaux hermit crab",
-    "extinct": false
+    "NameSay": "PAG-yer-uhs prideaux",
+    "authority": "Leach, 1815",
+    "NameOrigin": "Pagurus: Borrowed from Latin pagūrus (“a kind of crab”), from Ancient Greek pagouros (“crab”).",
+    "NameOriginSrc": [
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/Pagurus"
+      }
+    ]
   },
   {
     "id": "pagurus-bernhardus",
@@ -8117,7 +8064,23 @@
     "aliases": [],
     "rank": "species",
     "common": "common hermit crab",
-    "extinct": false
+    "NameSay": "PAG-yer-uhs bernhardus",
+    "authority": "(Linnaeus, 1758)",
+    "NameOrigin": "First described as Cancer bernhardus.\nPagurus: Borrowed from Latin pagūrus (“a kind of crab”), from Ancient Greek pagouros (“crab”).",
+    "NameOriginSrc": [
+      {
+        "name": "WoRMS",
+        "url": "https://www.marinespecies.org/aphia.php?p=taxdetails&id=107232"
+      },
+      {
+        "name": "Wikidata",
+        "url": "https://www.wikidata.org/wiki/Q1049402"
+      },
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/Pagurus"
+      }
+    ]
   },
   {
     "id": "mobula-birostris",
@@ -8128,8 +8091,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "giant manta ray",
-    "extinct": false
+    "common": "giant manta ray"
   },
   {
     "id": "mobulidae",
@@ -8148,8 +8110,7 @@
     "parents": [],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "pagurus-granosimanus",
@@ -8201,8 +8162,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "western spiny brittle star",
-    "extinct": false
+    "common": "western spiny brittle star"
   },
   {
     "id": "ophioplocus-esmarki",
@@ -8213,8 +8173,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "hemieuryalidae",
@@ -8245,8 +8204,7 @@
     ],
     "aliases": [],
     "rank": "species",
-    "common": "",
-    "extinct": false
+    "common": ""
   },
   {
     "id": "phyllodocida",
@@ -8287,8 +8245,7 @@
     ],
     "aliases": [],
     "rank": "genus",
-    "common": "sea cucumber",
-    "extinct": false
+    "common": "sea cucumber"
   },
   {
     "id": "elasipodida",
@@ -8325,10 +8282,9 @@
     ],
     "rank": "species",
     "common": "ribbon eel",
-    "extinct": false,
     "facts1": "<p>Thin, ribbon-like body<br>Flared anterior nostrils look like horns<br>Like other morays often seen looking out from burrow</p>",
     "facts2": "<p>Protandrous hermaphrodites, meaning initial sex male, later may become female</p>",
-    "NameOrigin": "Described by Samuel Garman in 1888.\nRhinomuraena: rhino- (“nose”) + Muraena (“moray eel”).\nquaesita: Latin “sought for; asked” (a form of quaesitus)."
+    "NameOrigin": "Rhinomuraena: rhino- (“nose”) + Muraena (“moray eel”).\nquaesita: Latin “sought for; asked” (a form of quaesitus)."
   },
   {
     "id": "rhinomuraena",
@@ -8350,8 +8306,14 @@
     "aliases": [],
     "rank": "species",
     "NameSay": "puh-LIB-ee-uhs henslowii",
-    "NameOrigin": "Described by William Elford Leach in 1820.\nThe genus name \"Polybius\" may be in reference to the Greek historian Polybius; the specific epithet henslowii honours John Stevens Henslow, Professor of Botany at Cambridge University, who had collected the specimens used by Leach from a herring fisherman in North Devon in 1817. ([Wikipedia](https://en.wikipedia.org/wiki/Polybius_henslowii))",
-    "common": "Henslow's swimming crab"
+    "NameOrigin": "The genus name \"Polybius\" may be in reference to the Greek historian Polybius; the specific epithet henslowii honours John Stevens Henslow, Professor of Botany at Cambridge University, who had collected the specimens used by Leach from a herring fisherman in North Devon in 1817.",
+    "common": "Henslow's swimming crab",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Polybius_henslowii"
+      }
+    ]
   },
   {
     "id": "polybiidae",
@@ -8380,5 +8342,150 @@
     "parents": [],
     "aliases": [],
     "rank": "species"
+  },
+  {
+    "id": "transcriptfailed",
+    "label": "TranscriptFailed",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "facts1": "<p>The YouTube caption track could not be fetched (walled, or YouTube says there is none). Right-click the row: \"Transcript — retry download\" asks again, \"Transcript — whisper\" makes one from the audio. Added and removed automatically by d_yt.js (dev1129).</p>"
+  },
+  {
+    "id": "kiwaidae",
+    "label": "Kiwaidae",
+    "kind": "taxon",
+    "parents": [
+      "decapoda"
+    ],
+    "aliases": [],
+    "rank": "family"
+  },
+  {
+    "id": "kiwa",
+    "label": "Kiwa",
+    "kind": "taxon",
+    "parents": [
+      "kiwaidae"
+    ],
+    "aliases": [],
+    "rank": "genus"
+  },
+  {
+    "id": "kiwa-hirsuta",
+    "label": "Kiwa hirsuta",
+    "kind": "taxon",
+    "parents": [
+      "kiwa"
+    ],
+    "aliases": [],
+    "rank": "species",
+    "authority": "Macpherson, Jones & Segonzac, 2005",
+    "common": "yeti crab",
+    "NameOrigin": "Macpherson et al. named the genus Kiwa after \"the god(dess) of the shellfish in the Polynesian mythology.\" Hirsuta is Latin for \"hairy.\"",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Kiwa_hirsuta"
+      }
+    ]
+  },
+  {
+    "id": "ogcocephalidae",
+    "label": "Ogcocephalidae",
+    "kind": "taxon",
+    "parents": [
+      "lophiiformes"
+    ],
+    "aliases": [],
+    "rank": "family",
+    "authority": "Gill, 1893",
+    "NameOrigin": "Ogcocephalidae: Ogcocephalus + idae.",
+    "NameOriginSrc": [
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/Ogcocephalidae"
+      }
+    ],
+    "common": "batfishes"
+  },
+  {
+    "id": "ogcocephalus",
+    "label": "Ogcocephalus",
+    "kind": "taxon",
+    "parents": [
+      "ogcocephalidae"
+    ],
+    "aliases": [],
+    "rank": "genus"
+  },
+  {
+    "id": "ogcocephalus-darwini",
+    "label": "Ogcocephalus darwini",
+    "kind": "taxon",
+    "parents": [
+      "ogcocephalus"
+    ],
+    "aliases": [],
+    "rank": "species",
+    "authority": "Hubbs, 1958",
+    "common": "red lipped batfish",
+    "NameOrigin": "Ogcocephalus: From Ancient Greek onkos (“bulk, heap, weight; bend, angle, curve, hook”) + -cephalus (“head”).\nThe red-lipped batfish is a member of the genus Ogcocephalus (from Greek roots ogkos, \"hook\", and cephalus, \"head\"), an allusion to the pointed rostrum on the snout of the type species. The specific name refers to Charles Darwin, to mark the centenary of the publication of On the Origin of Species and to recognise the importance that the observations made on the Galápagos Islands had in developing the theory of island endemism.",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Red-lipped_batfish"
+      },
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/Ogcocephalus"
+      }
+    ]
+  },
+  {
+    "id": "batfish",
+    "label": "Batfish",
+    "kind": "topic",
+    "parents": [],
+    "aliases": []
+  },
+  {
+    "id": "congridae",
+    "label": "Congridae",
+    "kind": "taxon",
+    "parents": [
+      "anguilliformes"
+    ],
+    "aliases": [],
+    "rank": "family"
+  },
+  {
+    "id": "heteroconger",
+    "label": "Heteroconger",
+    "kind": "taxon",
+    "parents": [
+      "congridae"
+    ],
+    "aliases": [],
+    "rank": "genus"
+  },
+  {
+    "id": "heteroconger-longissimus",
+    "label": "Heteroconger longissimus",
+    "kind": "taxon",
+    "parents": [
+      "heteroconger"
+    ],
+    "aliases": [],
+    "rank": "species",
+    "authority": "Günther, 1870",
+    "common": "garden eel",
+    "NameOrigin": "Heteroconger: hetero + Conger.",
+    "NameOriginSrc": [
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/Heteroconger"
+      }
+    ]
   }
 ]
