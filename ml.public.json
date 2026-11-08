@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1794074812888,
+    "_salPushTime": 1794098765263,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -95,7 +95,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "DateAdded",
+      "col": "UID",
       "dir": "desc"
     },
     "_salGsize": 5,
@@ -522,7 +522,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1794074812888
+    "_salSavedAt": 1794098765263
   },
   {
     "UID": "1",
@@ -59628,9 +59628,22 @@
     "VidRange": "text",
     "ftext": "",
     "DateAdded": "2026-11-07 18:06:31",
-    "DateModified": "2026-11-07 18:06:52",
-    "ftextSize": "22",
+    "DateModified": "2026-11-08 00:46:05",
+    "ftextSize": "693",
     "FtextJunk": "0",
     "DictSize": "0"
+  },
+  {
+    "UID": "2785",
+    "link": "https://www.popsci.com/health/toothpaste-stronger-enamel-keratin/",
+    "show": "1",
+    "DateAdded": "2026-11-07 21:01:28",
+    "DateModified": "2026-11-07 21:02:49",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "4464",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
   }
 ]

@@ -151,7 +151,9 @@ async function gridSaveToFile(gname) {
       gridData[cellStr] = '';
     }
   }
-  
+  // (dev1189) A slide grid keeps its "N*" marker, starting UID and script (1b).
+  if (typeof _gridSlideSaveCells === 'function') _gridSlideSaveCells(gridData, layout);
+
   const dir = await _getDir();
 
   if (dir) {

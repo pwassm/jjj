@@ -37,6 +37,14 @@ function _gridApplyContainerCSS() {
   c.style.gap = '2px';
   c.style.justifyContent = '';
   c.style.alignContent = '';
+  // (dev1189) N* slide grid — an N×N template whose only cell is 1a; the slide
+  // pane spans every track on top of the rest (see _gridSlideBuild).
+  const sn = _gridSlideDims(_lay);
+  if (sn) {
+    c.style.gridTemplateRows    = 'repeat(' + sn + ',1fr)';
+    c.style.gridTemplateColumns = 'repeat(' + sn + ',1fr)';
+    return;
+  }
   const pd = _gridPortraitDims(_lay);
   if (pd) {
     c.style.gridTemplateRows    = 'repeat(' + pd.rows + ',1fr)';
@@ -127,6 +135,7 @@ function _gridLayoutCount(layout, gsize) {
   // (dev0846) Reached only through _gridRenderLayout now — i.e. only while fold
   // MODE is on — since no saved config resolves to '16F' any more.
   if (layout === '16F') return 13;
+  if (_gridSlideDims(layout)) return 1;   // (dev1189) slide grid: 1a is the only cell
   const pd = _gridPortraitDims(layout);
   if (pd) return pd.rows * pd.cols;
   return gsize * gsize;
@@ -144,6 +153,8 @@ function _gridLayoutCellsVal(layout, gsize) {
 function _gridLayoutLabel(layout, gsize) {
   if (layout === 'square') return gsize + '×' + gsize;
   if (layout === '16F') return '⧉ folded';   // (dev0846) a mode, not a saved layout
+  const sn = _gridSlideDims(layout);
+  if (sn) return '▤ slide ' + sn + '×' + sn;   // (dev1189)
   const pd = _gridPortraitDims(layout);
   if (pd) return '▯ ' + pd.rows + '×' + pd.cols + ' portrait';
   return 'layout ' + layout;
@@ -160,6 +171,9 @@ function _gridConfigLayout(cfg) {
   // they actually are. Press D on either and it folds, taking its backs from
   // 1c / 1d / 2d like every other grid. c.json is left alone, nothing rewritten.
   if (cfg && String(cfg.cells) === '16F') return { layout: 'square', gsize: 5 };
+  // (dev1189) A "5*" / "4*" / "3*" marker in 1a beats `cells`: a slide grid.
+  const sn = _gridSlideMarkerN(cfg);
+  if (sn) return { layout: 'S' + sn, gsize: sn };
   const cn = parseInt(cfg && cfg.cells, 10);
   if (cn === 17) return { layout: '17', gsize: 5 };
   if (cn === 19) return { layout: '19', gsize: 5 };
@@ -173,6 +187,7 @@ function _gridConfigLayout(cfg) {
 // cell→UID map onto row.cell for the layout's cell list (square/17/19/portrait).
 // Returns the {layout, gsize}. Used by cMakeActive and the mobile config picker.
 function _gridApplyConfigToRows(cfg, rows) {
+  _gridSlideState = null;   // (dev1189) a fresh activation starts the slides at page 1
   const info = _gridConfigLayout(cfg);
   rows.forEach(r => { if (r && r.cell) r.cell = ''; });
   for (const spec of _gridCellList(info.gsize, info.layout)) {
@@ -190,6 +205,9 @@ function _gridCurrentLayout() {
     // which reads it as 16 and matches nothing — so the layout is 'square', which
     // is right. _gridConfigLayout has already given those two configs their gsize
     // of 5 on the way in. See the note there.
+    // (dev1189) The slide grid — 1a marker, sized live by 5/4/3.
+    const sn = _gridSlideN();
+    if (sn) return 'S' + sn;
     const cn = parseInt(_gridActiveConfig.cells, 10);
     if (cn === 17) return '17';
     if (cn === 19) return '19';
@@ -198,8 +216,10 @@ function _gridCurrentLayout() {
   // (dev0502) T-source portrait grids (3/12/27) park their layout token in meta.
   // Square Mark-Grid runs and every _setGridGsize reset it to 'square', so a stale
   // portrait layout never lingers under a later square grid.
+  // (dev1189) A slide-grid token ('S5') is C-only — it needs its config's 1b.
   if (_gridSource === 'T' && typeof metaRow !== 'undefined' && metaRow
-      && metaRow._salLayout && metaRow._salLayout !== 'square') {
+      && metaRow._salLayout && metaRow._salLayout !== 'square'
+      && !_gridSlideDims(metaRow._salLayout)) {
     return metaRow._salLayout;
   }
   return 'square';
@@ -243,6 +263,8 @@ function _gridCellList(gsize, layout) {
   // (dev0820) The fold grid owns its own cell table (fold16.js) — ten staircase
   // cells plus three back faces parked on their landing squares.
   if (layout === '16F' && typeof _fold16CellList === 'function') return _fold16CellList();
+  // (dev1189) Slide grid: only 1a is a cell; the rest of the N×N is the slide.
+  if (_gridSlideDims(layout)) return [{ cs: '1a', r: 1, c: 1, rs: 1, cls: 1 }];
   // (dev0502) Portrait grids: a plain rows×cols block (cols can exceed 5), each
   // cell explicitly placed so gridShow lines them up against the rect template.
   const pd = _gridPortraitDims(layout);
@@ -310,6 +332,7 @@ var _gridCellPan = {};
 
 function gridCleanupPlayers() {
   gridStepFramesOff();   // (dev0564) leaving/rebuilding the grid exits step-frame mode
+  _gridSlideStopTimer(); // (dev1189) no slide advances behind a closed/rebuilt grid
   Object.keys(_gridPlayers).forEach(id => {
     if (window.stopCellVideoLoop) window.stopCellVideoLoop(id);
   });
@@ -1010,6 +1033,16 @@ function _gridExpandCell(cell) {
 // quote can be sectioned in any cell now, not only 1a), else 1a as before.
 // A swipe passes the swiped cell as `target`.
 window._gridSectionKey = function (key, target) {
+  // (dev1189) Slide grid: ←/→ turn the slide — unless the pointer is on a 1a
+  // that is itself a paged text, which keeps its own paging.
+  if ((key === 'ArrowRight' || key === 'ArrowLeft') && _gridSlideN()
+      && document.getElementById('gridSlidePane')) {
+    const h = target || _gridHoverCell;
+    if (!(h && h._salSect && h._salSect.inner && h._salSect.inner.isConnected)) {
+      _gridSlideNav(key === 'ArrowRight' ? 1 : -1);
+      return true;
+    }
+  }
   if (key === 'ArrowUp') {
     let tc = (_gridHoverCell && _gridHoverCell._rowData
               && _gridIsTextRow(_gridHoverCell._rowData)) ? _gridHoverCell : null;
@@ -1068,6 +1101,431 @@ window._gridSectionSyncAll = function () {
   });
 };
 
+// ── (dev1189) N* SLIDE GRID ─────────────────────────────────────────────────
+// A c.json config whose 1a starts "5*", "4*" or "3*" is a SLIDE GRID: an N×N
+// grid where 1a is a normal cell (picture, video or text) and the whole rest of
+// the grid is one text slide. 1b holds the UID of the SCRIPT row; its ftext is
+// the slides, one page per ══ divider (the same splitter as everywhere else).
+//   1a = "4*"        4×4, 1a starts empty
+//   1a = "4*2276"    4×4, 1a starts on UID 2276 ("/zoom" suffix still works)
+// Inside the script:
+//   *nnnn/  at the START of a page  → 1a switches to UID nnnn when the page
+//                                     opens (not shown as text)
+//   a number at the start of a page → seconds before it moves on by itself
+//                                     (0 / none = wait for →); either order
+//                                     with the marker: "*2276/ 8 …" or "8 *2276/ …"
+//   *nnnn/words/  anywhere else     → an orange link "words"; clicking it puts
+//   *nnnn/word                         UID nnnn in 1a. The page is NOT split.
+// 5/4/3 resize 1a live (view-only; Ctrl+Alt+G saves the new size). ←/→, the
+// ‹ › buttons and a touch swipe on the slide turn pages. A page with no marker
+// keeps whatever 1a shows going forward; going BACK across a marker puts that
+// earlier page's media back.
+// Config-only: the T-source fallback never renders this layout.
+var _gridSlideState = null;
+var _gridSlideRO = null;
+// A leading "*UID/" or a leading number (followed by a space, a "*", or the end).
+var _SLIDE_LEAD_RE = /^\s*(?:\*(\d[\w-]*)\/|(\d+(?:\.\d*)?|\.\d+)(?=\s|\*|$))/;
+// "*UID/words/" (closing slash) or "*UID/word" (one word, no closing slash).
+var _SLIDE_LINK_RE = /\*(\d[\w-]*)\/(?:([^\/\n*<>]{1,60}?)\/|([^\s\/*<>]*))/g;
+
+// 3 / 4 / 5 from a config's 1a marker, else 0.
+function _gridSlideMarkerN(cfg) {
+  const m = /^\s*([345])\s*\*/.exec(String((cfg && cfg['1a']) || ''));
+  return m ? parseInt(m[1], 10) : 0;
+}
+// The live slide-grid size (a 5/4/3 press beats the marker), or 0 when the
+// active grid is not a slide grid.
+function _gridSlideN() {
+  if (_gridSource !== 'C' || !_gridActiveConfig) return 0;
+  const n = _gridSlideMarkerN(_gridActiveConfig);
+  if (!n) return 0;
+  const st = _gridSlideState;
+  return (st && st.cfg === _gridActiveConfig && st.liveN) ? st.liveN : n;
+}
+// 'S5' → 5; anything else → 0.
+function _gridSlideDims(layout) {
+  const m = /^S([345])$/.exec(String(layout || ''));
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+function _gridSlideRowByUid(uid) {
+  if (!uid || typeof data === 'undefined' || !Array.isArray(data)) return null;
+  return data.find(r => r && String(r.UID) === String(uid)) || null;
+}
+function _gridSlideRowLabel(uid) {
+  const r = _gridSlideRowByUid(uid);
+  return (r && (r.n1 || r.VidTitle || r.t1)) || ('UID ' + uid);
+}
+
+// One page's HTML → { uid, secs, html }: lead marker/number taken off the
+// front, every other *UID/ turned into a .sal-slide-link.
+function _gridSlideParsePage(pageHtml) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = pageHtml;
+  const root = tpl.content;
+  const out = { uid: '', secs: null, html: '' };
+  for (let guard = 0; guard < 4; guard++) {
+    const tn = _salFirstTextNode(root);
+    if (!tn) break;
+    let t = tn.nodeValue, m, took = false;
+    while ((m = _SLIDE_LEAD_RE.exec(t))) {
+      if (m[1]) { if (out.uid) break; out.uid = m[1]; }
+      else { if (out.secs !== null) break; out.secs = parseFloat(m[2]); }
+      t = t.slice(m[0].length);
+      took = true;
+    }
+    if (!took) break;
+    t = t.replace(/^\s+/, '');
+    if (t) { tn.nodeValue = t; break; }
+    // Only directives in this text node: drop it and any block it empties.
+    let p = tn.parentNode;
+    tn.remove();
+    while (p && p !== root && p.nodeType === 1
+           && !p.textContent.replace(/\s/g, '')
+           && !p.querySelector('img,video,iframe,audio,svg,canvas,hr,table')) {
+      const up = p.parentNode;
+      p.remove();
+      p = up;
+    }
+  }
+  // Body links. Text inside an existing link / code is left alone.
+  const texts = [];
+  (function walk(n) {
+    for (let c = n.firstChild; c; c = c.nextSibling) {
+      if (c.nodeType === 3) { if (c.nodeValue.indexOf('*') >= 0) texts.push(c); }
+      else if (c.nodeType === 1 && !/^(a|code|pre|script|style)$/i.test(c.nodeName)) walk(c);
+    }
+  })(root);
+  texts.forEach(tn => {
+    const s = tn.nodeValue, doc = tn.ownerDocument;
+    const frag = doc.createDocumentFragment();
+    let m, last = 0, any = false;
+    _SLIDE_LINK_RE.lastIndex = 0;
+    while ((m = _SLIDE_LINK_RE.exec(s))) {
+      let label = (m[2] != null) ? m[2] : (m[3] || '');
+      let tail = '';
+      if (m[2] == null) {   // one-word form: trailing punctuation is not the link
+        const pm = /[.,;:!?)\]]+$/.exec(label);
+        if (pm) { tail = pm[0]; label = label.slice(0, -tail.length); }
+      }
+      frag.appendChild(doc.createTextNode(s.slice(last, m.index)));
+      const a = doc.createElement('a');
+      a.className = 'sal-slide-link';
+      a.setAttribute('data-uid', m[1]);
+      a.setAttribute('href', '#');
+      a.setAttribute('title', 'Show UID ' + m[1] + ' in 1a');
+      a.textContent = label.trim() || ('▶ ' + _gridSlideRowLabel(m[1]));
+      frag.appendChild(a);
+      if (tail) frag.appendChild(doc.createTextNode(tail));
+      last = m.index + m[0].length;
+      any = true;
+    }
+    if (!any) return;
+    frag.appendChild(doc.createTextNode(s.slice(last)));
+    tn.parentNode.replaceChild(frag, tn);
+  });
+  out.html = tpl.innerHTML;
+  return out;
+}
+
+// The media in force on page i: the nearest page-start marker at or before it,
+// else the config's starting UID.
+function _gridSlideEffUid(st, i) {
+  for (let j = Math.min(i, st.pages.length - 1); j >= 0; j--)
+    if (st.pages[j] && st.pages[j].uid) return st.pages[j].uid;
+  return st.startUid || '';
+}
+
+// Build (or refresh) the state for the active config. Pages are re-parsed when
+// the script's ftext changes (edited in Xe and back), keeping the page index.
+function _gridSlideEnsureState() {
+  const cfg = _gridActiveConfig;
+  if (!cfg || !_gridSlideMarkerN(cfg)) return null;
+  let st = _gridSlideState;
+  if (!st || st.cfg !== cfg) {
+    st = _gridSlideState = { cfg: cfg, liveN: 0, idx: 0, src: null, scriptUid: null,
+      pages: [], uid: '', shownUid: null, timer: null, fresh: true,
+      startUid: _gridParseCellVal(cfg['1a']).uid };
+  }
+  const scriptUid = _gridParseCellVal(cfg['1b']).uid;
+  const srow = _gridSlideRowByUid(scriptUid);
+  const src = srow ? _rowFtext(srow) : '';
+  if (st.src !== src || st.scriptUid !== scriptUid) {
+    st.src = src;
+    st.scriptUid = scriptUid;
+    st.scriptFound = !!srow;
+    const html = src ? ((typeof renderFtext === 'function') ? renderFtext(src) : src) : '';
+    st.pages = html ? window._salSplitSections(html).map(_gridSlideParsePage) : [];
+    if (st.idx >= st.pages.length) st.idx = Math.max(0, st.pages.length - 1);
+  }
+  // Until the script has pages (ml.json may still be arriving), keep re-deriving.
+  if (st.fresh) { st.uid = _gridSlideEffUid(st, st.idx); if (st.pages.length) st.fresh = false; }
+  return st;
+}
+
+function _gridSlideMediaRow() {
+  const st = _gridSlideEnsureState();
+  return st ? _gridSlideRowByUid(st.uid) : null;
+}
+
+function _gridSlideCss() {
+  if (document.getElementById('salSlidePaneCss')) return;
+  const st = document.createElement('style');
+  st.id = 'salSlidePaneCss';
+  st.textContent =
+      '#gridSlidePane .grid-slide-body{position:absolute;inset:0;padding:12px 18px 34px;'
+    + 'box-sizing:border-box;overflow:hidden;font-family:Arial,sans-serif;line-height:1.4;}'
+    + '#gridSlidePane .grid-slide-spacer{float:left;}'
+    + '#gridSlidePane h1{font-size:2em;}#gridSlidePane h2{font-size:1.5em;}'
+    + '#gridSlidePane h3{font-size:1.25em;}#gridSlidePane h4{font-size:1.1em;}'
+    + '#gridSlidePane h1,#gridSlidePane h2,#gridSlidePane h3,#gridSlidePane h4,'
+    + '#gridSlidePane h5,#gridSlidePane h6{font-weight:bold;margin:0 0 0.35em;}'
+    + '#gridSlidePane p{margin:0 0 0.5em;}'
+    + '#gridSlidePane img,#gridSlidePane video{max-width:100%;height:auto;max-height:45vh;}'
+    + '#gridSlidePane summary{cursor:pointer;color:#2563eb;font-weight:bold;}'
+    + '#gridSlidePane a.sal-slide-link{color:#e07b00;font-weight:bold;'
+    + 'text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer;}'
+    + '#gridSlidePane a.sal-slide-link.sal-on{background:rgba(224,123,0,0.2);'
+    + 'border-radius:3px;box-shadow:0 0 0 2px rgba(224,123,0,0.2);}'
+    + '#gridSlidePane .grid-slide-nav{position:absolute;right:8px;bottom:5px;z-index:3;'
+    + 'display:flex;gap:6px;align-items:center;font:12px monospace;color:#888;'
+    + 'user-select:none;-webkit-user-select:none;}'
+    + '#gridSlidePane .grid-slide-nav button{width:30px;height:24px;border-radius:5px;'
+    + 'border:1px solid rgba(128,128,128,0.55);background:rgba(128,128,128,0.12);'
+    + 'color:inherit;font-size:16px;line-height:1;cursor:pointer;padding:0;}';
+  document.head.appendChild(st);
+}
+
+// Called from gridShow once the 1a cell exists.
+function _gridSlideBuild(container) {
+  const st = _gridSlideEnsureState();
+  if (!st) return;
+  _gridSlideCss();
+  if (typeof _ensureGridThumbTableCss === 'function') _ensureGridThumbTableCss();
+  const c1 = container.querySelector('.grid-cell[data-cell="1a"]');
+  if (c1) c1.style.zIndex = '2';   // above the pane, which spans the whole grid
+  st.shownUid = (c1 && c1._rowData) ? String(c1._rowData.UID) : '';
+
+  const pane = document.createElement('div');
+  pane.id = 'gridSlidePane';
+  pane.style.cssText = 'grid-row:1 / -1;grid-column:1 / -1;position:relative;z-index:1;'
+    + 'overflow:hidden;background:#fff;color:#222;';
+  const body = document.createElement('div');
+  body.className = 'grid-slide-body grid-html-thumb';
+  const spacer = document.createElement('div');
+  spacer.className = 'grid-slide-spacer';
+  const content = document.createElement('div');
+  content.className = 'grid-slide-content';
+  body.appendChild(spacer);
+  body.appendChild(content);
+  pane.appendChild(body);
+
+  const nav = document.createElement('div');
+  nav.className = 'grid-slide-nav';
+  const bPrev = document.createElement('button'); bPrev.textContent = '‹'; bPrev.title = 'Previous slide (←)';
+  const cnt = document.createElement('span'); cnt.className = 'grid-slide-count';
+  const bNext = document.createElement('button'); bNext.textContent = '›'; bNext.title = 'Next slide (→)';
+  bPrev.addEventListener('click', e => { e.stopPropagation(); _gridSlideNav(-1); });
+  bNext.addEventListener('click', e => { e.stopPropagation(); _gridSlideNav(1); });
+  nav.appendChild(bPrev); nav.appendChild(cnt); nav.appendChild(bNext);
+  pane.appendChild(nav);
+
+  // Orange *UID/ links → that UID in 1a.
+  pane.addEventListener('click', e => {
+    const a = (e.target && e.target.closest) ? e.target.closest('a.sal-slide-link') : null;
+    if (!a) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _gridSlideShowUid(a.getAttribute('data-uid'));
+  });
+  // Opening a collapsible changes the height — refit. (toggle does not bubble;
+  // capture still sees it.)
+  pane.addEventListener('toggle', () => _gridSlideFit(), true);
+  // Touch swipe on the slide turns the page. Mouse drags are left for selecting.
+  let sx = null, sy = null;
+  pane.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') { sx = null; return; }
+    sx = e.clientX; sy = e.clientY;
+  });
+  pane.addEventListener('pointerup', e => {
+    if (sx == null) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    sx = sy = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) _gridSlideNav(dx < 0 ? 1 : -1);
+  });
+
+  container.appendChild(pane);
+  if (_gridSlideRO) { try { _gridSlideRO.disconnect(); } catch (_) {} }
+  if (typeof ResizeObserver !== 'undefined') {
+    _gridSlideRO = new ResizeObserver(() => _gridSlideFit());
+    _gridSlideRO.observe(pane);
+    if (c1) _gridSlideRO.observe(c1);
+  }
+  _gridSlideRender();
+}
+
+function _gridSlideRender() {
+  const st = _gridSlideState;
+  const pane = document.getElementById('gridSlidePane');
+  if (!st || !pane) return;
+  const body = pane.querySelector('.grid-slide-body');
+  const content = pane.querySelector('.grid-slide-content');
+  const pg = st.pages[st.idx];
+  if (pg) {
+    content.innerHTML = pg.html;
+  } else {
+    const why = !st.scriptUid ? 'put the UID of the script row in 1b'
+      : !st.scriptFound ? '1b names UID ' + st.scriptUid + ', which is not in T'
+      : 'UID ' + st.scriptUid + ' has no text yet (E on it in T to write it)';
+    content.innerHTML = '<p style="opacity:0.6;">Slide grid: ' + escH(why) + '.</p>';
+  }
+  pane.style.background = '#fff';
+  body.style.color = '#222';
+  _gridThumbApplySlideColors(pane, body);
+  _gridSlideMarkLinks();
+  const cnt = pane.querySelector('.grid-slide-count');
+  if (cnt) {
+    cnt.textContent = st.pages.length
+      ? (st.idx + 1) + '/' + st.pages.length + ((pg && pg.secs > 0) ? ' ⏱' + pg.secs + 's' : '')
+      : '';
+  }
+  content.querySelectorAll('img').forEach(img => {
+    if (!img.complete) img.addEventListener('load', _gridSlideFit, { once: true });
+  });
+  _gridSlideFit();
+  _gridSlideArmTimer();
+}
+
+// Highlight the link whose UID is the one 1a is showing.
+function _gridSlideMarkLinks() {
+  const st = _gridSlideState;
+  const pane = document.getElementById('gridSlidePane');
+  if (!st || !pane) return;
+  pane.querySelectorAll('a.sal-slide-link').forEach(a =>
+    a.classList.toggle('sal-on', a.getAttribute('data-uid') === String(st.uid)));
+}
+
+// Fit: a float the size of 1a (plus a margin) so the text runs beside it, then
+// the largest font size whose text still fits the pane. If even the smallest
+// does not fit, the slide scrolls.
+function _gridSlideFit() {
+  const pane = document.getElementById('gridSlidePane');
+  if (!pane || !pane.isConnected) return;
+  const body = pane.querySelector('.grid-slide-body');
+  const spacer = pane.querySelector('.grid-slide-spacer');
+  const c1 = document.querySelector('#gridContainer .grid-cell[data-cell="1a"]');
+  const pr = pane.getBoundingClientRect();
+  if (!pr.width || !pr.height) return;   // overlay still hidden — gridShow refits
+  const cs = getComputedStyle(body);
+  const padL = parseFloat(cs.paddingLeft) || 0, padT = parseFloat(cs.paddingTop) || 0;
+  if (c1) {
+    const r = c1.getBoundingClientRect();
+    const gap = Math.max(10, pr.width * 0.01);
+    spacer.style.width  = Math.max(0, r.right  - pr.left - padL + gap) + 'px';
+    spacer.style.height = Math.max(0, r.bottom - pr.top  - padT + gap * 0.5) + 'px';
+  }
+  body.style.overflowY = 'hidden';
+  const fits = f => { body.style.fontSize = f + 'px'; return body.scrollHeight <= body.clientHeight + 1; };
+  let lo = 9, hi = Math.max(14, Math.min(48, Math.round(pr.height / 12))), best = lo;
+  if (fits(hi)) best = hi;
+  else {
+    for (let i = 0; i < 9 && hi - lo > 0.5; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) { best = mid; lo = mid; } else hi = mid;
+    }
+  }
+  if (!fits(best)) body.style.overflowY = 'auto';
+}
+
+// Put `uid` in 1a (no-op when it is already there).
+function _gridSlideSync1a() {
+  const st = _gridSlideState;
+  if (!st) return;
+  const want = String(st.uid || '');
+  if (want === String(st.shownUid || '')) { _gridSlideMarkLinks(); return; }
+  const row = _gridSlideRowByUid(want);
+  if (want && !row) _gridToast('⚠ UID ' + want + ' is not in T', 1600);
+  gridUpdateCell('1a', row);
+  const c1 = document.querySelector('#gridContainer .grid-cell[data-cell="1a"]');
+  if (c1) c1.style.zIndex = '2';
+  st.shownUid = row ? String(row.UID) : '';
+  _gridSlideMarkLinks();
+}
+
+function _gridSlideShowUid(uid) {
+  const st = _gridSlideState;
+  if (!st || !uid) return;
+  st.uid = String(uid);
+  _gridSlideSync1a();
+}
+
+function _gridSlideNav(dir) {
+  const st = _gridSlideEnsureState();
+  if (!st || !st.pages.length) return;
+  const ni = st.idx + dir;
+  if (ni < 0 || ni >= st.pages.length) {
+    _gridToast(dir > 0 ? 'Last slide' : 'First slide', 900);
+    return;
+  }
+  const oldEff = _gridSlideEffUid(st, st.idx);
+  st.idx = ni;
+  const newEff = _gridSlideEffUid(st, ni);
+  if (st.pages[ni].uid) st.uid = st.pages[ni].uid;
+  else if (newEff !== oldEff) st.uid = newEff;   // went back across a marker
+  _gridSlideRender();
+  _gridSlideSync1a();
+}
+
+function _gridSlideStopTimer() {
+  const st = _gridSlideState;
+  if (st && st.timer) { clearTimeout(st.timer); st.timer = null; }
+}
+
+// A page with a number moves on by itself after that many seconds (not past
+// the last page). Held while the fullscreen viewer is up.
+function _gridSlideArmTimer() {
+  _gridSlideStopTimer();
+  const st = _gridSlideState;
+  const pg = st && st.pages[st.idx];
+  if (!pg || !(pg.secs > 0) || st.idx >= st.pages.length - 1) return;
+  const tick = () => {
+    st.timer = null;
+    if (_gridSlideState !== st || !document.getElementById('gridSlidePane')) return;
+    const ov = document.getElementById('gridOverlay');
+    if (!ov || ov.style.display !== 'flex') return;
+    const fs = document.getElementById('gridFullscreen');
+    if (fs && fs.style.display === 'flex') { st.timer = setTimeout(tick, 1000); return; }
+    _gridSlideNav(1);
+  };
+  st.timer = setTimeout(tick, pg.secs * 1000);
+}
+
+// core.js digit handler: 5/4/3 resize 1a live. True = key consumed.
+window._gridSlideSizeKey = function (k) {
+  if (!_gridSlideN() || !document.getElementById('gridSlidePane')) return false;
+  const n = parseInt(k, 10);
+  if (!(n >= 3 && n <= 5)) { _gridToast('Slide grid: 5, 4 or 3 sets the size of 1a', 1400); return true; }
+  const st = _gridSlideEnsureState();
+  if (!st) return false;
+  st.liveN = n;
+  _gridGsize = n;
+  _gridApplyContainerCSS();
+  requestAnimationFrame(_gridSlideFit);
+  _gridToast('Slide grid ' + n + '×' + n, 1000);
+  return true;
+};
+
+// gridSaveToFile hook: a slide grid saves its marker (at the live size), its
+// starting 1a UID and its script UID — not whatever 1a happens to be showing.
+function _gridSlideSaveCells(gridData, layout) {
+  const n = _gridSlideDims(layout);
+  if (!n || !_gridActiveConfig) return;
+  const rest = String(_gridActiveConfig['1a'] || '').trim().replace(/^[345]\s*\*\s*/, '');
+  gridData['1a'] = n + '*' + rest;
+  gridData['1b'] = _gridActiveConfig['1b'] || '';
+  gridData.cells = n * n;
+}
+
 // Update visual state of T / C source buttons
 function gridUpdateSourceBtns() {
   const tBtn = document.getElementById('gridSrcT');
@@ -1122,6 +1580,8 @@ function getRowByCellForGrid(cellStr) {
     // C mode: look up UID from active config, then find row. (dev0346) The cell
     // value may carry a per-cell zoom suffix ("UID/zoom") — parse out the UID.
     if (!_gridActiveConfig) return null;
+    // (dev1189) Slide grid: 1a shows whatever the slides last put there.
+    if (cellStr === '1a' && _gridSlideN()) return _gridSlideMediaRow();
     // (dev0644) The config's own presentation claims 1a when `pres` is set.
     if (cellStr === '1a') {
       const pr = _gridPresRow(_gridActiveConfig);
@@ -2260,7 +2720,8 @@ function _gridRefitAll() {
 // it (_salRowRate), a picture ignores it.
 // Exactly one of .uid / .link is ever set. Tolerates blanks/null.
 function _gridParseCellVal(v) {
-  const s = (v === undefined || v === null) ? '' : String(v).trim();
+  // (dev1189) A slide-grid marker ("5*", "4*2276") is not part of the UID.
+  const s = (v === undefined || v === null) ? '' : String(v).trim().replace(/^[345]\s*\*\s*/, '');
   const out = { uid: '', link: '', zoom: 1, speed: 1 };
   if (!s) return out;
   const isLink = _isLinkCellVal(s);
@@ -3632,6 +4093,9 @@ function gridShow() {
       container.appendChild(cell);
   }
   
+  // (dev1189) Slide grid: the slide pane covers everything but 1a.
+  if (_gridSlideDims(_layout)) _gridSlideBuild(container);
+
   // (dev0820) The fold grid: snap every cell to the current fold state. Any OTHER
   // layout flattens that state first, so a fold can never carry over into the next
   // grid — and (dev0938) drops the ⏱ speed pill with it, which lives on the
@@ -3712,6 +4176,8 @@ function gridShow() {
   // positions off a zero-sized box and got neither. Re-render here, once there is
   // something real to measure.
   if (_layout === '16F' && typeof _fold16Render === 'function') _fold16Render(container);
+  // (dev1189) Same reason: the slide text can only be fitted once it has a size.
+  if (_gridSlideDims(_layout)) requestAnimationFrame(_gridSlideFit);
   // (dev0347) Track the cell under the mouse so Ctrl+[ / Ctrl+] can zoom it.
   // Bound once — the overlay element persists across re-renders (gridShow only
   // rebuilds the container's children), so a guard flag avoids duplicate binds.

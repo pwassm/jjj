@@ -501,6 +501,8 @@ window.addEventListener('keydown', function(e) {
       if (k >= '2' && k <= '5') {
         e.preventDefault();
         e.stopPropagation();
+        // (dev1189) A slide grid (1a = "5*"/"4*"/"3*") resizes its 1a live on 5/4/3.
+        if (typeof window._gridSlideSizeKey === 'function' && window._gridSlideSizeKey(k)) return false;
         // (dev0370) C-source layouts (17/19 + portrait 3/12/27) are config-only —
         // the size keys must not switch into or out of them. Swallow the key while
         // one is active. (dev0502) A T-source portrait grid is NOT locked: 2-5 drop
@@ -1080,7 +1082,7 @@ let _mlLoadedFile = 'ml.json';
 // (dev0971) plusOnly: just the collections whose Label is a bare "+" — the
 // annotated ones (grid.js _salAnnotOn), where a picture's ftext IS its caption.
 // (dev1050) …or a bare "1", which means the same (grid.js _salLabelCaptions).
-function _mlGridUids(cfgRows, plusOnly) {
+function _mlGridUids(cfgRows, plusOnly, rows) {
   const CELL = /^\d+[a-zA-Z]$|^\d+[LP]$/;
   const out = new Set();
   if (!Array.isArray(cfgRows)) return out;
@@ -1094,7 +1096,19 @@ function _mlGridUids(cfgRows, plusOnly) {
     for (const k of Object.keys(g)) {
       if (!CELL.test(k)) continue;
       const v = String(g[k] || '').trim();
-      if (v) out.add(v.split('@')[0].split('/')[0].trim());
+      // (dev1189) "5*2276" in a slide grid's 1a names UID 2276.
+      const u = v.replace(/^[345]\s*\*\s*/, '').split('@')[0].split('/')[0].trim();
+      if (u) out.add(u);
+    }
+    // (dev1189) A slide grid also shows every UID its script (1b) names in a
+    // *UID/ marker, so those rows are grid-placed too.
+    if (rows && /^\s*[345]\s*\*/.test(String(g['1a'] || ''))) {
+      const sid = String(g['1b'] || '').split('/')[0].trim();
+      const sr = sid ? rows.find(r => r && String(r.UID) === sid) : null;
+      const ft = (sr && typeof sr.ftext === 'string') ? sr.ftext : '';
+      const re = /\*(\d[\w-]*)\//g;
+      let m;
+      while ((m = re.exec(ft))) out.add(m[1]);
     }
   }
   return out;
@@ -1181,7 +1195,7 @@ async function writePublicMl(allRows) {
       console.warn('writePublicMl: could not read c.json — refusing to publish (grid-placed slides would be stripped).');
       return false;
     }
-    return await writeFileToDisk(ML_PUBLIC, _mlPublicRows(allRows, _mlGridUids(cfg), _mlGridUids(cfg, true)));
+    return await writeFileToDisk(ML_PUBLIC, _mlPublicRows(allRows, _mlGridUids(cfg, false, allRows), _mlGridUids(cfg, true)));
   } catch (e) {
     console.warn('writePublicMl failed: ' + (e && e.message ? e.message : e));
     return false;
@@ -5538,6 +5552,8 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingSyncR2();
     } else if (act === 'flashsweep') {
       housekeepingSweepFlashCandidates();
+    } else if (act === 'addblank') {
+      housekeepingAddBlank();   // (dev1189)
     } else if (act === 'samplecard') {
       housekeepingSampleFlashCard();
     } else if (act === 'samplerawcard') {
@@ -6395,6 +6411,29 @@ function housekeepingSampleFlashCard() {
         + '\n   It is at the top of T. Open it in Xs to see the card,'
         + '\n   or put it in a grid to check the turn face at cell size.'
         + '\n   Housekeeping ▸ Remove Sample Cards clears it.', 8000);
+}
+
+// (dev1189) AddBlank - a new row with a fresh UID and nothing else in it: the
+// start of a slide grid's script (its 1b), or any text written from scratch.
+// It lands at the top of T (DateAdded, newest first) with focus on it, so E
+// opens it in Xe straight away.
+function housekeepingAddBlank() {
+  if (typeof _cMode !== 'undefined' && _cMode) { toast('\u26A0 Not on the C screen \u2014 go back to T first', 3000); return; }
+  const now = isoNow();
+  const row = { UID: nextUID(), link: '', show: '1', DateAdded: now, DateModified: now, tags: [] };
+  data.push(row);
+  save();
+  try { sortCol = 'DateAdded'; sortDir = 'desc'; buildSort(); } catch (_) {}
+  render();
+  const di = data.indexOf(row);
+  const vi = sortedIdx ? sortedIdx.indexOf(di) : di;
+  if (vi >= 0) {
+    focus = { r: vi, c: 0 };
+    render();
+    if (typeof _tScrollRowIntoView === 'function') _tScrollRowIntoView(vi);
+  }
+  if (typeof window.setLastUID === 'function') window.setLastUID(row.UID);
+  toast('\u2795 Blank row added \u2014 UID ' + row.UID + '\n   E opens it in Xe.', 4000);
 }
 
 // (dev0877) The stage BEFORE formatting. Same picture, but both back sections
