@@ -820,7 +820,10 @@ function isVideoRow(row) {
   // matches this at all: its link is an i./v1.pinimg.com file and it qualifies
   // via isDirectVideoLink (video) or falls through to the image path (photo).
   const isPin = link && window.isPinterestLink && window.isPinterestLink(link);
-  if (isYT || isVimeo || isIG || isTT || isPin) return true;
+  // (dev1192) A TIB AV-Portal media page plays in the portal's own player iframe
+  // (video.js mountTibEmbed); its HLS stream is signed and expires, so no file link.
+  const isTib = link && window.isTibLink && window.isTibLink(link);
+  if (isYT || isVimeo || isIG || isTT || isPin || isTib) return true;
   // Direct video file (extension) OR extensionless provider stream (Macaulay
   // Library /mp4/ asset) — window.isDirectVideoLink owns both; keep the inline
   // extension test as a fallback in case video.js hasn't defined it yet.
@@ -2622,6 +2625,8 @@ function _rpvFillHost(host, row) {
         window.mountTikTokEmbed(host, row.link);
       } else if (window.isPinterestLink && window.isPinterestLink(row.link) && window.mountPinterestEmbed) {
         window.mountPinterestEmbed(host, row.link);   // (dev0693) HLS-only / unresolved pin
+      } else if (window.isTibLink && window.isTibLink(row.link) && window.mountTibEmbed) {
+        window.mountTibEmbed(host, row.link);         // (dev1192) TIB AV-Portal player
       }
     }, 60);
   } else if (row.link && !isImgLink && hasFtextImgs) {
@@ -4181,6 +4186,18 @@ function showCtx(x, y, target) {
       if (!(typeof _isUserMode === 'function' && _isUserMode())) {
         addCI(menu, '🔍 Find images for this row (p)', () => tOpenMediaFinder(di, 'image'));
         addCI(menu, '🎞 Find videos for this row', () => tOpenMediaFinder(di, 'video'));
+        addCS(menu);
+      }
+      // (dev1192) TIB AV-Portal: (re)fill empty title / author / year / length / licence /
+      // description / Mode from TIB's open API, and make it a video row (ltype v). For
+      // a row added before dev1192 (an ltype 'w' web row) this is the fix. Covers the
+      // checked TIB rows too when this row is one of them.
+      if (!(typeof _isUserMode === 'function' && _isUserMode())
+          && window.isTibLink && window.isTibLink(data[di] && data[di].link)) {
+        const _tibChk = [...checkedRows].filter(i => data[i] && window.isTibLink(data[i].link));
+        const _tibSet = _tibChk.includes(di) && _tibChk.length > 1 ? _tibChk : [di];
+        addCI(menu, '\u{1F393} TIB: fill info' + (_tibSet.length > 1 ? ' \u2014 ' + _tibSet.length + ' checked rows' : ' for this row'),
+              () => tibRefreshRows(_tibSet));
         addCS(menu);
       }
       // (dev0851) A MakeCard row (image + <hr> + text) can be exported back to
@@ -8143,6 +8160,7 @@ function _looksLikeMediaUrl(s) {
   if (!/^https?:\/\//i.test(t)) return false;
   if (/youtu\.be|youtube\.com|vimeo\.com/i.test(t)) return true;
   if (window.isMacaulayVideoLink && window.isMacaulayVideoLink(t)) return true;
+  if (window.isTibLink && window.isTibLink(t)) return true;   // (dev1192) av.tib.eu/media/<id>
   // (dev0693) A pin URL has no extension but always points at media — without this
   // a clipboard of pure pin links failed Rule 1's "all-links, no text" test.
   if (window.isPinterestLink && window.isPinterestLink(t)) return true;
@@ -8172,6 +8190,9 @@ function _classifyUrl(s) {
   // Macaulay Library /mp4/ asset — extensionless direct video (else it would
   // fall through to 'web' and be mis-imported as an article row).
   if (window.isMacaulayVideoLink && window.isMacaulayVideoLink(t)) return 'video';
+  // (dev1192) TIB AV-Portal media / player page or its 10.5446 DOI: a video page with
+  // no extension, which would otherwise import as an ltype='w' article.
+  if (window.isTibLink && window.isTibLink(t)) return 'video';
   // (dev0693) A pin can be either photo or video and only /pinterest/resolve knows
   // which, so this is the placeholder answer, not the verdict: 'video' matches what
   // isVideoRow says about an unresolved pin, and the resolver rewrites the row to
@@ -8204,6 +8225,9 @@ function _classifyUrl(s) {
 // it manually. Canonical URLs also let the `w` dedup match every form of a video by
 // its 11-char id. (Supersedes dev0505's /shorts/-in-URL preservation.)
 function _normalizeLink(link) {
+  // (dev1192) TIB AV-Portal: media page, player page and DOI all name one video by
+  // one number; store the media page so every spelling dedups to one row.
+  if (window.getTibId && window.tibMediaUrl && window.getTibId(link)) return window.tibMediaUrl(link);
   if (/youtu\.be|youtube\.com/i.test(link)) {
     const ytId = _extractYTVideoId(link)
       || (window.getYouTubeId && window.getYouTubeId(link));
@@ -8404,6 +8428,12 @@ async function _wantLinksInner() {
   // Rule 1: every line is a URL (any kind) → bare-links import.
   // The bare-links importer now classifies each line as video/image/web
   // and writes ltype + ftext for web URLs (zip0166).
+  // (dev1192) Rule 1t: ONE TIB AV-Portal series or search address -> list it with
+  // TIB's open API and add every video not already in ml.json (BA=1).
+  if (lines.length === 1 && window.isTibListUrl && window.isTibListUrl(lines[0])) {
+    return await _importTibList(lines[0]);
+  }
+
   if (lines.every(_looksLikeAnyUrl)) {
     return await _importBareLinks(lines);
   }
@@ -9871,6 +9901,7 @@ async function _importBareLinks(lines, opts) {
   // id only survives in linkpage, so without indexing it every re-paste of an
   // already-imported pin would sail past the dup check and add a second row.
   const pinIdToDi = new Map();
+  const tibIdToDi = new Map();   // (dev1192) TIB AV-Portal id, from link or linkpage
   data.forEach((r, di) => {
     if (r && r.link) {
       linkToDi.set(String(r.link).trim(), di);
@@ -9883,6 +9914,8 @@ async function _importBareLinks(lines, opts) {
       const ppid = window.getPinterestId
         && (window.getPinterestId(r.link) || window.getPinterestId(r.linkpage));
       if (ppid) pinIdToDi.set(ppid, di);
+      const tbid = window.getTibId && (window.getTibId(r.link) || window.getTibId(r.linkpage));
+      if (tbid) tibIdToDi.set(tbid, di);
     }
   });
 
@@ -9944,6 +9977,15 @@ async function _importBareLinks(lines, opts) {
       if (!row.linkpage) row.linkpage = link;
       return row;
     }
+    // (dev1192) TIB AV-Portal video -> a video row the portal's player renders.
+    // _fetchTibForNewRows (below) fills title / author / year / length / licence /
+    // description / Mode from TIB's open API. opts.ba = it came from a TIB list.
+    if (window.isTibLink && window.isTibLink(link)) {
+      row.ltype = 'v';
+      row.Mute = '0';
+      if (opts.ba) row.BA = '1';
+      return row;
+    }
     const cls = _classifyUrl(link);
     if (cls === 'video') {
       row.Mute = '0';
@@ -9994,7 +10036,9 @@ async function _importBareLinks(lines, opts) {
     const fpid = _flickrPhotoId(link);
     const ppid = window.getPinterestId ? window.getPinterestId(link) : null;
     const ipid = _inatPhotoId(link);
-    const dupDi = (ipid && inatIdToDi.has(ipid)) ? inatIdToDi.get(ipid)
+    const tbid = window.getTibId ? window.getTibId(link) : null;   // (dev1192)
+    const dupDi = (tbid && tibIdToDi.has(tbid)) ? tibIdToDi.get(tbid)
+                : (ipid && inatIdToDi.has(ipid)) ? inatIdToDi.get(ipid)
                 : linkToDi.has(link) ? linkToDi.get(link)
                 : (yid && ytIdToDi.has(yid) ? ytIdToDi.get(yid)
                 : (fpid && flickrIdToDi.has(fpid) ? flickrIdToDi.get(fpid)
@@ -10017,6 +10061,7 @@ async function _importBareLinks(lines, opts) {
     if (fpid) flickrIdToDi.set(fpid, data.length - 1);
     if (ipid) inatIdToDi.set(ipid, data.length - 1);
     if (ppid) pinIdToDi.set(ppid, data.length - 1);
+    if (tbid) tibIdToDi.set(tbid, data.length - 1);
     added++;
   }
 
@@ -10089,6 +10134,9 @@ async function _importBareLinks(lines, opts) {
   if (pinRows.length) _fetchPinterestForNewRows(pinRows);
   const redditRows = newRows.filter(_isReddit);
   if (redditRows.length) _fetchRedditForNewRows(redditRows);
+  // (dev1192) TIB AV-Portal rows: TIB's open API fills the lot (no proxy needed).
+  const tibRows = newRows.filter(r => r && r.link && window.isTibLink && window.isTibLink(r.link));
+  if (tibRows.length) _fetchTibForNewRows(tibRows);
   // (dev0425) Route yt-dlp-supported providers (IG/YouTube/Vimeo/TikTok) through
   // the proxy yt-dlp bridge for caption (ftext) + @author; the rest still use the
   // r.jina.ai reader path. (Instagram now login-walls jina, so yt-dlp owns it.)
@@ -10111,11 +10159,12 @@ async function _importBareLinks(lines, opts) {
   const flickrNote = flickrRows.length ? '\n   ' + flickrRows.length + ' Flickr link(s) — resolving best-res + metadata…' : '';
   const pinNote  = pinRows.length ? '\n   ' + pinRows.length + ' Pinterest pin(s) — resolving direct media + metadata…' : '';
   const rdNote   = redditRows.length ? '\n   ' + redditRows.length + ' Reddit post(s): resolving direct MP4 + metadata...' : '';
+  const tibNote  = tibRows.length ? '\n   ' + tibRows.length + ' TIB AV-Portal video(s): fetching title, author, licence...' : '';
   const webNote  = webRows.length ? '\n   ' + webRows.length + ' web URL(s) — fetching text…' : '';
   const metaNote = newRows.some(r => !r.ltype && !_flickrPhotoId(r.link)) ? '\n   fetching metadata…' : '';
   toast(
     '✓ Added ' + added + ' bare link' + (added === 1 ? '' : 's')
-    + dupNote + dupAddedNote + pasteDupNote + ytNote + flickrNote + pinNote + rdNote + webNote + metaNote,
+    + dupNote + dupAddedNote + pasteDupNote + ytNote + flickrNote + pinNote + rdNote + tibNote + webNote + metaNote,
     3500
   );
   return { added: added, newRows: newRows, webText: webText };
@@ -10167,6 +10216,145 @@ async function _fetchInatForNewRows(rows) {
   toast(' iNaturalist: ' + done + ' photo link(s) found'
     + (failed.length ? ', ' + failed.length + ' not found (' + failed.join(', ') + ')' : ''), 3200);
   if (done) _fetchMetaForNewRows(rows.filter(r => !_inatIsPage(r.link)));
+}
+
+// (dev1192) -- TIB AV-Portal (av.tib.eu): list + enrich through TIB's own open API --
+// The API answers ANY origin (Access-Control-Allow-Origin: *, checked 2026-11-08), so
+// this runs in the browser, needs no proxy, and works on the live site as well.
+//   /api/v0/videos/<id>?lang=en   title, abstracts, creators, publishers, licenses,
+//                                 identifiers (DOI), productionYear; duration in ms
+//   /api/v0/videos/<id>/files     the rendition ladder (width x height -> Mode)
+//   /api/v0/series/<id>?max-videos=N             a whole series in one call
+//   /api/v0/search?query=&filter=&sort=&order=&viewable=true&max-videos=&offset=
+// The site's own search page is av.tib.eu/search?q=&f=&sort=&order= (f = comma list).
+const _TIB_API = 'https://av.tib.eu/api/v0';
+async function _tibJson(path, ms) {
+  const r = await fetchWithTimeout(_TIB_API + path, ms || 20000);
+  if (!r) throw new Error('no answer from av.tib.eu (' + path + ')');
+  if (!r.ok) throw new Error('av.tib.eu HTTP ' + r.status + ' (' + path + ')');
+  return r.json();
+}
+function _tibVal(x) {            // {value, lang} | [{value, lang}, ...] | string -> text
+  const arr = [].concat(x || []);
+  const en = arr.find(a => a && a.lang === 'en') || arr[0];
+  const v = (en && typeof en === 'object') ? en.value : en;
+  return String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+}
+function _tibPerson(name) {      // "Larink, Otto" -> "Otto Larink"
+  const m = /^([^,]+),\s*(.+)$/.exec(String(name || '').trim());
+  return m ? m[2] + ' ' + m[1] : String(name || '').trim();
+}
+function _tibLen(ms) {           // 23920 -> "0:24", 3723000 -> "1:02:03" (vidLength style)
+  let t = Math.round((+ms || 0) / 1000);
+  if (!(t > 0)) return '';
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+  const p2 = n => (n < 10 ? '0' : '') + n;
+  return h ? h + ':' + p2(m) + ':' + p2(sec) : m + ':' + p2(sec);
+}
+// meta = /videos/<id> answer, files = /videos/<id>/files answer (may be null).
+// Fills EMPTY fields only (curated values are never overwritten), always makes the
+// row a video row on its canonical media-page link. Returns true if anything changed.
+function _tibApplyMeta(row, meta, files) {
+  const md = (meta && meta.metadata) || {};
+  let ch = false;
+  const set = (k, v) => { if (v && !String(row[k] == null ? '' : row[k]).trim()) { row[k] = v; ch = true; } };
+  const canon = window.tibMediaUrl ? window.tibMediaUrl(row.link) : '';
+  if (canon && row.link !== canon) { row.link = canon; ch = true; }
+  if (row.ltype !== 'v') { row.ltype = 'v'; ch = true; }
+  if (!row.Mute) { row.Mute = '0'; ch = true; }
+  const creators = [].concat(md.creators || []).map(c => _tibPerson(c && c.name)).filter(Boolean);
+  const author = creators.join(', ');
+  const pub = [].concat(md.publishers || []).map(p => p && p.name).filter(Boolean)[0] || '';
+  const lic = [].concat(md.licenses || []).map(l => l && l.shortName).filter(Boolean)[0] || '';
+  const doi = ([].concat(md.identifiers || []).find(i => i && i.type === 'DOI') || {}).label || '';
+  set('VidTitle', _tibVal(md.title));
+  set('VidAuthor', author);
+  set('VidDate', String(md.productionYear || md.publicationYear || '').trim());
+  set('vidLength', _tibLen(meta && meta.duration));
+  set('comment', _tibVal(md.abstracts));
+  // A ready-made credit line: CC BY asks for author + licence + source.
+  set('attribution', [author + (pub ? ' (' + pub + ')' : ''), lic, 'TIB AV-Portal' + (doi ? ' doi:' + doi : '')]
+      .filter(s => s && s.trim()).join(', '));
+  let w = 0, h = 0;
+  Object.values((files && files.videoFiles) || {}).forEach(f => {
+    if (f && +f.height > h) { h = +f.height; w = +f.width || 0; }
+  });
+  const modeCol = (typeof getModeCol === 'function') ? getModeCol() : 'Mode';
+  if (w && h) set(modeCol, w > h ? 'L' : (w < h ? 'P' : 'S'));
+  if (ch) row.DateModified = isoNow();
+  return ch;
+}
+function _tibSaveSoon() {        // save() writes ml.json, so never while C has data swapped
+  if (typeof inC === 'function' && inC()) { setTimeout(_tibSaveSoon, 2000); return; }
+  save(); if (typeof render === 'function') render();
+}
+async function _fetchTibForNewRows(rows) {
+  rows = (rows || []).filter(r => r && window.getTibId && window.getTibId(r.link));
+  if (!rows.length) return;
+  let i = 0, done = 0, sinceSave = 0;
+  const failed = [];
+  async function worker() {
+    while (i < rows.length) {
+      const row = rows[i++];
+      const id = window.getTibId(row.link);
+      try {
+        const meta  = await _tibJson('/videos/' + id + '?lang=en');
+        const files = await _tibJson('/videos/' + id + '/files').catch(() => null);
+        if (_tibApplyMeta(row, meta, files)) { done++; sinceSave++; }
+        if (sinceSave >= 40) { sinceSave = 0; _tibSaveSoon(); }
+        if (rows.length > 3) toast('TIB AV-Portal: ' + i + ' / ' + rows.length + ' ...', 1500);
+      } catch (e) { failed.push(id + ' (' + e.message + ')'); }
+    }
+  }
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  if (done) _tibSaveSoon();
+  toast('\u2713 TIB AV-Portal: ' + done + ' row' + (done === 1 ? '' : 's') + ' filled'
+    + (failed.length ? '\n\u26a0 ' + failed.length + ' failed: ' + failed.slice(0, 3).join('; ') : ''),
+    failed.length ? 7000 : 3500);
+}
+function tibRefreshRows(dis) {
+  return _fetchTibForNewRows((dis || []).map(di => data[di]));
+}
+window.tibRefreshRows = tibRefreshRows;
+// `w` with ONE av.tib.eu/series/<id> or av.tib.eu/search?q=... address: list it and
+// hand the media pages to _importBareLinks (dedup, BA=1, then _fetchTibForNewRows).
+async function _importTibList(url) {
+  let u; try { u = new URL(url); } catch (_) { toast('Not a TIB address: ' + url, 3000); return; }
+  let entries = [], total = 0, name = '';
+  const CAP = 1000, PAGE = 100;
+  toast('TIB AV-Portal: listing ' + url + ' ...', 4000);
+  try {
+    const sm = /\/series\/(\d+)/i.exec(u.pathname);
+    if (sm) {
+      const j = await _tibJson('/series/' + sm[1] + '?max-videos=' + CAP, 60000);
+      entries = j.entries || [];
+      total = +j.totalEntries || entries.length;
+      name = 'series "' + (j.name || sm[1]) + '"';
+    } else {
+      const q = u.searchParams, term = q.get('q') || q.get('query') || '*';
+      const base = '/search?query=' + encodeURIComponent(term)
+        + (q.get('f') ? '&filter=' + encodeURIComponent(q.get('f')) : '')
+        + (q.get('sort') ? '&sort=' + encodeURIComponent(q.get('sort')) : '')
+        + (q.get('order') ? '&order=' + encodeURIComponent(q.get('order')) : '')
+        + '&viewable=true';
+      name = 'search "' + term + '"' + (q.get('f') ? ' (filtered)' : '');
+      for (let off = 0; off < CAP; off += PAGE) {
+        const j = await _tibJson(base + '&max-videos=' + PAGE + '&offset=' + off, 30000);
+        const got = j.entries || [];
+        total = +j.totalEntries || 0;
+        entries = entries.concat(got);
+        if (got.length < PAGE || entries.length >= total) break;
+      }
+    }
+  } catch (e) { toast('\u26a0 TIB list failed: ' + e.message, 6000); return; }
+  const seen = new Set();
+  const ids = entries.filter(e => e && e.id && (!e.type || e.type === 'video' || e.type === 'audio'))
+                     .map(e => String(e.id)).filter(id => !seen.has(id) && seen.add(id));
+  if (!ids.length) { toast('TIB AV-Portal: no videos in ' + name, 3500); return; }
+  const capNote = total > ids.length ? ' (the first ' + ids.length + ' of ' + total + ')' : '';
+  if (ids.length > 1 && !confirm('TIB AV-Portal ' + name + ': ' + ids.length + ' video' + (ids.length === 1 ? '' : 's') + capNote
+      + '.\n\nAdd them to ml.json (BA=1)? Videos already there are offered to you as duplicates.')) return;
+  return _importBareLinks(ids.map(id => 'https://av.tib.eu/media/' + id), { ba: true });
 }
 
 async function _fetchFlickrForNewRows(rows) {
@@ -10905,7 +11093,11 @@ function _importChannelCSV(lines) {
     // "@Display Name" on line 1 only because this rule needs the @; Vimeo rows keep the
     // plain name ("Casey Dunn"), as the finders write it.
     const isVimeo = !yid && /vimeo\.com\/(?:video\/)?\d+/i.test(link);
-    const rowAuthor = isVimeo ? author.replace(/^@/, '') : author;
+    // (dev1192) A TIB list (Lib\YTChannelList -> linkfinders\tiblist.py) names the
+    // SERIES or search on line 1, not a person: VidAuthor is left for
+    // _fetchTibForNewRows to fill from the video's own creators.
+    const isTib = !!(window.isTibLink && window.isTibLink(link));
+    const rowAuthor = isTib ? '' : isVimeo ? author.replace(/^@/, '') : author;
 
     if (linkIndex.has(link)) {
       // Update existing row
@@ -10937,7 +11129,8 @@ function _importChannelCSV(lines) {
         DateModified: now,
         tags: []
       };
-      if (yid || isVimeo) row.Mute = '0';   // a video row, as _importBareLinks sets it
+      if (yid || isVimeo || isTib) row.Mute = '0';   // a video row, as _importBareLinks sets it
+      if (isTib) row.ltype = 'v';                     // (dev1192)
       if (isShort) row[modeCol] = 'P';
       data.push(row);
       addedRows.push(row);
@@ -10963,6 +11156,9 @@ function _importChannelCSV(lines) {
   }
   _checkImportedRows(addedRows);
   render();
+  // (dev1192) TIB rows from the list get title / author / licence / ... from TIB's API.
+  const _tibAdded = addedRows.filter(r => r && window.isTibLink && window.isTibLink(r.link));
+  if (_tibAdded.length) _fetchTibForNewRows(_tibAdded);
 
   toast(
     '✓ Channel: ' + (author || '(list without @name — author left blank)') + '\n'

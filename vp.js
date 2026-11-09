@@ -2137,6 +2137,8 @@ function gridOpenFullscreen(row, contained) {
         // (dev0693) Only HLS-only / unresolved pins get here — a resolved pin's
         // link is a .mp4 and the direct-video branch above already took it.
         vpMountPinterest(host, row.link);
+      } else if (window.isTibLink && window.isTibLink(row.link)) {
+        vpMountTib(host, row.link);   // (dev1192) TIB AV-Portal player
       }
     }, 50);
     
@@ -14553,6 +14555,65 @@ function vpMountTikTok(host, link) {
 
   if (typeof _vpState === 'object' && _vpState) {
     _vpState.player = { isTikTok: true,
+      pauseVideo: function(){}, playVideo: function(){},
+      destroy: function(){ try { iframe.src = 'about:blank'; } catch(e) {} } };
+    _vpState.isYT = false;
+  }
+}
+
+// (dev1192) TIB AV-Portal mount — the portal's own player (av.tib.eu/player/<id>)
+// in a 16:9 box. Same cross-origin wall as TikTok/Pinterest, so the same rules:
+// _vpWireEmbedGestures frees #vp-swipe-catcher (else it eats the play click —
+// dev0602) and puts swipe-close back on the letterbox + a right-edge strip; the
+// inert seek-bar becomes an "Open on TIB" button. The stream is signed HLS that
+// expires, so there is no direct-<video> route for these rows.
+function vpMountTib(host, link) {
+  host.innerHTML = '';
+  var src = window.tibEmbedUrl ? window.tibEmbedUrl(link) : '';
+  if (!src) return;
+
+  var wrap = document.createElement('div');
+  // container-type:size lets the box below contain-fit 16:9 in whatever the host is.
+  wrap.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;'
+    + 'justify-content:center;background:#000;touch-action:none;container-type:size;';
+  var clipBox = document.createElement('div');
+  // 16:9 landscape, as large as the host allows on desktop and phones alike.
+  clipBox.style.cssText = 'position:relative;width:min(100cqw, calc(95cqh * 16 / 9));'
+    + 'aspect-ratio:16/9;overflow:hidden;background:#000;';
+  var iframe = document.createElement('iframe');
+  iframe.src = src;
+  iframe.setAttribute('frameborder', '0');
+  iframe.setAttribute('scrolling', 'no');
+  iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+  iframe.setAttribute('allowfullscreen', '');
+  iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;';
+  clipBox.appendChild(iframe);
+  wrap.appendChild(clipBox);
+  host.appendChild(wrap);
+
+  _vpWireEmbedGestures(wrap, clipBox, 'vp-tib-swipe-strip');
+
+  var toolbar = document.getElementById('vp-toolbar');
+  if (toolbar && toolbar.firstElementChild) {
+    var tlRow = toolbar.firstElementChild;
+    tlRow.style.display = 'none';
+    var openBtn = document.createElement('button');
+    openBtn.id = 'vp-tib-open';
+    openBtn.textContent = '↗ Open on TIB AV-Portal';
+    openBtn.style.cssText = 'display:block;width:100%;height:24px;margin:0 0 4px 0;'
+      + 'background:linear-gradient(135deg,#a2195b 0%,#5a0f33 100%);'
+      + 'color:#fff;border:0;border-radius:4px;font-family:monospace;font-weight:bold;'
+      + 'font-size:12px;letter-spacing:0.04em;cursor:pointer;'
+      + 'text-shadow:0 1px 2px rgba(0,0,0,0.6);';
+    openBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      window.open(window.tibMediaUrl ? window.tibMediaUrl(link) : link, '_blank', 'noopener');
+    });
+    toolbar.insertBefore(openBtn, tlRow);
+  }
+
+  if (typeof _vpState === 'object' && _vpState) {
+    _vpState.player = { isTib: true,
       pauseVideo: function(){}, playVideo: function(){},
       destroy: function(){ try { iframe.src = 'about:blank'; } catch(e) {} } };
     _vpState.isYT = false;

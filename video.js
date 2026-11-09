@@ -392,6 +392,65 @@ window.mountTikTokEmbed = function(hostEl, url) {
   };
 };
 
+// ── TIB AV-Portal (official player iframe, view-only) ─────────────────────
+// (dev1192) av.tib.eu — the German National Library of Science and Technology's
+// lecture/research-film portal, mostly CC-licensed (e.g. the "Marine plankton
+// Helgoland" series). A video's page is av.tib.eu/media/<id>, its embeddable
+// player av.tib.eu/player/<id> (the og:video tag), and its DOI 10.5446/<id> —
+// one numeric id in all three. Verified 2026-11-08: /player/<id> answers 200
+// with NO X-Frame-Options and no CSP, so it frames from any origin. The stream
+// itself is HLS behind a signed URL that expires within days, so a row can't
+// hold a playable file address — the link stays the media page and V/G show
+// the player. View-only like TikTok: cross-origin, no seek API, so E segments
+// and steps don't apply. Landscape 16:9. Must stay in step with TIB_MEDIA_RE in
+// proxy.js and SlamIsTibVideo in the AHK Lib file.
+var _TIB_MEDIA_RE = /(?:^|\/\/)(?:www\.)?av\.tib\.eu\/(?:media|player)\/(\d+)(?:[\/?#]|$)/i;
+var _TIB_DOI_RE   = /(?:^|\/\/)(?:dx\.)?doi\.org\/10\.5446\/(\d+)(?:[\/?#]|$)/i;
+window.getTibId = function(url) {
+  var s = String(url || '');
+  var m = s.match(_TIB_MEDIA_RE) || s.match(_TIB_DOI_RE);
+  return m ? m[1] : null;
+};
+window.isTibLink = function(url) { return !!window.getTibId(url); };
+// The canonical row link: the media page (what the site's own share/URL bar gives).
+window.tibMediaUrl = function(url) {
+  var id = window.getTibId(url);
+  return id ? 'https://av.tib.eu/media/' + id : '';
+};
+window.tibEmbedUrl = function(url) {
+  var id = window.getTibId(url);
+  return id ? 'https://av.tib.eu/player/' + id : '';
+};
+// A TIB page that LISTS videos: a series (av.tib.eu/series/<id>[/slug]) or a
+// search (av.tib.eu/search?...). `w` on T and the Firefox hotkey list these.
+window.isTibListUrl = function(url) {
+  var s = String(url || '').trim();
+  return /^https?:\/\/(?:www\.)?av\.tib\.eu\/(?:series\/\d+|search(?:[?#\/]|$))/i.test(s);
+};
+window.mountTibEmbed = function(hostEl, url) {
+  if (!hostEl) return;
+  var cellId = hostEl.id;
+  if (window.stopCellVideoLoop) window.stopCellVideoLoop(cellId);
+  hostEl.innerHTML = '';
+  var src = window.tibEmbedUrl(url);
+  if (!src) return;
+  var iframe = document.createElement('iframe');
+  iframe.src = src;
+  iframe.setAttribute('frameborder', '0');
+  iframe.setAttribute('scrolling', 'no');
+  iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+  iframe.setAttribute('allowfullscreen', '');
+  iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;';
+  hostEl.appendChild(iframe);
+  // Stub player so generic stop/pause paths don't choke.
+  window.seeLearnVideoPlayers[cellId] = {
+    isTib:      true,
+    destroy:    function() { try { iframe.src = 'about:blank'; iframe.remove(); } catch(e) {} },
+    pauseVideo: function() {},
+    playVideo:  function() {}
+  };
+};
+
 // ── Pinterest (official widget iframe, view-only — the FALLBACK path) ──────
 // (dev0693) Unlike IG/TikTok, a Pinterest pin is normally NOT embedded at all:
 // the W import runs it through proxy /pinterest/resolve, which hands back the

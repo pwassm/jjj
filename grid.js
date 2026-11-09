@@ -522,7 +522,8 @@ function _gridIsEmbedCell(cellEl) {
   if (!row || !row.link || !cellEl.querySelector('.grid-embed-wrap')) return false;
   return !!((window.isInstagramLink && window.isInstagramLink(row.link))
     || (window.isTikTokLink && window.isTikTokLink(row.link))
-    || (window.isPinterestLink && window.isPinterestLink(row.link)));   // (dev0693)
+    || (window.isPinterestLink && window.isPinterestLink(row.link))   // (dev0693)
+    || (window.isTibLink && window.isTibLink(row.link)));             // (dev1192)
 }
 
 function _gridEmbedDisarm() {
@@ -569,6 +570,7 @@ function _gridEmbedArm(cellEl) {
   const link = (cellEl._rowData && cellEl._rowData.link) || '';
   const isTT  = !!(window.isTikTokLink && window.isTikTokLink(link));
   const isPin = !!(window.isPinterestLink && window.isPinterestLink(link));   // (dev0693)
+  const isTib = !!(window.isTibLink && window.isTibLink(link));               // (dev1192)
   const badge = document.createElement('div');
   badge.className = 'grid-embed-armed';
   badge.textContent = '▶ play';
@@ -578,6 +580,8 @@ function _gridEmbedArm(cellEl) {
         ? 'linear-gradient(135deg,#25F4EE 0%,#000 50%,#FE2C55 100%)'
         : isPin
         ? 'linear-gradient(135deg,#e60023 0%,#bd081c 100%)'
+        : isTib
+        ? 'linear-gradient(135deg,#a2195b 0%,#5a0f33 100%)'
         : 'linear-gradient(135deg,#833ab4 0%,#fd1d1d 50%,#fcb045 100%)') + ';'
     + 'text-shadow:0 1px 2px rgba(0,0,0,0.4);';
   cellEl.appendChild(badge);
@@ -2898,6 +2902,10 @@ function _gridMountVideo(vidHost, row, segs, muted) {
     // branch above. Same cross-origin deal as TikTok, so same arming tag.
     window.mountPinterestEmbed(vidHost, row.link);
     vidHost.classList.add('grid-embed-wrap');
+  } else if (window.isTibLink && window.isTibLink(row.link) && window.mountTibEmbed) {
+    // (dev1192) TIB AV-Portal player — cross-origin like TikTok, same arming tag.
+    window.mountTibEmbed(vidHost, row.link);
+    vidHost.classList.add('grid-embed-wrap');
   }
 }
 
@@ -5217,7 +5225,8 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
   const isEmbedRow = !!(row && row.link
     && ((window.isInstagramLink && window.isInstagramLink(row.link))
      || (window.isTikTokLink && window.isTikTokLink(row.link))
-     || (window.isPinterestLink && window.isPinterestLink(row.link))));   // (dev0693)
+     || (window.isPinterestLink && window.isPinterestLink(row.link))   // (dev0693)
+     || (window.isTibLink && window.isTibLink(row.link))));            // (dev1192)
   const doNewEmbed = () => {
     gridHideContextMenu();
     const c = document.querySelector('#gridOverlay [data-cell="' + cellStr + '"]');
@@ -5370,7 +5379,8 @@ function gridShowContextMenu(x, y, cellStr, row) {
   const isEmbedRow = !!(row && row.link
     && ((window.isInstagramLink && window.isInstagramLink(row.link))
      || (window.isTikTokLink && window.isTikTokLink(row.link))
-     || (window.isPinterestLink && window.isPinterestLink(row.link))));   // (dev0693)
+     || (window.isPinterestLink && window.isPinterestLink(row.link))   // (dev0693)
+     || (window.isTibLink && window.isTibLink(row.link))));            // (dev1192)
   let newEmbedBtn = null;
   if (isEmbedRow) {
     newEmbedBtn = document.createElement('div');

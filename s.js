@@ -709,6 +709,8 @@
           window.mountTikTokEmbed(host, link);
         else if (window.isInstagramLink && window.isInstagramLink(link) && window.mountInstagramEmbed)
           window.mountInstagramEmbed(host, link);
+        else if (window.isTibLink && window.isTibLink(link) && window.mountTibEmbed)
+          window.mountTibEmbed(host, link);   // (dev1192)
       }, 60);
       return;
     }
