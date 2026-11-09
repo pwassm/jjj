@@ -5940,6 +5940,8 @@ async function housekeepingAddWatermarked(opts) {
     // (dev0819) The proxy says which it is; the extension is the fallback for
     // an older proxy that predates the `image` flag.
     const isImg = meta ? !!meta.image : /\.(jpg|jpeg|png|gif)$/i.test(f.key);   // (dev1105) +gif
+    // (dev1191) Sound files (TTS lines for slideshows) come through this path too.
+    const isAud = meta && meta.audio != null ? !!meta.audio : /\.(ogg|opus|m4a|mp3)$/i.test(f.key);
     const row = {
       UID: nextUID(),
       link: _wmKeyToUrl(f.key),
@@ -5964,15 +5966,18 @@ async function housekeepingAddWatermarked(opts) {
       }
     }
     if (meta && meta.w && meta.h) row.Mode = orientFromDims(meta.w, meta.h);
+    // (dev1191) A sound file has no picture: ltype 'a', MPix 'A' (neither a
+    // picture size nor 'V' for video), vidLength = how long it plays, no Mode.
+    if (isAud) { row.ltype = 'a'; row.MPix = 'A'; delete row.Mode; }
     if (f.linkpage) row.linkpage = f.linkpage;   // (dev1008) from the folder's _link.txt
     data.push(row);
   }
   save(); render();
-  const nImg = missing.filter(f => /\.(jpg|jpeg|png)$/i.test(f.key)).length;
-  const nVid = missing.length - nImg;
-  const what = !nImg ? missing.length + ' watermarked video(s)'
-             : !nVid ? missing.length + ' watermarked photo(s)'
-             : nVid + ' video(s) + ' + nImg + ' photo(s)';
+  const nImg = missing.filter(f => /\.(jpg|jpeg|png|gif)$/i.test(f.key)).length;
+  const nAud = missing.filter(f => /\.(ogg|opus|m4a|mp3)$/i.test(f.key)).length;   // (dev1191)
+  const nVid = missing.length - nImg - nAud;
+  const what = [nVid ? nVid + ' video(s)' : '', nImg ? nImg + ' photo(s)' : '',
+                nAud ? nAud + ' sound file(s)' : ''].filter(Boolean).join(' + ');
   toast('✓ Added ' + what + ' to T'
         + (probed < missing.length
             ? '\n⚠ ' + (missing.length - probed) + ' could not be probed — run Calc Lengths / Fill Mode'
