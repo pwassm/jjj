@@ -866,6 +866,15 @@ window._salTurnGate = function (v, turnS, go) {
   <!-- (dev0851) MakeCard — clipboard image (→ R2) + clipboard text → one new
        flash-card row. Replaces "Make fish image quiz2.ahk". -->
   <button class="tbtn" id="makeCardBtn" title="MakeCard — copy an image, then the text; builds one flash-card row (image → R2)" style="border-color:#c9f;color:#d9f;background:rgba(60,0,90,0.35);">🃏 MakeCard</button>
+  <!-- (dev1190) 🗣 TTS card — speaks the focused script row (ltype s) with the
+       local TTS studio, every line into its own dated folder. The menu picks how
+       long the studio stays loaded afterwards; the last pick is highlighted and
+       starts by itself after 3 s. Dev-only: needs proxy.js on 8081. -->
+  <div id="ttsWrap" style="position:relative;display:inline-flex;flex-shrink:0;">
+    <button class="tbtn" id="ttsBtn" style="border-color:#7de;color:#9ef;background:rgba(0,60,70,0.4);" title="Text-to-speech for the focused script row (ltype s): every line, as set up in the TTS studio, goes to its own folder tts\UID_yy_mm_dd_hh_mm. Pick how long the studio stays loaded afterwards (the last pick starts by itself after 3 s). While it runs: click to stop after the current line.">🗣 TTS</button>
+    <button class="tbtn" id="ttsDirBtn" style="display:none;border-color:#7de;color:#9ef;background:rgba(0,60,70,0.4);padding:4px 7px;" title="Show the last TTS run's folder in Explorer">📂</button>
+    <div id="ttsMenu" style="display:none;position:absolute;top:100%;left:0;z-index:9999;background:#0f1c20;border:1px solid #7de;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.8);min-width:270px;font-family:monospace;overflow:hidden;margin-top:3px;"></div>
+  </div>
   <button class="tbtn" id="deleteCheckedBtn" title="Delete all checked rows" style="border-color:#f66;color:#f88;background:rgba(100,0,0,0.3);">✕ Delete</button>
   <button class="tbtn" id="dupRowBtn" title="Duplicate the active (focused) row — copy with new UID, inserted just below" style="border-color:#8f8;color:#afa;background:rgba(0,80,0,0.35);">⎘ Dup</button>
   <button class="tbtn green" id="showAllBtn">Show All Cols</button>
@@ -1362,7 +1371,7 @@ window._salTurnGate = function (v, turnS, go) {
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev1189';
+  window.HELP_VERSION_STR = 'dev1190';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

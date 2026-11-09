@@ -5270,3 +5270,278 @@ load().then(() => {
     } catch (_) { /* offline, blocked, whatever — never break the app over this */ }
   }, 2000);
 })();
+
+// (dev1190) ── T toolbar: 🗣 TTS card ─────────────────────────────────────────
+// Speaks the FOCUSED row when it is a script (ltype "s"). The local TTS studio,
+// driven through proxy.js /tts/* (which starts it when it isn't running), makes
+// every line as it is set up on the studio page and copies them into a new
+// folder UID_yy_mm_dd_hh_mm. The menu says how long the studio (a few GB of
+// voice model) stays loaded once the run is done; the last pick is highlighted
+// and starts by itself after 3 s. Up/Down move (and restart the 3 s), Enter
+// starts, Esc or a click elsewhere cancels. While a run is going the button
+// shows line n/total and the time left; a click offers to stop it after the
+// line being made, and the folder button beside it opens the run's folder.
+(function () {
+  const PROXY = 'http://127.0.0.1:8081';
+  const OPTS = [
+    { after: 0,  label: 'Close on finish' },
+    { after: 5,  label: 'Close after 5 minutes' },
+    { after: 10, label: 'Close after 10 minutes' }
+  ];
+  const AUTO_MS = 3000;
+  const LS_KEY = 'salTtsAfter';
+  const btn = document.getElementById('ttsBtn');
+  const dirBtn = document.getElementById('ttsDirBtn');
+  const menu = document.getElementById('ttsMenu');
+  const wrap = document.getElementById('ttsWrap');
+  if (!btn || !menu || !wrap) return;
+  const BTN_TITLE = btn.title;
+  let sel = 0, uid = null, autoT = null, autoT0 = 0, barRaf = 0;
+  let running = false, starting = false, pollT = null, goneN = 0, lastDir = null;
+
+  const say = (m, ms) => { if (typeof toast === 'function') toast(m, ms); };
+  const lsGet = () => { try { return localStorage.getItem(LS_KEY); } catch (_) { return null; } };
+  const lsSet = v => { try { localStorage.setItem(LS_KEY, v); } catch (_) {} };
+  const mmss = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const KIND = { make: 'being made', reuse: 'already made, copied', ticked: 'your ticked take, copied' };
+
+  function setLabel(txt, title) {
+    btn.textContent = txt || '🗣 TTS';
+    btn.title = title || BTN_TITLE;
+  }
+
+  function focusedRow() {
+    if (typeof focus === 'undefined' || !focus || focus.r == null || typeof data === 'undefined') return null;
+    return data[typeof vr === 'function' ? vr(focus.r) : focus.r] || null;
+  }
+
+  // ── the timed menu ──
+  function drawMenu() {
+    const last = lsGet();
+    menu.innerHTML = '';
+    const head = document.createElement('div');
+    head.style.cssText = 'padding:7px 14px 4px;color:#9ef;font-size:10px;letter-spacing:0.6px;opacity:0.85;';
+    head.textContent = 'TTS · UID ' + uid + ' · WHEN DONE, THE STUDIO…';
+    menu.appendChild(head);
+    OPTS.forEach((o, k) => {
+      const on = k === sel;
+      const it = document.createElement('div');
+      it.style.cssText = 'padding:8px 14px;cursor:pointer;border-top:1px solid #234;'
+        + (on ? 'background:rgba(60,170,200,0.38);color:#fff;font-weight:bold;' : 'color:#ccc;');
+      it.textContent = (on ? '▶ ' : '  ') + o.label
+        + (String(o.after) === last ? '  · last used' : '');
+      it.addEventListener('mouseenter', () => { if (k !== sel) it.style.background = 'rgba(60,170,200,0.15)'; });
+      it.addEventListener('mouseleave', () => { if (k !== sel) it.style.background = ''; });
+      it.addEventListener('click', e => { e.stopPropagation(); choose(k); });
+      menu.appendChild(it);
+    });
+    const foot = document.createElement('div');
+    foot.id = 'ttsFoot';
+    foot.style.cssText = 'padding:6px 14px 5px;color:#8ab;font-size:10px;border-top:1px solid #234;';
+    menu.appendChild(foot);
+    const bar = document.createElement('div');
+    bar.style.cssText = 'height:3px;background:#123;';
+    const fill = document.createElement('div');
+    fill.id = 'ttsBarFill';
+    fill.style.cssText = 'height:3px;width:100%;background:#7de;';
+    bar.appendChild(fill);
+    menu.appendChild(bar);
+  }
+
+  function tick() {
+    cancelAnimationFrame(barRaf);
+    const f = document.getElementById('ttsFoot'), b = document.getElementById('ttsBarFill');
+    if (!f || !b || menu.style.display === 'none') return;
+    const left = Math.max(0, AUTO_MS - (Date.now() - autoT0));
+    f.textContent = 'starts in ' + Math.ceil(left / 1000) + ' s: ' + OPTS[sel].label.toLowerCase()
+      + '   ·   ↑↓ Enter Esc';
+    b.style.width = (100 * left / AUTO_MS) + '%';
+    if (left > 0) barRaf = requestAnimationFrame(tick);
+  }
+
+  function armAuto() {
+    clearTimeout(autoT);
+    autoT0 = Date.now();
+    autoT = setTimeout(() => choose(sel), AUTO_MS);
+    tick();
+  }
+
+  function openMenu() {
+    drawMenu();
+    menu.style.display = 'block';
+    window.addEventListener('keydown', onKey, true);
+    document.addEventListener('pointerdown', onOutside, true);
+    armAuto();
+  }
+
+  function closeMenu() {
+    clearTimeout(autoT);
+    cancelAnimationFrame(barRaf);
+    menu.style.display = 'none';
+    window.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('pointerdown', onOutside, true);
+  }
+
+  // Window-capture: runs before T's own key handlers, so the arrows and Enter
+  // work the menu instead of moving the row focus.
+  function onKey(e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      sel = (sel + (e.key === 'ArrowDown' ? 1 : OPTS.length - 1)) % OPTS.length;
+      drawMenu();
+      armAuto();
+    } else if (e.key === 'Enter') {
+      choose(sel);
+    } else if (e.key === 'Escape') {
+      closeMenu();
+      say('🗣 TTS cancelled', 1200);
+    } else {
+      return;
+    }
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+
+  function onOutside(e) {
+    if (!wrap.contains(e.target)) closeMenu();
+  }
+
+  function choose(k) {
+    const o = OPTS[k];
+    closeMenu();
+    lsSet(String(o.after));
+    start(uid, o.after);
+  }
+
+  // ── the run ──
+  async function start(u, after) {
+    starting = true;
+    setLabel('🗣 starting…');
+    say('🗣 TTS for UID ' + u + ' — starting (the studio loads its voice model first if it is not running, about 20 s)', 4000);
+    let j = null, status = 0;
+    try {
+      const r = await fetch(PROXY + '/tts/run', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: u, after })
+      });
+      status = r.status;
+      j = await r.json();
+    } catch (_) {}
+    starting = false;
+    if (!j) {
+      setLabel();
+      say('⚠ TTS: no answer from the proxy — is proxy.js (dev1190+) running on 8081? Restart it if you just updated it.', 7000);
+      return;
+    }
+    if (status === 409 && j.id) {
+      say('🗣 A TTS run is already going (UID ' + j.uid + ') — following that one', 3500);
+      follow(j);
+      return;
+    }
+    if (!j.ok) {
+      setLabel();
+      say('⚠ TTS: ' + (j.error || 'the run did not start'), 7000);
+      return;
+    }
+    follow(j);
+  }
+
+  function follow(st) {
+    running = true;
+    goneN = 0;
+    show(st);
+    clearInterval(pollT);
+    pollT = setInterval(poll, 1000);
+  }
+
+  async function poll() {
+    let j = null;
+    try { j = await (await fetch(PROXY + '/tts/status')).json(); } catch (_) {}
+    if (!j || !running) return;           // a proxy hiccup: next second
+    if (j.gone || j.none) {
+      if (++goneN >= 3) finish(null);
+      return;
+    }
+    goneN = 0;
+    show(j);
+    if (j.done) finish(j);
+  }
+
+  function show(j) {
+    if (j.dir) { lastDir = j.dir; dirBtn.style.display = ''; }
+    if (j.done) return;
+    if (!j.total) { setLabel('🗣 reading script…'); return; }
+    setLabel('🗣 ' + j.i + '/' + j.total + (j.left >= 1 ? ' · ' + mmss(j.left) : ''),
+      'TTS run, UID ' + j.uid + ': line ' + j.i + ' of ' + j.total + ' (' + (KIND[j.kind] || j.kind) + ')\n'
+      + '“' + j.line + '”\n'
+      + (j.left >= 1 ? 'about ' + mmss(j.left) + ' left\n' : '')
+      + 'Folder: ' + j.dir + '\n'
+      + (j.stop ? 'Stopping after this line.' : 'Click to stop after this line.'));
+  }
+
+  function finish(j) {
+    clearInterval(pollT);
+    pollT = null;
+    running = false;
+    setLabel();
+    if (!j) {
+      say('⚠ TTS: the studio stopped before the run finished — its window ("TTS studio" in the taskbar) shows why'
+        + (lastDir ? '\nLines so far: ' + lastDir : ''), 9000);
+      return;
+    }
+    if (j.error) { say('⚠ TTS run failed: ' + j.error, 9000); return; }
+    const bits = [];
+    if (j.made) bits.push(j.made + ' made');
+    if (j.reused) bits.push(j.reused + ' already made');
+    if (j.ticked) bits.push(j.ticked + ' ticked take' + (j.ticked > 1 ? 's' : ''));
+    const failed = (j.failed || []);
+    const closing = j.close_note ? j.close_note
+      : j.after ? 'the studio closes in ' + j.after + ' min' : 'the studio is closing';
+    say('🗣 TTS ' + (j.stop ? 'stopped' : 'done') + ': ' + j.files.length + ' of ' + j.total + ' lines → ' + j.dir
+      + (bits.length ? '\n' + bits.join(', ') : '')
+      + (failed.length ? '\n⚠ failed: line ' + failed.map(f => f.n).join(', ') + ' — ' + failed[0].error : '')
+      + '\n' + closing + '  ·  📂 beside the button opens the folder', 10000);
+  }
+
+  async function stopRun() {
+    try {
+      await fetch(PROXY + '/tts/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      say('🗣 TTS stops after the line being made', 2500);
+    } catch (_) {
+      say('⚠ TTS: no answer from the proxy', 3000);
+    }
+  }
+
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (menu.style.display !== 'none') { closeMenu(); return; }
+    if (starting) { say('🗣 The TTS studio is starting — one moment', 2000); return; }
+    if (running) {
+      if (confirm('Stop the TTS run after the line being made?')) stopRun();
+      return;
+    }
+    const row = focusedRow();
+    if (!row) { say('🗣 TTS: click a script row (ltype s) first', 2500); return; }
+    if (String(row.ltype || '') !== 's') {
+      say('🗣 TTS reads a script row (ltype s) — UID ' + row.UID + ' is ltype "' + (row.ltype || '') + '"', 3500);
+      return;
+    }
+    uid = String(row.UID);
+    if (!/^\d+$/.test(uid)) { say('🗣 TTS: UID ' + uid + ' is not a plain number', 3000); return; }
+    const last = lsGet();
+    sel = Math.max(0, OPTS.findIndex(o => String(o.after) === last));
+    openMenu();
+  });
+
+  dirBtn.addEventListener('click', async e => {
+    e.stopPropagation();
+    if (!lastDir) return;
+    let j = null;
+    try {
+      j = await (await fetch(PROXY + '/tts/reveal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dir: lastDir })
+      })).json();
+    } catch (_) {}
+    if (!j || !j.ok) say('⚠ TTS: could not open ' + lastDir + (j && j.error ? ' — ' + j.error : ''), 4000);
+  });
+})();
