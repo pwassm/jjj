@@ -5,6 +5,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>SeaLifeAndMore</title>
 <script>
+// (dev1193) VECT GETS ITS OWN CHROME PROCESS. A ?vect= tab opened on localhost
+// can land in the same renderer process as the main SLAM tab, and a process
+// runs one page at a time: a prompt()/confirm() left open in VECT ("Name this
+// clip", "already exists. Overwrite?") freezes every page in that process. That
+// is how an IG grind sat dead from 3:55 PM to the next morning on 2026-11-09:
+// no error, no CPU, its timers simply stopped. To Chrome 127.0.0.1 is a
+// different SITE from localhost, and site isolation never puts two sites in one
+// process, so VECT moves there. Every launcher (RButton & a, VECT.cmd, Send-to)
+// still says localhost; this hop runs before anything else on the page.
+//
+// localStorage is per origin, so VECT's remembered settings (saved caption
+// texts, colour presets, font, arrows, last clip name, panel spots) ride along
+// in the #fragment, which never reaches a server, and are written ONCE, on the
+// first VECT tab at 127.0.0.1. From then on VECT keeps its own copy. A
+// 127.0.0.1 page holds no project-folder permission, so it cannot write
+// ml.json or c.json: a stray save() there only warns.
+(function () {
+  try {
+    if (!/[?&]vect=/.test(location.search)) return;
+    var KEEP = /^(salCrop|salXmp|slam-vp?-|vp[A-Z]|slam-hp-)/;
+    var host = location.hostname;
+    if (host === 'localhost') {
+      var seed = {};
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && KEEP.test(k)) seed[k] = localStorage.getItem(k);
+      }
+      location.replace('http://127.0.0.1' + (location.port ? ':' + location.port : '')
+        + location.pathname + location.search
+        + '#vectseed=' + encodeURIComponent(JSON.stringify(seed)));
+      // The rest of this file becomes hidden text, so no script of the app
+      // starts up in the tab that is being left.
+      document.write('<plaintext hidden>');
+      return;
+    }
+    var m = /^#vectseed=(.*)$/.exec(location.hash);
+    if (host === '127.0.0.1' && m) {
+      if (!localStorage.getItem('slam-vect-seeded')) {
+        var s = JSON.parse(decodeURIComponent(m[1])) || {};
+        Object.keys(s).forEach(function (key) {
+          if (KEEP.test(key) && typeof s[key] === 'string') localStorage.setItem(key, s[key]);
+        });
+        localStorage.setItem('slam-vect-seeded', String(Date.now()));
+      }
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  } catch (_) {}
+})();
+</script>
+<script>
 // (zip0143) EARLY user-mode classification — must run before <body> parses
 // so the .user-mode CSS rules below hide T's chrome on first paint and
 // prevent the "T flashes before G" effect on github.io. The full
@@ -1371,7 +1421,7 @@ window._salTurnGate = function (v, turnS, go) {
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev1192';
+  window.HELP_VERSION_STR = 'dev1193';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

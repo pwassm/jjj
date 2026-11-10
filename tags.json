@@ -8487,5 +8487,68 @@
         "url": "https://en.wiktionary.org/wiki/Heteroconger"
       }
     ]
+  },
+  {
+    "id": "zoea",
+    "label": "Zoea",
+    "kind": "topic",
+    "parents": [],
+    "aliases": []
+  },
+  {
+    "id": "ophiura-albida",
+    "label": "Ophiura albida",
+    "kind": "taxon",
+    "parents": [
+      "ophiura"
+    ],
+    "aliases": [],
+    "rank": "species",
+    "authority": "Forbes, 1839",
+    "NameOrigin": "Ophiura: From Ancient Greek ophis (“snake”) + Ancient Greek oura (“tail”) (referring to the serpent-like arms of the brittle star).\nalbida: Latin “white” (a form of albidus).",
+    "NameOriginSrc": [
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/Ophiura"
+      }
+    ],
+    "common": "brittlestar"
+  },
+  {
+    "id": "ophiurida",
+    "label": "Ophiurida",
+    "kind": "taxon",
+    "parents": [
+      "ophiuroidea"
+    ],
+    "aliases": [],
+    "rank": "order"
+  },
+  {
+    "id": "ophiuridae",
+    "label": "Ophiuridae",
+    "kind": "taxon",
+    "parents": [
+      "ophiurida"
+    ],
+    "aliases": [],
+    "rank": "family"
+  },
+  {
+    "id": "ophiura",
+    "label": "Ophiura",
+    "kind": "taxon",
+    "parents": [
+      "ophiuridae"
+    ],
+    "aliases": [],
+    "rank": "genus"
+  },
+  {
+    "id": "pluteus",
+    "label": "Pluteus",
+    "kind": "topic",
+    "parents": [],
+    "aliases": []
   }
 ]

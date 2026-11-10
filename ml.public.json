@@ -1,12 +1,12 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1794195047424,
+    "_salPushTime": 1794241241129,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
       "Topic": 76,
-      "link": 216,
+      "link": 445,
       "VidTitle": 218,
       "attribution": 131,
       "comment": 71,
@@ -522,7 +522,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1794195047424
+    "_salSavedAt": 1794241241129
   },
   {
     "UID": "1",
@@ -59631,8 +59631,25 @@
     "VidRange": "text",
     "ftext": "",
     "DateAdded": "2026-11-07 18:06:31",
-    "DateModified": "2026-11-09 00:44:40",
-    "ftextSize": "649",
+    "DateModified": "2026-11-09 16:04:01",
+    "ftextSize": "1920",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ltype": "s",
+    "tags": [
+      "humor",
+      "mbaq"
+    ]
+  },
+  {
+    "UID": "2784_d",
+    "cell": "",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "",
+    "DateAdded": "2026-11-09 16:18:26",
+    "DateModified": "2026-11-09 16:18:26",
+    "ftextSize": "1920",
     "FtextJunk": "0",
     "DictSize": "0",
     "ltype": "s",
@@ -60557,7 +60574,8 @@
     "DictSize": "0",
     "VidTitle": "Lingula larva (brachiopod)",
     "VidAuthor": "@PacificPlankton",
-    "ftext": ""
+    "ftext": "",
+    "vidLength": "0:35"
   },
   {
     "UID": "2842",
@@ -60573,22 +60591,122 @@
     "DictSize": "0",
     "VidTitle": "Zoea",
     "VidAuthor": "@PacificPlankton",
-    "ftext": ""
+    "ftext": "",
+    "vidLength": "0:13"
   },
   {
     "UID": "2843",
-    "link": "https://youtu.be/izko8eu0HqA",
+    "link": "https://av.tib.eu/media/55455",
     "show": "1",
-    "DateAdded": "2026-11-09 03:30:44",
-    "DateModified": "2026-11-09 03:30:47",
+    "DateAdded": "2026-11-09 04:04:28",
+    "DateModified": "2026-11-09 04:07:02",
+    "tags": [
+      "pagurus-bernhardus",
+      "zoea"
+    ],
+    "ltype": "v",
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "623",
+    "VidTitle": "Pagurus bernhardus zoea Helgoland 2016",
+    "VidAuthor": "Otto Larink",
+    "VidDate": "2016",
+    "vidLength": "0:24",
+    "comment": "Pagurus bernhardus (Crustacea, Malacostraca, Decapoda, Pleocyemata, Anomura, Paguridae), zoea larva, length 2.8 mm, Helgoland 03.2016. 0:24 min. Pagurus bernhardus has a slender zoea larva, here seen from the lateral side, demonstrating the carapax spines. The lack of legs is obvious as well as the big complex eyes and the beating heart. Video can be used for teaching.",
+    "attribution": "Otto Larink (Technische Universität Braunschweig), CC BY 3.0 DE, TIB AV-Portal doi:10.5446/55455",
+    "Mode": "L"
+  },
+  {
+    "UID": "2844",
+    "link": "https://av.tib.eu/media/55453",
+    "show": "1",
+    "DateAdded": "2026-11-09 04:06:18",
+    "DateModified": "2026-11-09 04:08:03",
+    "tags": [
+      "ophiura-albida",
+      "pluteus"
+    ],
+    "ltype": "v",
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "697",
+    "VidTitle": "Ophiura albida pluteus Helgoland 2016",
+    "VidAuthor": "Otto Larink",
+    "VidDate": "2016",
+    "vidLength": "0:50",
+    "comment": "Ophiura albida (Echinodermata, Ophiuroid, Ophiuroidae), pluteus larva, width 1.05 mm, Helgoland 03.2016. 0:50 min. Development of Ophiuroida is characterized by the ophiopluteus larva with mainly four and up to six pairs of arms, stabilized by delicate calcite rods. Anchoring body rods and additional transvers rods of a species-specific arrangement connect these skeletal elements. From the coelomic cavities the five pouches of the hydrocoel on the left side are prominent. Ciliary bands around the mouth and on the arms propel the plutei through the water. Video can be used for teaching.",
+    "attribution": "Otto Larink (Technische Universität Braunschweig), CC BY 3.0 DE, TIB AV-Portal doi:10.5446/55453",
+    "Mode": "L"
+  },
+  {
+    "UID": "2845",
+    "link": "https://crabstreetjournal.org/wp-content/uploads/2013/02/coenobita_compressus_larvalstages.jpeg",
+    "show": "1",
+    "DateAdded": "2026-11-09 04:14:41",
+    "DateModified": "2026-11-09 04:15:02",
+    "tags": [
+      "hermit-crab"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "1098",
+    "MPix": "0.2",
+    "Mode": "L"
+  },
+  {
+    "UID": "2846",
+    "link": "https://crabstreetjournal.org/blog/hermit-crab-molting-explained-the-biology-behind-the-process/",
+    "show": "1",
+    "DateAdded": "2026-11-09 04:17:18",
+    "DateModified": "2026-11-09 04:17:20",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "31254",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
+  },
+  {
+    "UID": "2847",
+    "link": "https://crabstreetjournal.org/blog/what-is-the-life-cycle-of-a-land-hermit-crab/",
+    "show": "1",
+    "DateAdded": "2026-11-09 04:17:50",
+    "DateModified": "2026-11-09 04:17:51",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "7161",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
+  },
+  {
+    "UID": "2848",
+    "link": "https://crabstreetjournal.org/blog/hermit-crab-zoea/",
+    "show": "1",
+    "DateAdded": "2026-11-09 04:18:23",
+    "DateModified": "2026-11-09 04:18:26",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "4279",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
+  },
+  {
+    "UID": "2849",
+    "link": "https://crabstreetjournal.org/wp-content/uploads/2012/09/MaryAkersBabies.mp4",
+    "show": "1",
+    "DateAdded": "2026-11-09 04:19:12",
+    "DateModified": "2026-11-09 04:19:12",
     "tags": [],
     "Mute": "0",
-    "ftextSize": "765",
-    "FtextJunk": "10",
+    "ftextSize": "0",
+    "FtextJunk": "0",
     "DictSize": "0",
-    "VidTitle": "Northeast U.S. Canyons Expedition 2013: Rhinochimera",
-    "VidAuthor": "@oceanexplorergov",
-    "Mode": "L",
-    "ftext": ""
+    "MPix": "V",
+    "vidLength": "0:24"
   }
 ]
