@@ -14,17 +14,25 @@
 // different SITE from localhost, and site isolation never puts two sites in one
 // process, so VECT moves there. Every launcher (RButton & a, VECT.cmd, Send-to)
 // still says localhost; this hop runs before anything else on the page.
+// (dev1194) LLC, the lossless cutter (?llc=, RButton & f), hops the same way:
+// its label prompt can freeze a grind just as VECT's could.
 //
-// localStorage is per origin, so VECT's remembered settings (saved caption
-// texts, colour presets, font, arrows, last clip name, panel spots) ride along
-// in the #fragment, which never reaches a server, and are written ONCE, on the
-// first VECT tab at 127.0.0.1. From then on VECT keeps its own copy. A
-// 127.0.0.1 page holds no project-folder permission, so it cannot write
-// ml.json or c.json: a stray save() there only warns.
+// localStorage is per origin, so each tool's remembered settings ride along in
+// the #fragment, which never reaches a server, and are written ONCE per group,
+// on the first such tab at 127.0.0.1 (a marker per group, so LLC's still land
+// on a 127.0.0.1 that VECT seeded first). From then on that copy is the tool's
+// own. VECT: saved caption texts, colour presets, font, arrows, last clip
+// name, panel spots. LLC: last label, Smart. A 127.0.0.1 page holds no
+// project-folder permission, so it cannot write ml.json or c.json: a stray
+// save() there only warns.
 (function () {
   try {
-    if (!/[?&]vect=/.test(location.search)) return;
-    var KEEP = /^(salCrop|salXmp|slam-vp?-|vp[A-Z]|slam-hp-)/;
+    if (!/[?&](vect|llc)=/.test(location.search)) return;
+    var GROUPS = [
+      ['slam-vect-seeded', /^(salCrop|salXmp|slam-vp?-|vp[A-Z]|slam-hp-)/],
+      ['slam-llc-seeded',  /^slam-llc-/]
+    ];
+    var KEEP = { test: function (k) { return GROUPS.some(function (g) { return g[1].test(k); }); } };
     var host = location.hostname;
     if (host === 'localhost') {
       var seed = {};
@@ -42,13 +50,14 @@
     }
     var m = /^#vectseed=(.*)$/.exec(location.hash);
     if (host === '127.0.0.1' && m) {
-      if (!localStorage.getItem('slam-vect-seeded')) {
-        var s = JSON.parse(decodeURIComponent(m[1])) || {};
+      var s = JSON.parse(decodeURIComponent(m[1])) || {};
+      GROUPS.forEach(function (g) {
+        if (localStorage.getItem(g[0])) return;
         Object.keys(s).forEach(function (key) {
-          if (KEEP.test(key) && typeof s[key] === 'string') localStorage.setItem(key, s[key]);
+          if (g[1].test(key) && typeof s[key] === 'string') localStorage.setItem(key, s[key]);
         });
-        localStorage.setItem('slam-vect-seeded', String(Date.now()));
-      }
+        localStorage.setItem(g[0], String(Date.now()));
+      });
       history.replaceState(null, '', location.pathname + location.search);
     }
   } catch (_) {}
@@ -1421,7 +1430,7 @@ window._salTurnGate = function (v, turnS, go) {
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev1193';
+  window.HELP_VERSION_STR = 'dev1194';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
