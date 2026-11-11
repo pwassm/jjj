@@ -934,6 +934,8 @@ window._salTurnGate = function (v, turnS, go) {
     <button class="tbtn" id="ttsDirBtn" style="display:none;border-color:#7de;color:#9ef;background:rgba(0,60,70,0.4);padding:4px 7px;" title="Show the last TTS run's folder in Explorer">📂</button>
     <div id="ttsMenu" style="display:none;position:absolute;top:100%;left:0;z-index:9999;background:#0f1c20;border:1px solid #7de;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.8);min-width:270px;font-family:monospace;overflow:hidden;margin-top:3px;"></div>
   </div>
+  <!-- (dev1197) 📊 Usage — page visits, media traffic and sign-ins (proxy /cf/usage). -->
+  <button class="tbtn" id="usageBtn" title="Site usage: page visits and countries (Cloudflare Web Analytics), video/picture traffic through Cloudflare, and sign-ins (sal-api). Needs proxy.js and CF_API_TOKEN in M:\wm\Watermark R2.bat." style="border-color:#6ad;color:#9df;background:rgba(0,40,70,0.4);">📊 Usage</button>
   <button class="tbtn" id="deleteCheckedBtn" title="Delete all checked rows" style="border-color:#f66;color:#f88;background:rgba(100,0,0,0.3);">✕ Delete</button>
   <button class="tbtn" id="dupRowBtn" title="Duplicate the active (focused) row — copy with new UID, inserted just below" style="border-color:#8f8;color:#afa;background:rgba(0,80,0,0.35);">⎘ Dup</button>
   <button class="tbtn green" id="showAllBtn">Show All Cols</button>
@@ -1430,7 +1432,7 @@ window._salTurnGate = function (v, turnS, go) {
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev1196';
+  window.HELP_VERSION_STR = 'dev1197';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
@@ -1493,6 +1495,22 @@ window.addEventListener('DOMContentLoaded', function() {
     }, 80);
   } catch (_) {}
 });
+</script>
+<script>
+// (dev1197) Cloudflare Web Analytics: the only count of PAGE visits there is,
+// since GitHub Pages serves the site straight (no Cloudflare in between). Loads
+// on the public site only, never on localhost, so dev work isn't counted. No
+// cookies. The token is the site's public beacon token (Cloudflare dashboard >
+// Web Analytics > sealifeandmore.com), not a secret: it is in every page anyway.
+(function () {
+  var CF_BEACON_TOKEN = '';
+  if (!CF_BEACON_TOKEN || !/^(www\.)?sealifeandmore\.com$/i.test(location.hostname)) return;
+  var s = document.createElement('script');
+  s.defer = true;
+  s.src = 'https://static.cloudflareinsights.com/beacon.min.js';
+  s.setAttribute('data-cf-beacon', JSON.stringify({ token: CF_BEACON_TOKEN, spa: true }));
+  document.head.appendChild(s);
+})();
 </script>
 </body>
 </html>

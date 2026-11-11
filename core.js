@@ -13101,3 +13101,121 @@ document.addEventListener('keydown', e => {
     return;
   }
 }, true); // capture phase so it runs before other handlers
+
+
+// (dev1197) ── 📊 Usage card (T toolbar) ─────────────────────────────────────
+// Who uses the public site: page visits (Cloudflare Web Analytics beacon, public
+// site only), media traffic through Cloudflare (media.sealifeandmore.com = R2)
+// and sign-ins (sal-api D1). Read through proxy /cf/usage, which holds the
+// read-only token (M:\wm\Watermark R2.bat, CF_API_TOKEN). Dev-only: needs proxy.
+let _usageDays = 7;
+function _usageEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+function _usageWhen(ms) {
+  if (!ms) return '—';
+  const d = new Date(+ms);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toTimeString().slice(0, 5);
+}
+function _usageBars(rows, valKey, labelKey) {
+  const max = Math.max(1, ...rows.map(r => +r[valKey] || 0));
+  return '<div class="ucBars">' + rows.map(r => {
+    const v = +r[valKey] || 0;
+    return '<div class="ucBar" title="' + _usageEsc(r[labelKey]) + ': ' + v + '"><i style="height:' + Math.max(2, Math.round(v / max * 46)) + 'px"></i></div>';
+  }).join('') + '</div>';
+}
+function _usageList(rows, nameKey, valKey, max) {
+  if (!rows || !rows.length) return '<div class="ucDim">none yet</div>';
+  const top = Math.max(1, ...rows.map(r => +r[valKey] || 0));
+  return rows.slice(0, max || 10).map(r => '<div class="ucRow"><span>' + _usageEsc(r[nameKey]) + '</span><b>' + (+r[valKey] || 0)
+    + '</b><em style="width:' + Math.round((+r[valKey] || 0) / top * 100) + '%"></em></div>').join('');
+}
+function _usageClose() {
+  const ov = document.getElementById('usageOverlay');
+  if (ov) ov.remove();
+  window.removeEventListener('keydown', _usageKey, true);
+}
+function _usageKey(e) {
+  if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); _usageClose(); }
+}
+async function openUsageCard() {
+  let ov = document.getElementById('usageOverlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'usageOverlay';
+    ov.innerHTML = '<style>'
+      + '#usageOverlay{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto;font-family:monospace}'
+      + '#usageOverlay .ucBox{background:#10161c;border:1px solid #6ad;border-radius:8px;color:#cde;width:min(980px,100%);padding:14px 18px;box-shadow:0 8px 30px rgba(0,0,0,.8)}'
+      + '#usageOverlay .ucHead{display:flex;gap:8px;align-items:center;margin-bottom:10px}'
+      + '#usageOverlay .ucHead h2{font-size:15px;margin:0 auto 0 0;color:#9df}'
+      + '#usageOverlay button{background:#1a2630;color:#cde;border:1px solid #468;border-radius:5px;padding:3px 9px;font-family:monospace;cursor:pointer}'
+      + '#usageOverlay button.on{background:#2a5070;color:#fff;border-color:#9df}'
+      + '#usageOverlay .ucGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}'
+      + '#usageOverlay .ucSec{background:#0b1015;border:1px solid #234;border-radius:6px;padding:10px}'
+      + '#usageOverlay .ucSec h3{font-size:12px;margin:0 0 6px;color:#fc8;letter-spacing:.5px}'
+      + '#usageOverlay .ucBig{font-size:22px;color:#fff}#usageOverlay .ucBig small{font-size:11px;color:#89a;margin-left:4px}'
+      + '#usageOverlay .ucBars{display:flex;align-items:flex-end;gap:2px;height:50px;margin:6px 0 8px}'
+      + '#usageOverlay .ucBar{flex:1;display:flex;align-items:flex-end;height:100%}#usageOverlay .ucBar i{display:block;width:100%;background:#4a9fd8;border-radius:2px 2px 0 0}'
+      + '#usageOverlay .ucRow{position:relative;display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:2px 4px;margin:1px 0}'
+      + '#usageOverlay .ucRow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:1}#usageOverlay .ucRow b{z-index:1;color:#fff}'
+      + '#usageOverlay .ucRow em{position:absolute;left:0;top:0;bottom:0;background:rgba(74,159,216,.18);border-radius:3px}'
+      + '#usageOverlay .ucSub{font-size:11px;color:#9ab;margin:8px 0 3px}#usageOverlay .ucDim{font-size:11px;color:#678}'
+      + '#usageOverlay .ucErr{background:rgba(120,90,0,.35);border:1px solid #a83;color:#fd9;border-radius:5px;padding:6px 9px;font-size:11px;margin-bottom:10px;white-space:pre-wrap}'
+      + '</style><div class="ucBox"><div class="ucHead"><h2>📊 Site usage</h2>'
+      + [1, 7, 30].map(d => '<button data-days="' + d + '">' + (d === 1 ? '24 h' : d + ' days') + '</button>').join('')
+      + '<button data-close="1" title="Close (Esc)">✕</button></div><div class="ucBody">Loading…</div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', e => {
+      if (e.target === ov || e.target.dataset.close) { _usageClose(); return; }
+      if (e.target.dataset.days) { _usageDays = +e.target.dataset.days; openUsageCard(); }
+    });
+    window.addEventListener('keydown', _usageKey, true);
+  }
+  ov.querySelectorAll('[data-days]').forEach(b => b.classList.toggle('on', +b.dataset.days === _usageDays));
+  const body = ov.querySelector('.ucBody');
+  body.innerHTML = '<div class="ucDim">Asking Cloudflare…</div>';
+  let j;
+  try {
+    j = await (await fetch('http://127.0.0.1:8081/cf/usage?days=' + _usageDays)).json();
+  } catch (_) {
+    body.innerHTML = '<div class="ucErr">proxy.js not reachable on 8081 — start it (and restart it if it is older than dev1197).</div>';
+    return;
+  }
+  if (!j || !j.ok) {
+    body.innerHTML = '<div class="ucErr">' + _usageEsc((j && j.error) || 'no answer') + '</div>'
+      + (j && j.needToken ? '<div class="ucDim">See the setup steps in Claude\'s dev1197 message (a read-only Cloudflare API token).</div>' : '');
+    return;
+  }
+  let h = j.errors && j.errors.length ? '<div class="ucErr">' + _usageEsc(j.errors.join('\n')) + '</div>' : '';
+  h += '<div class="ucGrid">';
+  const w = j.web;
+  h += '<div class="ucSec"><h3>PAGE VISITS · sealifeandmore.com</h3>' + (w
+    ? '<div class="ucBig">' + w.visits + '<small>visits</small> ' + w.views + '<small>page views</small></div>'
+      + _usageBars(w.daily, 'visits', 'date')
+      + '<div class="ucSub">Countries (visits)</div>' + _usageList(w.countries, 'name', 'visits')
+      + '<div class="ucSub">Came from</div>' + _usageList(w.refs, 'host', 'visits')
+      + '<div class="ucSub">Pages (views)</div>' + _usageList(w.pages, 'path', 'views', 8)
+    : '<div class="ucDim">no data</div>') + '</div>';
+  const m = j.media;
+  h += '<div class="ucSec"><h3>VIDEOS + PICTURES · media.sealifeandmore.com</h3>' + (m
+    ? '<div class="ucBig">' + m.requests + '<small>requests</small> ' + (m.bytes / 1e9).toFixed(2) + '<small>GB served</small></div>'
+      + _usageBars(m.daily, 'requests', 'date')
+      + '<div class="ucDim">visitors per day: ' + m.daily.map(d => d.uniques).join(' · ') + '</div>'
+      + '<div class="ucSub">Countries (requests)</div>' + _usageList(m.countries, 'name', 'requests')
+    : '<div class="ucDim">no data</div>') + '</div>';
+  const L = j.logins;
+  h += '<div class="ucSec"><h3>SIGN-INS · sal-api</h3>' + (L
+    ? '<div class="ucBig">' + L.signins.length + '<small>sign-ins</small> ' + L.users.length + '<small>accounts</small></div>'
+      + '<div class="ucDim">' + L.linksSent + ' login link(s) requested in this range</div>'
+      + '<div class="ucSub">Sign-ins in range</div>'
+      + (L.signins.length ? L.signins.slice(0, 15).map(s => '<div class="ucRow"><span>' + _usageEsc(s.email) + '</span><b>' + _usageWhen(s.created) + '</b></div>').join('') : '<div class="ucDim">none</div>')
+      + '<div class="ucSub">All accounts (last sign-in)</div>'
+      + L.users.slice(0, 25).map(u => '<div class="ucRow"><span>' + _usageEsc(u.email) + (u.role !== 'user' ? ' · ' + _usageEsc(u.role) : '') + '</span><b>' + _usageWhen(u.last_login) + '</b></div>').join('')
+    : '<div class="ucDim">no data</div>') + '</div>';
+  h += '</div>';
+  body.innerHTML = h;
+}
+(function _usageWire() {
+  const go = () => { const b = document.getElementById('usageBtn'); if (b && !b._wired) { b._wired = true; b.addEventListener('click', openUsageCard); } };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+})();
