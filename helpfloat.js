@@ -1434,8 +1434,31 @@ function cpIndex(s) {
           codes: [isHk ? 'T ▸ Housekeeping' : s.code],
           run: function () { el.click(); } });
   });
+
+  // 6 — (dev1200) extra sources. Any script may push a function onto
+  // window.SAL_SEARCH_SOURCES; it is called on every open and returns rows
+  // { k, d, codes:[label], tags?, home? } (home = also listed in an empty box).
+  // A source that loads its rows asynchronously calls window.cpRefresh() when
+  // they land. The public site registers none.
+  (window.SAL_SEARCH_SOURCES || []).forEach(function (fn) {
+    var rows = probe(function () { return fn(s); }, []) || [];
+    rows.forEach(function (it) {
+      it.keep = true;
+      if (!it.kind) it.kind = 'key';
+      if (it.here === undefined) it.here = false;
+      add(it);
+    });
+  });
   return items;
 }
+
+window.cpRefresh = function () {
+  var inp = $id('cpIn');
+  if (!inp || !_cpState) return;
+  _cpItems = cpIndex(_cpState);
+  _cpHits = cpSearch(inp.value);
+  cpRender();
+};
 
 // Every word typed must appear somewhere in the row. A hit in the key outranks
 // one early in the text, which outranks one deep in a paragraph; recipes and the
@@ -1447,8 +1470,8 @@ function cpSearch(q) {
   _cpItems.forEach(function (it, idx) {
     var sc = 0;
     if (!toks.length) {
-      if (it.kind !== 'recipe' && !it.here) return;
-      sc = it.kind === 'recipe' ? 2 : 1;
+      if (it.kind !== 'recipe' && !it.here && !it.home) return;
+      sc = it.kind === 'recipe' ? 3 : (it.home ? 2 : 1);
     }
     for (var i = 0; i < toks.length; i++) {
       var t = toks[i], p = it.hay.indexOf(t);
