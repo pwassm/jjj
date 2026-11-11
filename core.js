@@ -1749,8 +1749,18 @@ function save() {
   // The meta row has no ftext, so the stripper leaves it fully intact.
   const ftextStripper = (k, v) =>
     (k === 'ftext' && typeof v === 'string' && v.length > 0) ? undefined : v;
+  // (dev1196) A STALE tab (another tab saved ml.json after this one loaded it,
+  // dev1185) must not write the browser copy either. It used to: the disk write
+  // was refused but this mirror landed with a newer sal-edited, so the next
+  // Ctrl+R in ANY tab of this browser loaded that out-of-date copy ("Loaded from
+  // localStorage (disk was stale)") — and its next save would have written the
+  // old rows back over ml.json, undoing the other tab's work (2026-11-11, after
+  // the chiton rows were removed on disk). `sal-base` records which disk save
+  // this copy was built on; load() only takes a copy built on the CURRENT file.
   try {
+    if (_mlStale) throw 0;
     localStorage.setItem('seeandlearn-links', JSON.stringify([meta].concat(mlRows), ftextStripper));
+    localStorage.setItem('sal-base',          String(_mlDiskStamp || 0));
     localStorage.setItem('sal-edited',        savedAt.toString());
     localStorage.setItem('ml-col-widths',     JSON.stringify(colWidths));
     localStorage.setItem('ml-col-order',      JSON.stringify(cols));
@@ -1834,6 +1844,19 @@ async function load() {
       }
       const diskFreshness = diskStamp || diskMax;
       const _inUserEarly = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+      // (dev1196) The rescue is for a save that never reached disk (folder
+      // permission lapsed), so the browser copy was built ON the file that is on
+      // disk now: its sal-base equals that file's stamp. A copy built on an OLDER
+      // file came from a tab another tab had overtaken — loading it would bring
+      // back rows deleted since and drop rows added since. Ignore it, drop it.
+      const lsBase = parseInt(localStorage.getItem('sal-base') || '0', 10);
+      if (!_inUserEarly && lsEdited > diskFreshness + 2000 && diskStamp && lsBase < diskStamp) {
+        console.warn('load(): ignoring an out-of-date browser copy (built on ml.json stamp ' + lsBase
+          + ', disk is ' + diskStamp + ') - loaded ml.json from disk.');
+        try { localStorage.removeItem('sal-edited'); } catch (_) {}
+        try { setTimeout(() => toast('ℹ Ignored an out-of-date browser copy of ml.json (from a tab that was\n'
+          + 'behind) — loaded ml.json from disk, which is the current one.', 6000), 1500); } catch (_) {}
+      } else
       if (!_inUserEarly && lsEdited > diskFreshness + 2000) {
         try {
           const lsParsed = JSON.parse(lsRaw);
@@ -3298,9 +3321,10 @@ function renderStatus() {
   }
   if (pending) {
     const n = pending.r2-pending.r1+1;
-    el.textContent = n+' selected in "'+vc[pending.c]+'"'+(ck?' · '+ck+' ✓':'')+filterNote;
+    el.textContent = data.length+' rows · '+n+' selected in "'+vc[pending.c]+'"'+(ck?' · '+ck+' ✓':'')+filterNote;
   } else if (focus) {
-    el.textContent = 'Focus row '+(focus.r+1)+', col "'+vc[focus.c]+'" — shift-click same col to bulk set'+(ck?' · '+ck+' ✓':'')+filterNote;
+    // (dev1196) The total leads every form of the line, not only the unfocused one.
+    el.textContent = data.length+' rows · focus row '+(focus.r+1)+', col "'+vc[focus.c]+'" — shift-click same col to bulk set'+(ck?' · '+ck+' ✓':'')+filterNote;
   } else {
     el.textContent = data.length+' rows · '+vc.length+' cols'+(hidden.size?' ('+hidden.size+' hidden)':'')+(ck?' · '+ck+' ✓':'')+filterNote;
   }
