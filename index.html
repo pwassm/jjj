@@ -1432,7 +1432,7 @@ window._salTurnGate = function (v, turnS, go) {
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev1197';
+  window.HELP_VERSION_STR = 'dev1198';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
@@ -1503,7 +1503,7 @@ window.addEventListener('DOMContentLoaded', function() {
 // cookies. The token is the site's public beacon token (Cloudflare dashboard >
 // Web Analytics > sealifeandmore.com), not a secret: it is in every page anyway.
 (function () {
-  var CF_BEACON_TOKEN = '';
+  var CF_BEACON_TOKEN = '45ed8b80ac75430e9815d5fb34cbbad3';
   if (!CF_BEACON_TOKEN || !/^(www\.)?sealifeandmore\.com$/i.test(location.hostname)) return;
   var s = document.createElement('script');
   s.defer = true;
