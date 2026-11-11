@@ -6015,11 +6015,17 @@ async function housekeepingAddWatermarked(opts) {
 //   retire   a Watermark & Upload ran first and already published the new name;
 //            the old rows are repointed at it. The bare row that run added is
 //            left alone — a duplicate row is insurance here, not clutter.
-//   delete   the rows go to deleted.json and out of T. A reference from some
-//            OTHER row's ftext or from c.json is listed in the confirm, never
-//            edited — that is prose, and only Phil knows what it should say now.
-// Old objects move to _deleted/<date>/ in the bucket and old twins to
-// M:\wm\deleted\<date>\ — nothing is erased.
+//   delete   the rows go to deleted.json and out of T.
+//            (dev1195) Phil's removal rule: a file removed from originals\ is
+//            removed EVERYWHERE. So c.json grid cells holding its UID or its
+//            link are emptied, and a <video>/<img> of it inside any c.json
+//            ctxt or other ml.json row's ftext is taken out (a link to it
+//            keeps its words, loses the link). A mention in plain prose is
+//            only listed: only Phil knows what that sentence should say now.
+//            Everything is listed in the confirm BEFORE anything changes.
+// (dev1195) Old R2 objects and old twins are ERASED, not parked: they are
+// copies with an old watermark of a master that is gone, and they took up R2
+// space. Until dev1195 they went to _deleted/<date>/ and M:\wm\deleted\.
 let _wmSyncRunning = false;
 let _wmSyncAbort = false;
 
@@ -6040,19 +6046,38 @@ function _wmRewriteUrls(str, fromLower, toKey) {
   return { s, n };
 }
 
-// Where else a file's URL appears — any string field but `link`, in ml.json
-// rows and c.json rows. Labels only, for the confirm.
-function _wmOtherRefs(fromLower, cRows) {
-  const hits = [];
-  const scan = (r, label) => {
-    for (const k in r) {
-      if (k === 'link' || typeof r[k] !== 'string' || r[k].indexOf('sealifeandmore') < 0) continue;
-      if ((r[k].match(_WM_URL_RE) || []).some(m => _wmLinkKey(m) === fromLower)) hits.push(label + ' ' + k);
-    }
-  };
-  data.forEach(r => { if (r) scan(r, 'UID ' + r.UID); });
-  (cRows || []).forEach(r => { if (r && !r._salMeta) scan(r, 'c.json "' + (r.gname || '?') + '"'); });
-  return hits;
+// (dev1195) Take a deleted file out of HTML: every <video> (with its <source>s),
+// <img> or stray <source> whose URL resolves to `fromLower` goes; an <a> to it
+// is unwrapped, keeping its words. Returns the new string + how many went.
+function _wmStripEmbeds(str, fromLower) {
+  let n = 0;
+  const hit = tag => (tag.match(_WM_URL_RE) || []).some(m => _wmLinkKey(m) === fromLower);
+  const s = String(str)
+    .replace(/<video\b[\s\S]*?<\/video\s*>/gi, m => (hit(m) ? (n++, '') : m))
+    .replace(/<(?:img|source)\b[^>]*>/gi, m => (hit(m) ? (n++, '') : m))
+    .replace(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi, (m, attrs, inner) => (hit(attrs) ? (n++, inner) : m));
+  return { s, n };
+}
+// Does any URL left in `str` still resolve to `fromLower`? (plain prose)
+function _wmStillNamed(str, fromLower) {
+  return (String(str).match(_WM_URL_RE) || []).some(m => _wmLinkKey(m) === fromLower);
+}
+
+// (dev1195) A c.json grid cell holding one of `uids`, or a link cell of the
+// deleted file. Emptied to '' — or to its bare slide-grid marker ("4*"), which
+// says what kind of slot it is, not what is in it (dev1189).
+function _wmCellPointsAt(v, uids, fromLower) {
+  if (v === undefined || v === null || !String(v).trim()) return false;
+  const p = (typeof _gridParseCellVal === 'function') ? _gridParseCellVal(v) : { uid: String(v).trim(), link: '' };
+  return !!((p.uid && uids.has(String(p.uid))) || (p.link && _wmLinkKey(p.link) === fromLower));
+}
+function _wmClearedCell(v) {
+  const m = /^\s*([345]\s*\*)/.exec(String(v));
+  return m ? m[1].replace(/\s+/g, '') : '';
+}
+function _wmIsCellKey(k) {
+  return (typeof _isGridConfigCellKey === 'function') ? _isGridConfigCellKey(k)
+    : (/^[1-9][a-i]$/.test(k) || k === '1L' || /^[123]P$/.test(k));
 }
 
 async function housekeepingSyncR2() {
@@ -6072,6 +6097,12 @@ async function housekeepingSyncR2() {
   if (!plan || !plan.ok) {
     toast('⚠ Sync R2: ' + ((plan && plan.error) || 'proxy returned no plan')
           + '\n(needs proxy dev1006+ — RESTART it if you just updated)', 6000);
+    return;
+  }
+  // (dev1195) An older proxy parks removed files in _deleted/ instead of erasing
+  // them, which is not what the confirm below says. Stop before anything changes.
+  if (!plan.erases) {
+    toast('⚠ Sync R2: proxy.js is older than dev1195 — RESTART proxy.js, then run this again', 6000);
     return;
   }
   const renames = plan.renames || [], deletes = plan.deletes || [], amb = plan.ambiguous || [];
@@ -6115,17 +6146,54 @@ async function housekeepingSyncR2() {
   if (renames.length) msg += 'RENAMED / MOVED (' + renames.length + ') — rows keep their UID, tags and ftext:\n'
     + listed(renames, x => '   ' + x.from + '\n      → ' + x.to + '   [' + rowCount(x.from) + ']' + (MODE_NOTE[x.mode] || ''))
     + '\n\n';
+  // (dev1195) What removing a deleted file touches besides its own rows, so the
+  // confirm shows every grid cell and text it will change before it changes them.
+  const delEffects = key => {
+    const lk = key.toLowerCase();
+    const own = rowsFor(key);
+    const uids = new Set(own.map(r => String(r.UID)));
+    const cells = [], embeds = [], left = [];
+    cRows.forEach(r => {
+      if (!r || r._salMeta) return;
+      const g = 'c.json "' + (r.gname || '?') + '"';
+      for (const k in r) {
+        if (_wmIsCellKey(k)) { if (_wmCellPointsAt(r[k], uids, lk)) cells.push(g + ' ' + k); continue; }
+        if (typeof r[k] !== 'string' || r[k].indexOf('sealifeandmore') < 0) continue;
+        const x = _wmStripEmbeds(r[k], lk);
+        if (x.n) embeds.push(g + ' ' + k);
+        if (_wmStillNamed(x.s, lk)) left.push(g + ' ' + k);
+      }
+    });
+    data.forEach(r => {
+      if (!r || own.indexOf(r) >= 0) return;
+      for (const k in r) {
+        if (k === 'link' || typeof r[k] !== 'string' || r[k].indexOf('sealifeandmore') < 0) continue;
+        const x = _wmStripEmbeds(r[k], lk);
+        if (x.n) embeds.push('UID ' + r.UID + ' ' + k);
+        if (_wmStillNamed(x.s, lk)) left.push('UID ' + r.UID + ' ' + k);
+      }
+    });
+    return { cells, embeds, left };
+  };
+  const few = a => a.slice(0, 3).join(', ') + (a.length > 3 ? ' … (' + a.length + ' in all)' : '');
   if (deletes.length) msg += 'DELETED (' + deletes.length + ') — their rows go to deleted.json:\n'
     + listed(deletes, x => {
-        const refs = _wmOtherRefs(x.key.toLowerCase(), cRows);
+        const fx = delEffects(x.key);
         return '   ' + x.key + '   [' + rowCount(x.key) + ']'
-          + (refs.length ? '\n      ⚠ still linked from ' + refs.slice(0, 3).join(', ') + (refs.length > 3 ? ' …' : '') : '');
+          + (fx.cells.length  ? '\n      grid cells emptied: ' + few(fx.cells) : '')
+          + (fx.embeds.length ? '\n      video/picture taken out of: ' + few(fx.embeds) : '')
+          + (fx.left.length   ? '\n      ⚠ still named in (left as is): ' + few(fx.left) : '');
       })
     + '\n\n';
-  msg += 'Old R2 objects move to _deleted/<date>/ in the bucket and old twins to\n'
-       + 'M:\\wm\\deleted\\ — nothing is erased. The old URLs stop working (a browser\n'
-       + 'that already fetched one may show its cached copy for a few hours).\n'
-       + 'Esc stops between files.'
+  msg += (deletes.length
+           ? 'Deleted files: the R2 object and the watermarked copy are ERASED for good\n'
+           + '(an old-watermark copy whose original is already gone).\n' : '')
+       + (renames.length
+           ? 'Renamed files: the old R2 object is erased once it has been copied to the\n'
+           + 'new name (or, in a folder that stamps differently, re-stamped by the\n'
+           + 'next Watermark & Upload).\n' : '')
+       + 'The old URLs stop working (a browser that already fetched one may show\n'
+       + 'its cached copy for a few hours). Esc stops between files.'
        + (notes.length ? '\n\n' + notes.join('\n\n') : '');
   if (plan.suspicious) {
     if (prompt(msg + '\n\nType SYNC to go ahead anyway') !== 'SYNC') { toast('Sync R2 cancelled', 2000); return; }
@@ -6141,7 +6209,7 @@ async function housekeepingSyncR2() {
   const now = isoNow();
   const ops = renames.map(x => Object.assign({ kind: x.mode }, x))
     .concat(deletes.map(x => ({ kind: 'delete', from: x.key })));
-  const doomed = [], fails = [], warns = [], restamped = [];
+  const doomed = [], fails = [], warns = [], restamped = [], goneKeys = [];
   let nDone = 0, nLinks = 0, nRefs = 0, cChanged = false;
   try {
     let i = 0;
@@ -6166,6 +6234,7 @@ async function housekeepingSyncR2() {
       nDone++;
       (j.warnings || []).forEach(w => warns.push(op.from + ' — ' + w));
       if (op.kind === 'delete') {
+        goneKeys.push(op.from);
         rowsFor(op.from).forEach(r => { if (doomed.indexOf(r) < 0) doomed.push(r); });
         continue;
       }
@@ -6217,6 +6286,44 @@ async function housekeepingSyncR2() {
       try { checkedRows.clear(); } catch (_) {}
     } else archiveFailed = true;
   }
+  // (dev1195) The removal rule: nothing is left pointing at a deleted file.
+  // UID cells only when the rows really went (deleted.json written) — a kept row
+  // keeps its cells. Link cells and embeds go regardless: the object is gone.
+  let nCells = 0, nEmbeds = 0;
+  if (goneKeys.length) {
+    const goneUids = new Set(archiveFailed ? [] : doomed.map(r => String(r.UID)));
+    for (const key of goneKeys) {
+      const lk = key.toLowerCase();
+      cRows.forEach(r => {
+        if (!r || r._salMeta) return;
+        for (const k in r) {
+          if (_wmIsCellKey(k)) {
+            if (_wmCellPointsAt(r[k], goneUids, lk)) { r[k] = _wmClearedCell(r[k]); nCells++; cChanged = true; }
+            continue;
+          }
+          if (typeof r[k] !== 'string' || r[k].indexOf('sealifeandmore') < 0) continue;
+          const was = r[k];
+          const x = _wmStripEmbeds(was, lk);
+          if (!x.n) continue;
+          r[k] = x.s; nEmbeds += x.n; cChanged = true;
+          // Same Lock-baseline move as a rename: the file went, nobody edited the text.
+          if (k === 'ctxt' && typeof _cLockedCtxt !== 'undefined' && _cLockedCtxt.get(r) === was) {
+            _cLockedCtxt.set(r, x.s);
+          }
+        }
+      });
+      data.forEach(r => {
+        if (!r) return;
+        let touched = false;
+        for (const k in r) {
+          if (k === 'link' || typeof r[k] !== 'string' || r[k].indexOf('sealifeandmore') < 0) continue;
+          const x = _wmStripEmbeds(r[k], lk);
+          if (x.n) { r[k] = x.s; nEmbeds += x.n; touched = true; }
+        }
+        if (touched) r.DateModified = now;
+      });
+    }
+  }
   if (nDone) { save(); try { buildSort(); } catch (_) {} }
   if (cChanged && typeof cSaveToFile === 'function') { try { await cSaveToFile(); } catch (_) {} }
   render();
@@ -6225,6 +6332,8 @@ async function housekeepingSyncR2() {
   if (nLinks) lines.push('   ' + nLinks + ' row link(s) moved to the new name');
   if (nRefs) lines.push('   ' + nRefs + ' other reference(s) rewritten' + (cChanged ? ' (incl. c.json)' : ''));
   if (nArchived) lines.push('   ' + nArchived + ' row(s) archived to deleted.json and removed');
+  if (nCells) lines.push('   ' + nCells + ' c.json grid cell(s) emptied');
+  if (nEmbeds) lines.push('   ' + nEmbeds + ' video/picture(s) taken out of c.json text or ftext');
   if (archiveFailed) lines.push('⚠ deleted.json could not be written — ' + doomed.length + ' row(s) KEPT; delete them by hand');
   if (fails.length) lines.push('⚠ ' + fails.length + ' failed:\n   ' + fails.slice(0, 4).join('\n   '));
   if (warns.length) lines.push('⚠ ' + warns.slice(0, 3).join('\n   '));
