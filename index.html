@@ -1432,7 +1432,7 @@ window._salTurnGate = function (v, turnS, go) {
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev1198';
+  window.HELP_VERSION_STR = 'dev1199';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
@@ -1462,7 +1462,8 @@ window._salTurnGate = function (v, turnS, go) {
       // the I screen's window-capture keydown still registers AFTER core.js's
       // dispatcher, and before the other staging screens.
       var at = files.indexOf('s.js');
-      files.splice(at < 0 ? files.length : at, 0, 'd_yt.js', 'd_ig.js');
+      // (dev1199) d_recipes.js — the "how do I…" chains the Ctrl+K search lists.
+      files.splice(at < 0 ? files.length : at, 0, 'd_yt.js', 'd_ig.js', 'd_recipes.js');
     }
     files.forEach(function(f) {
       document.write('<script src="' + f + '?v=' + v + '"><\/script>');

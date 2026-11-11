@@ -987,6 +987,7 @@ function hpBuild() {
       '<div id="hpHead">'
     +   '<span id="hpTitle">Help</span>'
     +   '<span id="hpChips"></span>'
+    +   '<button id="hpFind" title="Search every key, gesture, button and recipe on every screen (Ctrl+K)">🔎 Search</button>'
     +   '<button id="hpFull" title="Open the FULL reference — every screen, every key (Shift+H)">Full ref</button>'
     +   '<button id="hpClose" title="Close this panel (H or Esc)">✕</button>'
     + '</div>'
@@ -999,6 +1000,7 @@ function hpBuild() {
   document.body.appendChild(p);
 
   $id('hpClose').addEventListener('click', hpClose);
+  $id('hpFind').addEventListener('click', function () { cpOpen(); });   // (dev1199)
   $id('hpFull').addEventListener('click', function () {
     if (typeof openHelp === 'function') openHelp();
   });
@@ -1297,6 +1299,326 @@ document.addEventListener('pointerdown', function (e) {
 });
 window.addEventListener('scroll', tipHide, true);
 window.addEventListener('blur', tipHide);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (dev1199) Ctrl+K — SEARCH EVERYTHING
+// The H strip answers "what can I do on THIS screen". This answers the opposite
+// question: "I know it exists — where is it?". One box, any screen, even while
+// typing in an editor (the key is modified, so it never collides with text).
+//
+// Nothing is typed in twice. The index is rebuilt on every open from:
+//   • window.HOTKEYS           every key, gesture and menu in the registry
+//   • window._helpData()       every per-screen row of the full reference
+//   • HP_ADD / HP_CTX / HP_MODES / HP_EXTRA (+ HP_EXTRA_DEV)   this file's rows
+//   • the buttons on screen    their `title` is the description (as balloons do),
+//                              plus T's Housekeeping items, which sit in the DOM
+//                              hidden until that menu is opened
+//   • window.SAL_RECIPES       multi-step "how do I…" chains. They live in a
+//                              local-only file; the public site has none.
+// Enter on a "⏎" row does the thing (dispatches the key / clicks the button);
+// on any other row it opens the full untrimmed text.
+// ─────────────────────────────────────────────────────────────────────────────
+var CP_ID = 'cpPanel';
+var _cpItems = [], _cpHits = [], _cpSel = 0, _cpFull = -1, _cpPrevFocus = null, _cpState = null;
+
+function cpIsOpen() { return !!$id(CP_ID); }
+
+// Can a registry fn key be dispatched from the screen the reader is on? Same
+// allow / deny tables column 3 of the H strip uses, so the two cannot disagree.
+function cpKeyRun(h, s) {
+  var code = s.code, n = normKey(h.label), ok = true;
+  if (h.key === 'h') return function () { hpOpen(); };
+  // Bare a on T is the row preview (core.js takes it before the dispatcher), so
+  // dispatching it from here would open Annotate instead of what the key does.
+  if (code === 'T' && h.key === 'a') return null;
+  if (code === 'Xe') ok = (h.key === 't' || h.key === 'g' || h.key === 'a' || h.key === 'd');
+  else if (HP_GLOBAL_ONLY[code]) ok = false;
+  else (HP_GLOBAL_OFF[code] || []).forEach(function (l) { if (normKey(l) === n) ok = false; });
+  if (!ok) return null;
+  if (h.key === 's') return function () { if (window._hkStagingToggle) window._hkStagingToggle('s'); };
+  return function () { if (window._executeHotkey) window._executeHotkey(h.key); };
+}
+
+function cpIndex(s) {
+  var items = [], seen = {}, um = s.userMode;
+  function add(it) {
+    if (!it.k || !it.d) return;
+    if (um && it.dev) return;
+    var codes = it.codes || [it.screen];
+    var dk = it.dk || codes, n = normKey(it.k), dup = true;
+    for (var i = 0; i < dk.length; i++) {
+      var id = dk[i] + '|' + n;
+      if (!seen[id]) dup = false;
+      seen[id] = true;
+    }
+    if (dup && !it.keep) return;
+    it.codes = codes;
+    it.kl = String(it.k).toLowerCase();
+    it.hay = (it.k + ' ' + it.d + ' ' + (it.group || '') + ' ' + (it.tags || '') + ' '
+            + codes.map(function (c) { return HP_TITLES[c] || c; }).join(' ')).toLowerCase();
+    if (it.here === undefined) it.here = codes.indexOf(s.code) >= 0;
+    items.push(it);
+  }
+
+  // 1 — recipes
+  (window.SAL_RECIPES || []).forEach(function (r) {
+    if (!r || !r.t || !r.steps) return;
+    add({ kind: 'recipe', k: r.t, d: r.steps.join(' '), steps: r.steps, tags: r.tags,
+          screen: 'Recipe', dev: r.dev !== false, keep: true, here: false });
+  });
+
+  // 2 — the registry (authoritative wording, so it goes in before HELP_DATA)
+  var blocked = window.HK_USER_BLOCKED || [];
+  (window.HOTKEYS || []).forEach(function (h) {
+    if (!h.label || !h.desc) return;
+    var isFn = typeof h.fn === 'function';
+    var codes = (isFn || !h.scope || h.scope === 'global') ? ['Global']
+      : String(h.scope).split('/').map(function (c) { return c.trim(); });
+    add({ kind: 'key', k: h.label, d: h.desc, group: h.group, codes: codes,
+          dev: isFn ? blocked.indexOf(h.key) >= 0 : !!h.dev,
+          here: isFn ? true : undefined,
+          run: isFn ? cpKeyRun(h, s) : null });
+  });
+
+  // 3 — this file's own rows
+  Object.keys(HP_ADD).forEach(function (code) {
+    HP_ADD[code].forEach(function (r) {
+      if (um ? r.dev : r.user) return;
+      add({ kind: 'key', k: r.k, d: r.d, codes: [code] });
+    });
+  });
+  HP_CTX.forEach(function (r) {
+    var vars = um ? r.variants.filter(function (v) { return !v.dev; }) : r.variants;
+    if (!vars.length) return;
+    add({ kind: 'key', k: r.k, codes: r.screens, dev: !!r.dev,
+          d: r.d + ' ' + vars.map(function (v) { return v.d; }).join(' · ')
+             + (r.note ? ' — ' + r.note : '') });
+  });
+  HP_MODES.forEach(function (m) {
+    m.rows.forEach(function (r) {
+      add({ kind: 'key', k: r.k, d: r.d, group: m.title, codes: m.screens, dk: [m.title] });
+    });
+  });
+  [HP_EXTRA, window.HP_EXTRA_DEV || {}].forEach(function (tbl) {
+    Object.keys(tbl).forEach(function (code) {
+      (tbl[code].rows || []).forEach(function (r) {
+        add({ kind: 'key', k: r.k, d: r.d, codes: [code], dev: !!r.dev });
+      });
+    });
+  });
+
+  // 4 — the full reference, screen by screen
+  var hd = probe(function () { return window._helpData ? window._helpData() : []; }, []) || [];
+  hd.forEach(function (sec) {
+    if (sec.id === 'GLOBAL' || sec.mobileOnly) return;      // GLOBAL = the registry, above
+    (sec.sections || []).forEach(function (sub) {
+      (sub.items || []).forEach(function (it) {
+        add({ kind: 'key', k: it.key, d: it.desc, group: sub.name, codes: [sec.id],
+              dev: !!(it.dev || sec.devOnly) });
+      });
+    });
+  });
+
+  // 5 — buttons. Visible ones on this screen, plus T's Housekeeping items.
+  var els = document.querySelectorAll(
+    'button[title],button[data-tip],[role="button"][title],[role="button"][data-tip],'
+    + '.hkitem[title],.hkitem[data-tip]');
+  [].forEach.call(els, function (el) {
+    if (el.closest('#' + CP_ID) || el.closest('#' + PANEL_ID) || el.disabled) return;
+    var isHk = el.classList.contains('hkitem');
+    if (isHk ? (um || s.code !== 'T') : !el.getClientRects().length) return;
+    var tip = (el.getAttribute('title') || el.getAttribute('data-tip') || '').trim();
+    var label = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 44);
+    if (!tip) return;
+    add({ kind: 'button', k: label || '(button)', d: tip, keep: true, here: true,
+          codes: [isHk ? 'T ▸ Housekeeping' : s.code],
+          run: function () { el.click(); } });
+  });
+  return items;
+}
+
+// Every word typed must appear somewhere in the row. A hit in the key outranks
+// one early in the text, which outranks one deep in a paragraph; recipes and the
+// current screen's rows float up. An empty box lists the recipes, then this
+// screen — the two things worth browsing without a word in mind.
+function cpSearch(q) {
+  var toks = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+  var out = [];
+  _cpItems.forEach(function (it, idx) {
+    var sc = 0;
+    if (!toks.length) {
+      if (it.kind !== 'recipe' && !it.here) return;
+      sc = it.kind === 'recipe' ? 2 : 1;
+    }
+    for (var i = 0; i < toks.length; i++) {
+      var t = toks[i], p = it.hay.indexOf(t);
+      if (p < 0) return;
+      sc += it.kl === t ? 30 : (it.kl.indexOf(t) >= 0 ? 10 : (p < it.kl.length + 90 ? 4 : 1));
+    }
+    if (toks.length) {
+      if (it.kind === 'recipe') sc += 6;
+      if (it.here) sc += 3;
+      if (it.run) sc += 1;
+    }
+    out.push({ it: it, sc: sc, idx: idx });
+  });
+  out.sort(function (a, b) { return b.sc - a.sc || a.idx - b.idx; });
+  return out.slice(0, 80).map(function (o) { return o.it; });
+}
+
+function cpCss() {
+  if ($id('cpCss')) return;
+  var st = document.createElement('style');
+  st.id = 'cpCss';
+  st.textContent = [
+    '#cpPanel{position:fixed;inset:0;z-index:10000070;background:rgba(0,0,0,0.45);',
+      'font-family:monospace;font-size:14px;color:#cde;}',
+    '#cpBox{position:absolute;top:9vh;left:50%;transform:translateX(-50%);',
+      'width:min(880px,94vw);background:rgba(10,10,26,0.985);border:2px solid #4af;',
+      'border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.9);display:flex;flex-direction:column;}',
+    '#cpIn{margin:10px;padding:8px 10px;font-family:monospace;font-size:16px;color:#fff;',
+      'background:#0c1020;border:1px solid #46c;border-radius:5px;outline:none;}',
+    '#cpIn:focus{border-color:#8cf;}',
+    '#cpList{max-height:66vh;overflow-y:auto;border-top:1px solid #2a2a4a;}',
+    '.cp-row{display:flex;gap:0.7em;padding:5px 10px;align-items:baseline;cursor:pointer;',
+      'border-bottom:1px solid #15192e;}',
+    '.cp-row.sel{background:#16284a;}',
+    '.cp-scr{flex:0 0 6.2em;color:#79a;font-size:0.82em;word-break:break-word;}',
+    '.cp-scr.rec{color:#7ec;}.cp-scr.btn{color:#c9f;}',
+    '.cp-k{flex:0 0 11.5em;color:#fd8;font-weight:bold;word-break:break-word;line-height:1.3;}',
+    '.cp-d{flex:1;min-width:0;line-height:1.4;color:#cde;white-space:pre-wrap;}',
+    '.cp-d ol{margin:0;padding-left:1.6em;}.cp-d li{margin:1px 0;}',
+    '.cp-run{flex:0 0 auto;color:#3d8;font-size:0.82em;white-space:nowrap;}',
+    '.cp-none{padding:14px 12px;color:#667;}',
+    '#cpFoot{padding:5px 10px;border-top:1px solid #2a2a4a;background:#0c1020;',
+      'font-size:0.8em;color:#667;border-radius:0 0 6px 6px;}'
+  ].join('');
+  document.head.appendChild(st);
+}
+
+function cpRender() {
+  var list = $id('cpList');
+  if (!list) return;
+  if (_cpSel >= _cpHits.length) _cpSel = Math.max(0, _cpHits.length - 1);
+  var h = '';
+  _cpHits.forEach(function (it, i) {
+    var sel = (i === _cpSel), full = (i === _cpFull);
+    var body;
+    if (it.kind === 'recipe' && (sel || full)) {
+      body = '<ol>' + it.steps.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol>';
+    } else {
+      body = esc(full ? it.d : clip(it.d, sel ? 330 : 150));
+    }
+    h += '<div class="cp-row' + (sel ? ' sel' : '') + '" data-i="' + i + '">'
+       + '<span class="cp-scr' + (it.kind === 'recipe' ? ' rec' : (it.kind === 'button' ? ' btn' : '')) + '">'
+       + esc(it.kind === 'recipe' ? 'Recipe' : it.codes.join(' / ')) + '</span>'
+       + '<span class="cp-k">' + esc(it.k) + '</span>'
+       + '<span class="cp-d">' + body + '</span>'
+       + (it.run ? '<span class="cp-run">⏎ ' + (it.kind === 'button' ? 'click' : 'go') + '</span>' : '')
+       + '</div>';
+  });
+  list.innerHTML = h || '<div class="cp-none">Nothing matches. Fewer or shorter words find more.</div>';
+  var foot = $id('cpFoot');
+  if (foot) {
+    foot.textContent = _cpHits.length + ' of ' + _cpItems.length
+      + '  ·  ↑ ↓ choose  ·  Enter: a ⏎ row does it, any other row opens its full text  ·  Esc closes';
+  }
+  var cur = list.querySelector('.cp-row.sel');
+  if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest' });
+}
+
+function cpEnter() {
+  var it = _cpHits[_cpSel];
+  if (!it) return;
+  if (it.run) {
+    var run = it.run;
+    cpClose(true);
+    setTimeout(function () { try { run(); } catch (_) {} }, 0);
+    return;
+  }
+  _cpFull = (_cpFull === _cpSel) ? -1 : _cpSel;
+  cpRender();
+}
+
+function cpOpen() {
+  if (cpIsOpen()) return;
+  cpCss();
+  _cpState = hpState();
+  _cpItems = cpIndex(_cpState);
+  _cpPrevFocus = document.activeElement;
+  var p = document.createElement('div');
+  p.id = CP_ID;
+  p.innerHTML = '<div id="cpBox">'
+    + '<input id="cpIn" type="text" autocomplete="off" spellcheck="false" '
+    +   'placeholder="Search everything — keys, gestures, buttons, recipes  (you are on '
+    +   esc(HP_TITLES[_cpState.code] || _cpState.code) + ')">'
+    + '<div id="cpList"></div><div id="cpFoot"></div></div>';
+  document.body.appendChild(p);
+  var inp = $id('cpIn');
+  inp.addEventListener('input', function () {
+    _cpSel = 0; _cpFull = -1;
+    _cpHits = cpSearch(inp.value);
+    cpRender();
+  });
+  // mousedown, not click: the list is redrawn on selection, and a redraw between
+  // press and release would swallow the click. Keeping focus in the box too.
+  p.addEventListener('mousedown', function (e) {
+    if (e.target === inp) return;
+    e.preventDefault();
+    if (e.target === p) { cpClose(); return; }
+    var row = e.target.closest ? e.target.closest('.cp-row') : null;
+    if (!row) return;
+    _cpSel = +row.getAttribute('data-i') || 0;
+    cpEnter();
+  });
+  _cpSel = 0; _cpFull = -1;
+  _cpHits = cpSearch('');
+  cpRender();
+  inp.focus();
+}
+
+function cpClose(ran) {
+  var p = $id(CP_ID);
+  if (p) p.remove();
+  var f = _cpPrevFocus;
+  _cpPrevFocus = null;
+  // Closed without running anything: put the caret back where it was (an editor
+  // the search was opened over). After a run the action owns the focus.
+  if (!ran && f && f.isConnected && typeof f.focus === 'function' && f !== document.body) {
+    try { f.focus(); } catch (_) {}
+  }
+}
+
+window.cpOpen = cpOpen;
+window.cpClose = cpClose;
+window.cpIsOpen = cpIsOpen;
+
+// Registered ahead of the H listener below, so Esc closes the search before it
+// closes the strip. While the box is up EVERY key stops here: typing still
+// reaches the input (that is the default action, not a listener), but no screen
+// underneath gets to treat a letter of the query as its own hotkey.
+window.addEventListener('keydown', function (e) {
+  var k = e.key;
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (k === 'k' || k === 'K')) {
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (cpIsOpen()) cpClose(); else cpOpen();
+    return;
+  }
+  if (!cpIsOpen()) return;
+  e.stopImmediatePropagation();
+  var step = 0;
+  if (k === 'Escape') { e.preventDefault(); cpClose(); return; }
+  if (k === 'Enter')  { e.preventDefault(); cpEnter(); return; }
+  if (k === 'ArrowDown') step = 1;
+  else if (k === 'ArrowUp') step = -1;
+  else if (k === 'PageDown') step = 8;
+  else if (k === 'PageUp') step = -8;
+  if (step) {
+    e.preventDefault();
+    _cpSel = Math.max(0, Math.min(_cpHits.length - 1, _cpSel + step));
+    cpRender();
+  }
+}, true);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // KEY OWNERSHIP — registered here, first in the script list, so it beats

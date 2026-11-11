@@ -424,6 +424,7 @@ igclip.py
 # not have them — restore from _jjjRoot.
 d_ig.js
 d_yt.js
+d_recipes.js
 ig.js
 ytt.js
 proxy.js
