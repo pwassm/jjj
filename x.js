@@ -1698,7 +1698,7 @@
     try {
       const res = await fetch(PROXY + '/x/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows, force: !!opts.force })
+        body: JSON.stringify({ rows, force: !!opts.force, loadedAt: _loadedAt })
       });
       const j = await res.json().catch(() => null);
       if (!res.ok || !j || !j.ok) {
@@ -1714,7 +1714,11 @@
       }
       dirty = false;
       updateCount();
-      if (announce) xToast('💾 saved x.json (' + j.total + ' rows)', 1800);
+      if (j.kept) {
+        // (dev1203) A finder added rows after this screen loaded; the proxy kept them. Show them.
+        xToast('➕ ' + j.kept + ' new result(s) arrived from a finder: reloading the list', 3200);
+        if (isXScreenOpen()) loadData();
+      } else if (announce) xToast('💾 saved x.json (' + j.total + ' rows)', 1800);
       return true;
     } catch (e) {
       if (announce) xToast('✗ save failed: ' + (e && e.message) + '\n(Is proxy.js running & dev0521+?)', 4200);
@@ -1771,12 +1775,15 @@
   }
 
   // ── Load ──────────────────────────────────────────────────────────────────────
+  let _loadedAt = 0;   // (dev1203) when this screen last read x.json; sent with every save
   async function loadData() {
+    const t0 = Date.now();
     try {
       const r = await fetch(STORE_URL());
       rows = r.ok ? (await r.json()) : [];
       if (!Array.isArray(rows)) rows = [];
     } catch (e) { rows = []; }
+    _loadedAt = t0;
     await loadDeletedLinks();
     // Backfill derived fields for hand-edited / finder-imported / legacy rows.
     rows.forEach(r => {
