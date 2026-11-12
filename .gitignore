@@ -1,22 +1,10 @@
+# Machine-local ignore rules live in .git/info/exclude, not here.
+
 # Claude
 .claude
 
 # jpgs
 jpgs
-
-# YTT
-YTT
-
-# FromCacheOld
-FromCacheOld
-
-# FromCache
-FromCache
-
-# (dev0451) cacheExtract.js output — clean image/video extracted from Firefox
-# cache2 entries + the url→file manifest. Local staging, never committed.
-FromCacheOut
-
 
 # AHK — the AHK folder and every .ahk anywhere in the repo
 AHK
@@ -27,110 +15,6 @@ AHK
 
 # Deleted links archive (kept locally only)
 deleted.json
-
-# (dev0418) V "Choose" screen recordings — written to the project root by
-# proxy.js /rec/*; kept local, never committed.
-vsteps-*.mp4
-
-# (dev0564/0565) Step clips built from web videos by proxy /frame/grab (V step
-# panel Save + G on-demand) — steps/<VidTitle>.<x_s_d>.mp4, looped by G's
-# step-frame mode (hotkey A). LOCAL ONLY — grabbed YT material must never be
-# committed or served publicly (YT TOS). frames/ was dev0564's short-lived jpg
-# variant of the same thing.
-steps/
-frames/
-
-# (dev0428/0429) IG harvest staging store + downloaded media — a LOCAL store
-# parallel to ml.json, deliberately out of the public site. The I/Ig screen
-# (ig.js) reads/writes ig.json locally; proxy.js /ig/download saves media to
-# ig_media/. Kept local, never committed.
-ig.json
-# (dev0676) Timestamped ig.json backups — igEmbedProbe.js, the dev0663 reset script
-# and the various backfills each drop one before writing. The `*.bak` rule above
-# does NOT catch them (the timestamp trails the .bak), so a dozen 15k-row copies
-# were sitting in `git status` waiting to be committed by accident.
-ig.json.bak*
-ig.json.tmp-*
-# (dev0689) Same trap, new prefix: the ig_media author-foldering migration drops an
-# ig.json.premigrate-<stamp> copy (52MB) that ig.json.bak* does not catch.
-ig.json.premigrate-*
-# (dev0690) igOrphans.js deletion manifest — the audit trail of an irreversible run.
-ig.json.orphans-*
-# (dev0690b) igMeasure.js — the path|size|mtime measurement cache (25k entries, so a
-# re-run is instant instead of 10 minutes of ffprobe) and its --sweep receipt.
-ig.json.measure-*
-# (dev0696) igResAudit.js — the per-row "what does IG declare as the original" verdict
-# cache (so --apply costs no fetches) and its receipt. Same trap as the two above.
-ig.json.resaudit-*
-# (dev1000) ✂ Cut after (/ig/cut-after) — the removed rows of each cut, its undo file.
-# (The 2026-09-07 stephanlegallais one predates this rule and stays tracked.)
-ig.json.removed-*
-# (dev1004) 🤖 AI delete's banned-author list — the on-disk mirror of the I screen's
-# localStorage ban store. Local curation beside ig.json, and the repo root is what
-# GitHub Pages serves, so it is never committed.
-ig.bans.json
-ig_media/
-
-# (dev0785) T-screen row downloads (right-click a row → "⬇ Download → …"), written by
-# proxy /media/download and named by the AHK ytdl_v26 / M:\YTDwork convention. Local
-# staging exactly like ig_media/ and pin_media/ — never committed, never served.
-yt_media/
-vm_media/
-wiki_media/
-
-# (dev0693) Pinterest pin media downloaded by proxy /pinterest/download, foldered by
-# pinner exactly like ig_media/ (dev0689). Local only — never committed, never served.
-pin_media/
-
-# (dev0911) Reddit post media downloaded by the shared T-row endpoint
-# (proxy /media/download -> reddit_media/). Local staging exactly like yt_media/
-# and pin_media/ - never committed, never served. Downloading a Reddit post is
-# the ONLY way to get its sound: v.redd.it keeps audio in a separate DASH stream,
-# so the direct MP4 the resolver links is video-only.
-reddit_media/
-
-# (dev0912) Direct media files downloaded from any host by that same endpoint
-# (a URL that IS a .webm/.mp4/.jpg rather than a page about one). Local staging,
-# never committed, never served.
-dl_media/
-
-# (dev1192) TIB AV-Portal videos downloaded by that same endpoint (T row menu
-# Download on an av.tib.eu/media/<id> row). Local staging, never committed.
-tib_media/
-
-# (dev0471) Firefox "Save Page As ▸ Text" dumps of IG posts. (dev0794) The importer
-# that read these — the I-screen "📁 Import ffdown" button and the /ig/ffdown route —
-# has been removed, so nothing reads the folder now; it stays ignored because the
-# files are still on disk and are local source data (handles/comments + clutter).
-ffdown/
-
-# (dev0447) Bulk staging store — Flickr jpgs / YT / Vimeo / direct video links,
-# parallel to ml.json and kept LOCAL until rows are Promoted into ml.json. Written
-# by the St screen (s.js) via proxy /s/save. (*.bak is already ignored above.)
-s.json
-# (dev0450) Archive of rows deleted from s.json — appended by proxy /s/deleted so
-# imports can avoid re-staging a previously-deleted link. Local only.
-sdeleted.json
-
-# (dev0466) Org-review store — Orgzly (.org) phone notes parsed by orgToO.js into
-# o.json, parallel to ml.json and read by the O screen (o.js). The raw orgzly/ dump
-# (66 MB+ of pasted article text) and the generated o.json stay LOCAL — never the repo.
-o.json
-o.json.bak
-# (dev0469) Archive of records deleted from the O screen (parallel to sdeleted.json).
-odeleted.json
-orgzly/
-
-# (dev0454) "linkfinders" — standalone Python link-finder tools (imagefinder.py)
-# and their imagelinks/ output + state. A deliberately NON-github local toolset
-# that feeds the St screen via clipboard; never committed.
-linkfinders/
-
-# flickrScraper/ — standalone Playwright GUI batch scraper for Flickr pools /
-# photostreams (writes flickr_*.txt blocks that the St screen imports via `w`).
-# Local desktop tool + its .txt output; never committed. Its Flickr-sizing logic
-# now also lives in linkfinders/imagefinder.py (flickr_sizes_via_api).
-flickrScraper/
 
 # (dev0550) Cloudflare Worker (worker/) — wrangler local state + deps.
 # The source (src/, schema.sql, wrangler.toml, README) IS committed; secrets
@@ -160,12 +44,8 @@ proton_active.conf
 # Logs
 logs
 *.log
-# (dev0696) ROTATED logs. `*.log` does not catch proxy.log.1 — the suffix trails the
-# extension — so an 8MB rotated proxy log was sitting in `git status` waiting to be
-# committed by accident (the same trap as the ig.json.bak* rule above).
+# Rotated logs (the suffix trails the extension)
 *.log.[0-9]*
-# (dev1003) proxy.js crash breadcrumbs, rewritten on every IG fetch/spawn step.
-proxy.crumb
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -317,122 +197,9 @@ ml.json
 # serve them to a one-line console apply. Throwaway, never committed.
 _uid*.html
 
-# (dev0918) Per-author "last checked" stamps written by proxy.js on every
-# completed harvest. A local record of what we did, not harvested data.
-ig-checked.json
-ig-checked.json.tmp-*
-# (dev1096) Per-author record of how each harvest walk ended (stop reason, post
-# count, rows held), written by proxy.js on every /ig/add. Local only.
-ig-harvests.json
-ig-harvests.json.tmp-*
-# (dev1099) Per-author ✂ stop posts (the oldest post wanted), written by proxy.js
-# /ig/cut-after; /ig/add drops anything older. Local only.
-ig-cuts.json
-ig-cuts.json.tmp-*
-# (dev1102) Ids removed with 🗑 Delete sel / 🤖 AI delete, so no harvest re-adds them. Local only.
-ig-deleted.json
-ig-deleted.json.tmp-*
-# (dev1127) Japanese caption translation: the name glossary, the queue of new names,
-# the per-line translation cache, and the per-author advert rules. Local curation
-# beside ig.json, read and written by proxy.js /ig/translate. Local only.
-ig-jp-*.json
-ig-jp-*.json.tmp-*
-ig-adrules.json
-ig-adrules.json.tmp-*
-
-# (dev0961) YouTube transcript + local-Ollama summary output, written by proxy
-# /ytt/run from a T row: <uid>~<videoId>~<title>.{transcript,summary}.txt. DEV-ONLY
-# and deliberately not served - the repo is public and GitHub Pages serves whatever
-# is committed. Its backup is backup-root.ps1 (which now carries named subfolders),
-# NOT git, exactly like ml.json.
-ytsummaries/
-
-# Drive-index manifests (MediaTruth / MyMediaByCamera / not-wanted TSVs) and the
-# drivetriage tools (drivecheck.py, qformat.bat, ejectusb.bat). Personal drive
-# inventories - never committed. drivetriage/ is on the user PATH.
-mediaindex/
-
-# igClassify.js (caption-first subject classifier) — the igclass.json sidecar (verdict/tags per
-# ig.json id), the last run's review rows for igclass.html, and the WoRMS/GBIF name cache.
-# Local curation beside ig.json; the repo root is what GitHub Pages serves.
-igclass.json
-igclass.review.json
-igclass.taxa.json
-igclass.*.tmp-*
-
-# (dev1005) igclip.py — timeline frames, image embeddings, CLIP/BioCLIP scores, ✗ labels.
-igclass.clip.json
-igclass.labels.json
-igclass_frames/
-igclass_emb/
 __pycache__/
-OctopusVideos/
-mears/
 
-# (dev1018) igVidAudit.js — the VIDEO half of the resolution audit, and its verdict
-# cache. Per the 2026-09-21 rule that nothing IG-related goes to GitHub: the tool
-# itself stays local too, not just its data. Backup is backup-root.ps1 (C:/E:/F:
-# _jjjRoot), NOT git — same arrangement as ig.json.
-igVidAudit.js
-ig.json.vidaudit-*
-
-# (dev1019) IG TOOLING STAYS LOCAL. Per the 2026-09-21 rule that nothing IG-related
-# goes to GitHub, these node/python CLI tools were untracked (git rm --cached — they
-# remain on disk) and are ignored from here on. Backup is backup-root.ps1 to the
-# C:/E:/F: _jjjRoot copies, NOT git.
-#   NOT listed, and deliberately still tracked, because the PUBLIC site loads it:
-#     igmeta.json  — fetched by video.js (dev0707 bakes it for the public site)
-#   (dev1020 removed ig.js, igclass.html and ig-harvest.user.js from this list and
-#    untracked them — see the dev1020 block at the end of this file.)
-# NOTE: proxy.js require()s igEmbedProbeCore.js and spawns ig_impersonate_fetch.py.
-# Both still work locally; a fresh clone of the repo will not have them.
-igClassify.js
-igCloseoutUndo.js
-igCoverAudit.js
-igEmbedProbe.js
-igEmbedProbeCore.js
-igFolderByAuthor.js
-igGrindAudit.js
-igMarkLowRes.js
-igMeasure.js
-igMetaBake.js
-igNameDims.js
-igOrphans.js
-igResAudit.js
-ig_impersonate_fetch.py
-igclip.py
-
-# ── (dev1020) The media-fetching tooling is dev-only ──────────────────────
-# The repo IS the public website, so it should carry only what the site needs to
-# LINK and SHOW a video — that is video.js (embed build + igmeta.json), grid.js
-# (frame fit) and core.js (link detection). How the media is actually FETCHED is
-# nobody else's business, so it now lives in two dev-only files that index.html
-# loads on localhost only:
-#     d_yt.js  — yt-dlp metadata bridge, T-row downloader, Pinterest download,
-#                YouTube transcript/summary (the old ytt.js, folded in)
-#     d_ig.js  — the I staging screen (the old ig.js) + the IG saved-page import
-# ig.js and ytt.js themselves are gone from disk: their content IS d_ig.js/d_yt.js.
-# They stay listed here so a stray old copy can never be re-added.
-#
-# Also untracked at dev1020 (kept on disk, never served):
-#     proxy.js           — the local node proxy. The site calls its ENDPOINTS on
-#                          127.0.0.1:8081; nothing ever fetches the file itself.
-#     ig-harvest.user.js — the Tampermonkey harvester. Nothing links to it.
-#     igclass.html       — the IG subject-classifier page, dev-only.
-#
-# Backup for every one of these is backup-root.ps1, NOT git. A fresh clone will
-# not have them — restore from _jjjRoot.
-d_ig.js
-d_yt.js
-d_recipes.js
-ig.js
-ytt.js
-proxy.js
-ig-harvest.user.js
-igclass.html
 backupdir/
-# (dev1026) resBestVia:aspect43 stamping — its undo list (ids + held res). Local, like the other ig.json.* audit trails.
-ig.json.aspect43-*
 # (dev1034) deshake motion files: written by the analysis pass, dead once the render has run (proxy sweeps them after a day).
 .vidstab/
 # (dev1178) Merriam-Webster API keys — LOCAL ONLY, never committed. tags.js reads it on localhost.
