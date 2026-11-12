@@ -4242,7 +4242,7 @@
     "width": 15400,
     "height": 6940,
     "vidLength": "",
-    "size": "",
+    "size": "19 MB",
     "comment": "",
     "tags": [],
     "status": "new",
@@ -28788,7 +28788,8 @@
     "tags": [],
     "status": "new",
     "DateAdded": "2026-11-12 01:17:30",
-    "aspect": "L"
+    "aspect": "L",
+    "VidDate": ""
   },
   {
     "id": "xmwcuysif6d",
@@ -28998,6 +28999,27 @@
     "tags": [],
     "status": "new",
     "DateAdded": "2026-11-12 01:17:30",
+    "aspect": "P"
+  },
+  {
+    "id": "xmwcv3rt90",
+    "kind": "image",
+    "type": "other",
+    "link": "https://lookaside.instagram.com/seo/google_widget/crawler/?media_id=4008559640848144268",
+    "source": "Google",
+    "query": "red lipped batfish",
+    "VidTitle": "The Fish That Walks Instead of Swims This fish looks fake, but it's  completely real. The red-lipped batfish lives near the Galapagos Islands  and uses its fins to walk along the ocean",
+    "VidAuthor": "",
+    "attribution": "https://www.instagram.com/reel/DfiGapxPRpm/",
+    "resolution": "640×1136",
+    "width": 640,
+    "height": 1136,
+    "vidLength": "",
+    "size": "",
+    "comment": "",
+    "tags": [],
+    "status": "new",
+    "DateAdded": "2026-11-12 01:21:23",
     "aspect": "P"
   }
 ]

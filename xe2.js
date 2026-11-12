@@ -170,6 +170,48 @@
     renderHTML: function (p) { return ['small', mergeAttributes(p.HTMLAttributes), 0]; },
   });
 
+  // (dev1204) Superscript, subscript, highlight and a text COLOUR on a few words,
+  // as marks. A headless pass over every saved text showed these were the only
+  // things a save still dropped: 122 <sup> in two rows (m², CO₂ footnotes), five
+  // <mark>, and eight coloured <span>/<font>. Colour keeps the colour ONLY — a
+  // span's font-size is still dropped on purpose (a size belongs to the line).
+  function _tagMark(name, tag) {
+    return Mark.create({
+      name: name,
+      parseHTML: function () { return [{ tag: tag }]; },
+      renderHTML: function (p) { return [tag, mergeAttributes(p.HTMLAttributes), 0]; },
+    });
+  }
+  var Sup = _tagMark('sup', 'sup'), Sub = _tagMark('sub', 'sub'), Highlight = _tagMark('highlight', 'mark');
+  var TextColor = Mark.create({
+    name: 'textColor',
+    addAttributes: function () {
+      return {
+        color: {
+          default: null,
+          parseHTML: function (el) { return (el.style && el.style.color) || el.getAttribute('color') || null; },
+          renderHTML: function (a) { return a.color ? { style: 'color: ' + a.color } : {}; },
+        },
+      };
+    },
+    parseHTML: function () {
+      return [
+        { tag: 'span', getAttrs: function (el) { return (el.style && el.style.color) ? {} : false; } },
+        { tag: 'font[color]' },
+      ];
+    },
+    renderHTML: function (p) { return ['span', mergeAttributes(p.HTMLAttributes), 0]; },
+  });
+
+  // (dev1204) A <video>/<audio> written as <video><source src="…"></video> has no
+  // src attribute of its own; without this it came through as a clip with no file.
+  function _mediaSrc(el) {
+    var s = el.getAttribute('src');
+    if (s) return s;
+    var c = el.querySelector('source[src]');
+    return c ? c.getAttribute('src') : null;
+  }
+
   // Image that PRESERVES the inline style (float/width/margin) ftext uses for
   // sizing + alignment. Default extension-image drops all of it.
   // (dev0630) INLINE (see buildExtensions .configure) so it lives INSIDE a
@@ -213,7 +255,7 @@
         };
       }
       return {
-        src:    { default: null },
+        src:    { default: null, parseHTML: _mediaSrc },
         style:  { default: null,
                   parseHTML: function (el) { return el.getAttribute('style'); },
                   renderHTML: function (attrs) { return attrs.style ? { style: attrs.style } : {}; } },
@@ -228,6 +270,39 @@
     },
     parseHTML: function () { return [{ tag: 'video' }]; },
     renderHTML: function (p) { return ['video', mergeAttributes(p.HTMLAttributes)]; },
+  });
+
+  // (dev1204) <audio> — same reason as Video and Iframe: no row holds one today,
+  // but a tag with no schema node is deleted by the first autosave after it
+  // arrives. The editor does not offer inserting one; it only has to carry it.
+  var Audio = Node.create({
+    name: 'audio',
+    group: 'inline',
+    inline: true,
+    atom: true,
+    draggable: true,
+    addAttributes: function () {
+      function boolAttr(name) {
+        return {
+          default: false,
+          parseHTML: function (el) { return el.hasAttribute(name); },
+          renderHTML: function (attrs) { var o = {}; if (attrs[name]) o[name] = name; return o; },
+        };
+      }
+      return {
+        src:    { default: null, parseHTML: _mediaSrc },
+        style:  { default: null,
+                  parseHTML: function (el) { return el.getAttribute('style'); },
+                  renderHTML: function (attrs) { return attrs.style ? { style: attrs.style } : {}; } },
+        preload:{ default: null },
+        controls: boolAttr('controls'),
+        autoplay: boolAttr('autoplay'),
+        loop:     boolAttr('loop'),
+        muted:    boolAttr('muted'),
+      };
+    },
+    parseHTML: function () { return [{ tag: 'audio' }]; },
+    renderHTML: function (p) { return ['audio', mergeAttributes(p.HTMLAttributes)]; },
   });
 
   // (dev0731) EMBEDDED FRAME (<iframe>) — same reasoning as Video above, found
@@ -545,6 +620,7 @@
       TextAlignAttr,
       FontSizeAttr,
       DetailsSummary, Details, Small, SlideSection, StyledDiv, TeCut, XAll,
+      Sup, Sub, Highlight, TextColor,   // (dev1204)
       CheckBox,
       Underline,
       // (dev0851) allowBase64: TipTap's Image parses with
@@ -556,6 +632,7 @@
       // carries base64, and this makes that survivable rather than destructive.
       StyledImage.configure({ inline: true, allowBase64: true }),
       Video,
+      Audio,
       Iframe,
       Link.configure({ openOnClick: false, autolink: false }),
       Table.configure({ resizable: false }), TableRow, TableHeader, TableCell,
@@ -682,14 +759,49 @@
     }
   }
 
+  // (dev1204) PASTE A PICTURE'S ADDRESS, GET THE PICTURE. On an EMPTY line, a
+  // clipboard that is nothing but the web address of an image or a video file
+  // goes in as that picture/clip (400px, A+/A− or 🖼 to change it) instead of as
+  // a line of address text. Anywhere else — mid-sentence, on a line with words,
+  // over a selection — it pastes as text exactly as before, and so does 📋T.
+  function _handleMediaUrlPaste(editor, view, event) {
+    var cd = event && event.clipboardData;
+    if (!cd || !editor) return false;
+    var text = (cd.getData('text/plain') || '').trim();
+    if (text.length > 2000 || !/^https?:\/\/\S+$/i.test(text)) return false;
+    var sel = view.state.selection, par = sel.$from.parent;
+    if (!sel.empty || par.type.name !== 'paragraph' || par.content.size) return false;
+    var bare = text.split(/[?#]/)[0];
+    var isVid = (typeof window.teIsVideoUrl === 'function')
+      ? !!window.teIsVideoUrl(text) : /\.(mp4|webm|ogv|mov|m4v)$/i.test(bare);
+    var isImg = /\.(jpe?g|png|gif|webp|avif)$/i.test(bare);
+    if (!isVid && !isImg) return false;
+    var q = text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    var css = 'max-width:100%;width:400px;border-radius:4px;';
+    try {
+      editor.chain().focus().insertContent(isVid
+        ? '<video src="' + q + '" style="' + css + '" controls playsinline preload="metadata"></video>'
+        : '<img src="' + q + '" style="' + css + '" alt="">').run();
+    } catch (e) { return false; }
+    event.preventDefault();
+    _toast('Pasted as a ' + (isVid ? 'clip' : 'picture') + ' — click it, then A+ / A− to resize');
+    return true;
+  }
+
   function createEditor(element, raw, opts) {
     opts = opts || {};
-    var editor = new Editor({
+    var editor = null;
+    editor = new Editor({
       element: element,
       extensions: buildExtensions(),
       content: raw || '',
       editable: opts.editable !== false,
-      editorProps: Object.assign({ transformPastedHTML: _transformPastedHTML, handlePaste: _handlePlainPasteLiteralTags }, opts.editorProps),
+      editorProps: Object.assign({
+        transformPastedHTML: _transformPastedHTML,
+        handlePaste: function (view, event) {
+          return _handleMediaUrlPaste(editor, view, event) || _handlePlainPasteLiteralTags(view, event);
+        },
+      }, opts.editorProps),
     });
     _addSlotKeeper(editor);   // (dev1044)
     // Once for the initial render, then after every doc change — ProseMirror
@@ -756,12 +868,90 @@
   // open a TAG here. { onSave(html) → false on failure, onClose() }.
   var _ext = null;
   var _saveTimer = null;
+  // (dev1204) What this session has done to the record, so a save can be
+  // skipped when there is nothing to save, and undone when there is.
+  var _dirty = false;       // something was typed/changed since open
+  var _wrote = false;       // a save of this session reached the record
+  var _lossHold = false;    // the open-time check found something the editor can't keep
+  var _openRaw = '';        // the field exactly as it was when the editor opened
+  var _openMeta = null;     // { mod, vid, hadVid } — DateModified / VidRange at open
 
   function nowIso() { return (typeof window.isoNow === 'function') ? window.isoNow() : new Date().toISOString(); }
 
-  function stampSaved() {
+  function stampSaved(warn) {
     var el = document.getElementById('xe2Saved');
-    if (el) el.textContent = '✓ autosaved ' + new Date().toTimeString().slice(0, 8);
+    if (!el) return;
+    el.style.color = warn ? '#f77' : '#6d8';
+    el.textContent = warn || ('✓ autosaved ' + new Date().toTimeString().slice(0, 8));
+  }
+
+  // (dev1204) OPEN-TIME LOSS CHECK. The schema drops whatever it has no node
+  // for, silently, and the first autosave then writes the loss to disk — the
+  // route by which <video>, <iframe>, data: images, te-cut and tick boxes were
+  // each lost once before getting a node of their own. Compare what the field
+  // holds with what the editor would write back, BEFORE anything is saved:
+  // every picture, clip, frame, table, collapsible and every character of text
+  // must still be there. Returns a list of what is missing, or null.
+  // DOMParser documents are inert — nothing in them is fetched or run.
+  var _LOSS_TAGS = [['img[src]', 'picture'], ['video', 'video'], ['audio', 'audio clip'],
+    ['iframe', 'embedded frame'], ['svg', 'drawing (svg)'], ['table', 'table'],
+    ['details', 'collapsible'], ['object,embed', 'embedded object'], ['canvas', 'canvas'],
+    ['math', 'formula'], ['input,select,textarea,button,form', 'form control']];
+  function _lossReport(raw, out, field) {
+    if (!raw || !String(raw).trim()) return null;
+    if (field === 'ftext' && /^\s*[\[{]/.test(raw)) {
+      try {
+        JSON.parse(raw);
+        return ['this is quiz DATA (JSON), not slide text — editing it here would break the quiz'];
+      } catch (e) { /* not JSON after all */ }
+    }
+    var a, b;
+    try {
+      var P = new DOMParser();
+      a = P.parseFromString('<body>' + raw + '</body>', 'text/html').body;
+      b = P.parseFromString('<body>' + (out || '') + '</body>', 'text/html').body;
+    } catch (e) { return null; }
+    if (!a || !b) return null;
+    var lost = [];
+    _LOSS_TAGS.forEach(function (t) {
+      var d = a.querySelectorAll(t[0]).length - b.querySelectorAll(t[0]).length;
+      if (d > 0) lost.push(d + ' ' + t[1] + (d === 1 ? '' : 's'));
+    });
+    function txt(el) {
+      var junk = el.querySelectorAll('script,style');
+      for (var i = 0; i < junk.length; i++) junk[i].remove();
+      return (el.textContent || '').replace(/[\s ​-‍﻿]+/g, '').length;
+    }
+    var dt = txt(a) - txt(b);
+    if (dt > 0) lost.push(dt + ' character' + (dt === 1 ? '' : 's') + ' of text');
+    return lost.length ? lost : null;
+  }
+
+  function _showLossBar(ov, lost) {
+    var tb = ov.querySelector('#xe2Toolbar');
+    if (!tb) return;
+    var bar = document.createElement('div');
+    bar.id = 'xe2LossBar';
+    bar.style.cssText = 'background:#5c2b30;border-bottom:2px solid #f66;color:#fdd;padding:10px 14px;font-size:13px;line-height:1.45;';
+    var msg = document.createElement('div');
+    msg.textContent = '⚠ NOTHING IS BEING SAVED. This editor cannot keep everything in this text — saving from here would drop: '
+      + lost.join(', ') + '.';
+    var row = document.createElement('div');
+    row.style.cssText = 'margin-top:8px;display:flex;gap:8px;';
+    var leave = document.createElement('button');
+    leave.className = 'xe2-btn'; leave.textContent = '✕ Close, leave it untouched';
+    leave.onclick = function () { close(); };
+    var go = document.createElement('button');
+    go.className = 'xe2-btn'; go.style.cssText = 'border-color:#f66;color:#fbb;';
+    go.textContent = 'Edit anyway (lose those)';
+    go.onclick = function () {
+      _lossHold = false;
+      bar.remove();
+      if (_dirty) { clearTimeout(_saveTimer); _saveTimer = setTimeout(function () { doSave(); }, 1000); }
+    };
+    row.appendChild(leave); row.appendChild(go);
+    bar.appendChild(msg); bar.appendChild(row);
+    tb.parentNode.insertBefore(bar, tb);
   }
 
   // Write current editor HTML to the row + persist to disk (no close).
@@ -781,19 +971,43 @@
   // thing standing in the way). The identity check on _gridConfigs makes sure
   // the row we just mutated is actually in the array cSaveToFile writes;
   // if it is not, say so out loud instead of pretending the save happened.
-  function doSave() {
+  // (dev1204) `explicit` = the user asked (✓ Save, Ctrl+S, swipe-back), as
+  // opposed to the autosave timer.
+  //  · While the open-time loss warning is up, NOTHING is written.
+  //  · Opened, nothing changed, and the record already holds exactly this text:
+  //    nothing is written. ✓ Save on a row you only looked at used to rewrite
+  //    the whole file and stamp DateModified = now, which re-sorted the row to
+  //    the top of a LastModOnTop view for no reason. A row whose text the
+  //    editor would TIDY (old junk, a stray empty heading) is still rewritten
+  //    by an explicit Save — that is the documented way to clean one up.
+  function doSave(explicit) {
     if (!_api || !_row) return false;
+    clearTimeout(_saveTimer); _saveTimer = null;
+    if (_lossHold) {
+      if (explicit) _toast('⚠ Not saved — answer the red warning at the top first');
+      return false;
+    }
+    var html = _api.getFtext();
     // (dev1148) An outside owner takes the HTML and saves it to its own file:
     // no ml.json write, and no DateModified/VidRange stamped on a tag.
     if (_ext && typeof _ext.onSave === 'function') {
+      if (!_dirty && html === _openRaw) return true;
       var okExt = false;
-      try { okExt = _ext.onSave(_api.getFtext()) !== false; } catch (e) { console.warn('[xe2] onSave failed', e); }
-      if (okExt) stampSaved();
+      try { okExt = _ext.onSave(html) !== false; } catch (e) { console.warn('[xe2] onSave failed', e); }
+      if (okExt) { _wrote = true; stampSaved(); }
       return okExt;
     }
-    _row[_field] = _api.getFtext();
+    if (!_dirty && html === (_row[_field] || '')) return true;
+    _row[_field] = html;
     _row.DateModified = nowIso();
     if (_field === 'ftext' && !_row.link) _row.VidRange = 'text';
+    _wrote = true;
+    _persistRow();
+    return true;
+  }
+
+  // Send the row's file to disk: c.json for a config row, ml.json otherwise.
+  function _persistRow() {
     var isCfgRow = _row.UID === undefined && _row.gname !== undefined;
     if (isCfgRow) {
       var inC = Array.isArray(window._gridConfigs) && window._gridConfigs.indexOf(_row) >= 0;
@@ -808,23 +1022,75 @@
       }
     } else if (typeof window.save === 'function') {
       try { window.save(); } catch (e) { console.warn('[xe2] save() failed', e); }
+      // (dev1204) core.js refuses the disk write once ANOTHER tab has saved
+      // ml.json after this one loaded it (dev1185). The editor went on stamping
+      // "✓ autosaved" over a write that never happened. Say so where the eye is.
+      var stale = false;
+      try { stale = (typeof _mlStale !== 'undefined') && !!_mlStale; } catch (e) {}
+      if (stale) {
+        stampSaved('⚠ NOT ON DISK — another tab saved ml.json. Copy your text, then Ctrl+R');
+        return;
+      }
     }
     stampSaved();
-    return true;
   }
 
   function commitAndClose() {
-    doSave();
+    if (_lossHold) { _toast('⚠ Not saved — answer the red warning at the top first'); return; }
+    var changed = _dirty || _wrote;
+    doSave(true);
+    changed = changed || _wrote;
     var cell = _cell, row = _row, field = _field;
     close();
     if (field === 'ftext' && typeof window.gridUpdateCell === 'function') {
       try { window.gridUpdateCell(cell, row); } catch (e) {}
     }
-    if (typeof window.toast === 'function') window.toast('✓ Saved ' + (field === 'ftext' ? 'text slide' : field) + ' (v2)', 1100);
+    if (typeof window.toast === 'function') {
+      window.toast(changed ? '✓ Saved ' + (field === 'ftext' ? 'text slide' : field) + ' (v2)'
+                           : 'No changes — nothing to save', 1100);
+    }
+  }
+
+  // (dev1204) ↶ REVERT — put the record back exactly as it was when the editor
+  // opened, and close. Autosave means ✕ Close never discarded anything (its
+  // tooltip said "without saving", but everything older than a second was
+  // already on disk), so there was no way to back out of an edit that went
+  // wrong except Ctrl+Z, which stops at 100 steps and dies with the editor.
+  function revertAndClose() {
+    if (!_api || !_row) { close(); return; }
+    clearTimeout(_saveTimer); _saveTimer = null;
+    if (!_dirty && !_wrote) { close(); _toast('Nothing was changed'); return; }
+    if (!window.confirm('Revert?\n\nEverything changed since this editor was opened is thrown away and the text goes back to what it was.')) return;
+    _dirty = false;
+    var cell = _cell, row = _row, field = _field, ok = true, isExt = !!_ext;
+    if (_wrote) {
+      if (_ext && typeof _ext.onSave === 'function') {
+        try { ok = _ext.onSave(_openRaw) !== false; } catch (e) { ok = false; }
+      } else {
+        // '' and not `delete`: an ABSENT ftext is read by core.js's wipe guard as
+        // "stripped, restore from disk" — and disk now holds the edited text.
+        row[field] = _openRaw;
+        if (_openMeta) {
+          if (_openMeta.mod !== undefined) row.DateModified = _openMeta.mod;
+          if (_openMeta.hadVid) row.VidRange = _openMeta.vid; else delete row.VidRange;
+        }
+        _persistRow();
+      }
+    }
+    close();
+    if (field === 'ftext' && !isExt && typeof window.gridUpdateCell === 'function') {
+      try { window.gridUpdateCell(cell, row); } catch (e) {}
+    }
+    _toast(ok ? '↶ Reverted — the text is as it was when you opened it' : '⚠ Revert could not be saved');
   }
 
   function close() {
-    clearTimeout(_saveTimer);
+    // (dev1204) The autosave waits 1s after the last keystroke, and close()
+    // used to cancel it — so Esc, ✕, or stepping to another row within a second
+    // of typing threw that last second away. Write it first.
+    if (_saveTimer && _api && _row && !_lossHold) { try { doSave(); } catch (e) {} }
+    clearTimeout(_saveTimer); _saveTimer = null;
+    _dirty = false; _wrote = false; _lossHold = false;
     if (_api) { try { _api.editor.destroy(); } catch (e) {} _api = null; }
     var ov = document.getElementById('xe2Overlay'); if (ov) ov.remove();
     var st = document.getElementById('xe2Styles'); if (st) st.remove();
@@ -1490,7 +1756,65 @@
     if (sumPos !== null) setSummaryAttrsAt(editor, sumPos, _rungAttrsForSummary(idx));
   }
 
+  // (dev1204) A+ / A− on a SELECTED picture or clip (click it: blue outline)
+  // resizes it — px widths by a fifth, % widths by ten points — instead of
+  // needing a trip through the 🖼 modal for every nudge. The width lives on the
+  // caption wrapper when there is one (the picture inside fills it), else on
+  // the picture itself, so that is where it is changed. The picture stays
+  // selected, so the button can be pressed repeatedly.
+  function stepMediaSize(editor, dir) {
+    var state = editor.state, sel = state.selection, selPos = sel.from, node = sel.node;
+    var $p = state.doc.resolve(selPos), d;
+    for (d = $p.depth; d >= 1; d--) {
+      if (_isSlotCell($p.node(d))) { _toast('A picture in a frame slot always fills its slot'); return; }
+    }
+    var cands = [];
+    if (node.type.name === 'styledDiv') {
+      cands.push({ node: node, pos: selPos });
+      node.descendants(function (n, p) {
+        if (n.type.name === 'image' || n.type.name === 'video') cands.push({ node: n, pos: selPos + 1 + p });
+      });
+    } else {
+      for (d = $p.depth; d >= 1; d--) {
+        var anc = $p.node(d);
+        if (anc.type.name !== 'styledDiv') continue;
+        if (_isMediaWrapper(anc)) cands.push({ node: anc, pos: $p.before(d) });
+        break;
+      }
+      cands.push({ node: node, pos: selPos });
+    }
+    var hit = null, num = 0, unit = '', odd = false;
+    for (var i = 0; i < cands.length && !hit; i++) {
+      var w = String(_styleProbe(cands[i].node.attrs.style).width || '').trim();
+      var m = /^(\d+(?:\.\d+)?)(px|%)$/.exec(w);
+      if (m) { hit = cands[i]; num = parseFloat(m[1]); unit = m[2]; }
+      else if (w) odd = true;
+    }
+    if (!hit) {
+      if (odd) { _toast('This one has a special width — double-click it and use the 🖼 box to resize'); return; }
+      hit = cands[cands.length - 1];
+      var el = null;
+      try { el = editor.view.nodeDOM(hit.pos); } catch (e) {}
+      num = (el && el.getBoundingClientRect) ? Math.round(el.getBoundingClientRect().width) : 0;
+      if (!num) num = 400;
+      unit = 'px';
+    }
+    var nv = unit === '%'
+      ? Math.max(10, Math.min(100, Math.round(num + dir * 10)))
+      : Math.max(60, Math.min(2400, Math.round(num * (dir > 0 ? 1.2 : 1 / 1.2) / 10) * 10));
+    if (nv === num) { _toast(dir > 0 ? 'Already as wide as it goes' : 'Already as narrow as it goes'); return; }
+    var st = _styleProbe(hit.node.attrs.style);
+    st.setProperty('width', nv + unit);
+    try {
+      var tr = state.tr.setNodeMarkup(hit.pos, undefined, Object.assign({}, hit.node.attrs, { style: st.cssText }));
+      try { tr.setSelection(sel.constructor.create(tr.doc, selPos)); } catch (e2) {}
+      editor.view.dispatch(tr);
+      _toast('Width: ' + nv + unit);
+    } catch (e3) { console.warn('[xe2] media resize failed', e3); }
+  }
+
   function stepBlockSize(editor, dir) {
+    if (_isMediaUnitSelection(editor.state.selection)) { stepMediaSize(editor, dir); return; }
     var ni = currentRung(editor) + dir;
     if (ni < 0 || ni >= SIZE_LADDER.length) {
       _toast(dir < 0 ? 'Already the smallest size (50%)' : 'Already the largest size (H1)');
@@ -1589,7 +1913,15 @@
       sw.onmousedown = function (ev) { ev.preventDefault(); }; // keep editor selection
       sw.onclick = function () {
         pop.remove();
-        if (_api) applySectionColor(_api.editor, mode, c.v);
+        if (!_api) return;
+        if (mode === 'sel') {   // (dev1204) the selected words, not the section
+          var ed = _api.editor;
+          if (ed.state.selection.empty) { _toast('Highlight the words to colour first'); return; }
+          if (c.v) ed.chain().focus().setMark('textColor', { color: c.v }).run();
+          else ed.chain().focus().unsetMark('textColor').run();
+          return;
+        }
+        applySectionColor(_api.editor, mode, c.v);
       };
       pop.appendChild(sw);
     });
@@ -2486,13 +2818,19 @@
       ['<i>I</i>', 'Italic (Ctrl+I)', function (e) { e.chain().focus().toggleItalic().run(); }],
       ['<u>U</u>', 'Underline (Ctrl+U)', function (e) { e.chain().focus().toggleUnderline().run(); }],
       ['<small>sm</small>', 'Small text', function (e) { e.chain().focus().toggleMark('small').run(); }],
+      // (dev1204)
+      ['<s>S</s>', 'Strike through the selected words', function (e) { e.chain().focus().toggleStrike().run(); }],
+      ['x<sup>2</sup>', 'Superscript — m², footnote numbers', function (e) { e.chain().focus().unsetMark('sub').toggleMark('sup').run(); }],
+      ['x<sub>2</sub>', 'Subscript — CO₂, H₂O', function (e) { e.chain().focus().unsetMark('sup').toggleMark('sub').run(); }],
+      ['<span style="background:#ffe066;color:#111;padding:0 3px;border-radius:2px;">H</span>', 'Highlight the selected words (yellow marker)', function (e) { e.chain().focus().toggleMark('highlight').run(); }],
+      ['<span style="color:#ff8c00;font-weight:bold;">A</span>&#9662;', 'Colour for the SELECTED WORDS only (the A▾ further right colours a whole section). The striped swatch takes the colour off.', function (e, btn) { showColorPicker(btn, 'sel'); }],
       ['|'],
       ['H1', 'Heading 1 — on a collapsible’s title line it sizes the title', function (e) { headingOrSummary(e, 1); }],
       ['H2', 'Heading 2 — on a collapsible’s title line it sizes the title', function (e) { headingOrSummary(e, 2); }],
       ['H3', 'Heading 3 — on a collapsible’s title line it sizes the title', function (e) { headingOrSummary(e, 3); }],
       ['P', 'Paragraph — on a collapsible’s title line it clears the title size', function (e) { paragraphOrSummary(e); }],
-      ['A&#8722;', 'Smaller text — step the current line(s) down one size: H1 → H2 → H3 → H4 → Normal → 90% → 80% → 70% → 60% → 50%. 60% reads like ordinary screen text in V', function (e) { stepBlockSize(e, -1); }],
-      ['A+', 'Larger text — step the current line(s) up one size, 50% up to H1', function (e) { stepBlockSize(e, 1); }],
+      ['A&#8722;', 'With a picture or clip selected: make it narrower. Otherwise smaller text — step the current line(s) down one size: H1 → H2 → H3 → H4 → Normal → 90% → 80% → 70% → 60% → 50%. 60% reads like ordinary screen text in V', function (e) { stepBlockSize(e, -1); }],
+      ['A+', 'With a picture or clip selected: make it wider. Otherwise larger text — step the current line(s) up one size, 50% up to H1', function (e) { stepBlockSize(e, 1); }],
       // (dev1061)
       ['Aa&#9662;', 'Text size — pick any of the ten sizes (50% to H1) for the line(s) under the cursor, with how big each comes out in V on this screen', function (e, btn) { showSizePicker(btn); }],
       ['&bull;', 'Bullet list', function (e) { e.chain().focus().toggleBulletList().run(); }],
@@ -2660,6 +2998,8 @@
       '#xe2Editor .te-cb:hover{filter:brightness(1.4);}',
       '#xe2Editor .te-cb[data-checked="1"]{text-shadow:0 0 6px currentColor;}',
       '#xe2Editor a{color:#7cf;}',
+      '#xe2Editor mark{background:#ffe066;color:#111;padding:0 2px;border-radius:2px;}',   // (dev1204)
+      '#xe2Editor audio{vertical-align:middle;max-width:100%;}',
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -2722,6 +3062,10 @@
       if (!row) return false; // v1 handles row creation before delegating
       _row = row;
       _ext = (opts.onSave || opts.onClose) ? { onSave: opts.onSave, onClose: opts.onClose } : null;
+      // (dev1204) Remember the record as it is now, for ↶ Revert and the no-change skip.
+      _openRaw = (typeof row[_field] === 'string') ? row[_field] : '';
+      _openMeta = { mod: row.DateModified, vid: row.VidRange, hadVid: Object.prototype.hasOwnProperty.call(row, 'VidRange') };
+      _dirty = false; _wrote = false; _lossHold = false;
 
       injectStyles();
 
@@ -2743,7 +3087,8 @@
               ' <span style="color:#89a;font-weight:normal;font-size:11px;">· swipe ← to go back</span></span>' +
             '<span id="xe2Saved" style="color:#6d8;font-size:11px;font-family:monospace;"></span>' +
             '<div style="display:flex;gap:8px;">' +
-              '<button id="xe2Close" class="xe2-btn" title="Close without saving (Esc)">✕ Close</button>' +
+              '<button id="xe2Revert" class="xe2-btn" style="border-color:#c96;color:#fc9;margin-right:14px;" title="Revert — throw away everything changed since this editor was opened and put the text back as it was (asks first)">↶ Revert</button>' +
+              '<button id="xe2Close" class="xe2-btn" title="Close (Esc). Everything typed is already autosaved — use ↶ Revert to back out of changes">✕ Close</button>' +
               '<button id="xe2Save" class="xe2-btn" style="border-color:#0f0;color:#0f0;" title="Save + close (Ctrl+S)">✓ Save</button>' +
             '</div>' +
           '</div>' +
@@ -2931,10 +3276,16 @@
           },
         },
         onUpdate: function () {
+          _dirty = true;
           clearTimeout(_saveTimer);
           _saveTimer = setTimeout(function () { doSave(); }, 1000);
         },
       });
+      // (dev1204) Before a single keystroke can be autosaved: would saving from
+      // here lose anything that is in the field now? If so, hold every save
+      // until the user has seen exactly what and chosen.
+      var _lost = _lossReport(_openRaw, _api.getFtext(), _field);
+      if (_lost) { _lossHold = true; _showLossBar(ov, _lost); }
 
       // Toolbar
       var tb = ov.querySelector('#xe2Toolbar');
@@ -2956,6 +3307,7 @@
 
       ov.querySelector('#xe2Save').onclick = commitAndClose;
       ov.querySelector('#xe2Close').onclick = close;
+      ov.querySelector('#xe2Revert').onclick = revertAndClose;
       document.addEventListener('keydown', _onKeydown, true);
 
       // (dev0592) R→L drag on the header bar = save + return to G/T. A drag on the

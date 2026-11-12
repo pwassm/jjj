@@ -9537,7 +9537,7 @@ function _sanitizePastedHtml(html) {
   comments.forEach(c => c.remove());
 
   const KEEP = new Set(['H1','H2','H3','H4','H5','H6','P','UL','OL','LI','A',
-    'STRONG','B','EM','I','U','BR','IMG','BLOCKQUOTE','DIV','SMALL',
+    'STRONG','B','EM','I','U','BR','IMG','BLOCKQUOTE','DIV','SMALL','SUP','SUB','MARK','S',
     'DETAILS','SUMMARY',
     // (dev1182) Tables stay tables (Perplexity answers); the xe2 schema has them.
     'TABLE','THEAD','TBODY','TFOOT','TR','TH','TD']);
