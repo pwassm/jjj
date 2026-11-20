@@ -6002,7 +6002,9 @@
       ['iNaturalist', 'https://www.inaturalist.org/taxa/search?q=' + q],
       ['Wikipedia', 'https://en.wikipedia.org/w/index.php?fulltext=1&search=' + q],
       ['FishBase', 'https://www.fishbase.se/ComNames/CommonNameSearchList.php?CommonName=' + q],
-      ['SeaLifeBase', 'https://www.sealifebase.se/comnames/commonnamesearchlist.php?CommonName=' + q]
+      ['SeaLifeBase', 'https://www.sealifebase.se/comnames/commonnamesearchlist.php?CommonName=' + q],
+      // dev1205: Oceana's encyclopedia (oceana.ca + oceana.org); click-only, their terms bar fetching it.
+      ['Oceana', 'https://www.google.com/search?q=' + encodeURIComponent(query + ' site:oceana.ca OR site:oceana.org')]
     ];
     return '<div style="margin-top:6px;font-size:11px;color:#aaa;">Search by hand: '
       + links.map(l => '<a href="' + escapeHtml(l[1]) + '" target="_blank" rel="noopener" style="color:#6af;margin-right:9px;">'
