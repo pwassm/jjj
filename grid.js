@@ -6119,8 +6119,8 @@ function gridWriteToT() {
     if (isShowRow(rowByUid(uid))) window.salShowOpen(uid);
   };
 
-  // (dev1207) In the Xe editor, clicking a UID inside a ( command ) shows a small
-  // picture of that row beside the click. Any other click closes it.
+  // (dev1207) In the Xe editor, pointing at a UID inside a ( command ) shows a
+  // small picture of that row beside the pointer; moving off it or typing closes it.
   function thumbHide() {
     var p = document.getElementById("salShowThumb");
     if (!p) return;
@@ -6160,10 +6160,11 @@ function gridWriteToT() {
     p.style.left = Math.max(6, Math.min(x + 12, window.innerWidth - w - 6)) + "px";
     p.style.top = Math.max(6, (y + 18 + h > window.innerHeight) ? y - h - 12 : y + 18) + "px";
   }
-  document.addEventListener("click", function (e) {
-    thumbHide();
+  // (dev1208) No click needed: resting the pointer on the UID is enough.
+  var thumbKey = "";
+  function thumbProbe(e) {
     var ed = (e.target && e.target.closest) ? e.target.closest("#xe2Overlay .ProseMirror") : null;
-    if (!ed) return;
+    if (!ed) return null;
     var node = null, off = 0;
     if (document.caretRangeFromPoint) {
       var r = document.caretRangeFromPoint(e.clientX, e.clientY);
@@ -6172,20 +6173,41 @@ function gridWriteToT() {
       var cp = document.caretPositionFromPoint(e.clientX, e.clientY);
       if (cp) { node = cp.offsetNode; off = cp.offset; }
     }
-    if (!node || node.nodeType !== 3) return;
+    if (!node || node.nodeType !== 3) return null;
     var s = node.nodeValue || "";
     var a = s.lastIndexOf("(", Math.max(0, off - 1)), z = s.indexOf(")", off);
-    if (a < 0 || z < 0 || s.slice(a, off).indexOf(")") >= 0) return;
-    if (!parseCmds(s.slice(a + 1, z)).length) return;
+    if (a < 0 || z < 0 || s.slice(a, off).indexOf(")") >= 0) return null;
+    if (!parseCmds(s.slice(a + 1, z)).length) return null;
     var ws = off, we = off;
     while (ws > a + 1 && /[\w-]/.test(s.charAt(ws - 1))) ws--;
     while (we < z && /[\w-]/.test(s.charAt(we))) we++;
     var word = s.slice(ws, we);
-    if (!/^\d[\w-]*$/.test(word) || CELL_RE.test(word)) return;
-    var row = rowByUid(word);
-    if (row) thumbShow(row, e.clientX, e.clientY);
+    if (!/^\d[\w-]*$/.test(word) || CELL_RE.test(word)) return null;
+    // The pointer must really be over the word, not just nearest to it.
+    try {
+      var rg = document.createRange();
+      rg.setStart(node, ws); rg.setEnd(node, we);
+      var bx = rg.getBoundingClientRect();
+      if (e.clientX < bx.left - 3 || e.clientX > bx.right + 3 || e.clientY < bx.top - 3 || e.clientY > bx.bottom + 3) return null;
+    } catch (_) {}
+    return rowByUid(word);
+  }
+  var thumbBusy = false;
+  document.addEventListener("mousemove", function (e) {
+    if (thumbBusy) return;
+    if (!document.getElementById("xe2Overlay")) { if (thumbKey) { thumbKey = ""; thumbHide(); } return; }
+    thumbBusy = true;
+    requestAnimationFrame(function () {
+      thumbBusy = false;
+      var row = thumbProbe(e);
+      var key = row ? String(row.UID) : "";
+      if (key === thumbKey) return;
+      thumbKey = key;
+      thumbHide();
+      if (row) thumbShow(row, e.clientX, e.clientY);
+    });
   }, true);
-  document.addEventListener("keydown", thumbHide, true);
+  document.addEventListener("keydown", function () { thumbKey = ""; thumbHide(); }, true);
 
   // ?show=UID opens it once the rows are in.
   try {
