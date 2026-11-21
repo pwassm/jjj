@@ -8550,5 +8550,63 @@
     "kind": "topic",
     "parents": [],
     "aliases": []
+  },
+  {
+    "id": "cancridae",
+    "label": "Cancridae",
+    "kind": "taxon",
+    "parents": [
+      "decapoda"
+    ],
+    "aliases": [],
+    "rank": "family"
+  },
+  {
+    "id": "cancer",
+    "label": "Cancer",
+    "kind": "taxon",
+    "parents": [
+      "cancridae"
+    ],
+    "aliases": [],
+    "rank": "genus",
+    "authority": "Linnaeus, 1758",
+    "common": "crab",
+    "NameOrigin": "Cancer: From Latin cancer (“crab”), from Ancient Greek karkinos (“crab”).",
+    "NameOriginSrc": [
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/Cancer"
+      }
+    ],
+    "NameSay": "ˈkan(t)-sər\nUS: KAN-ser\nGB: KAN-suh"
+  },
+  {
+    "id": "porcelain-crab",
+    "label": "Porcelain crab",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "rank": "species",
+    "NameSay": "ˈpōr-s(ə-)lən ˈkrab\nPOHR-sluhn KRAB",
+    "common": ""
+  },
+  {
+    "id": "porcellanidae",
+    "label": "Porcellanidae",
+    "kind": "taxon",
+    "parents": [
+      "decapoda"
+    ],
+    "aliases": [],
+    "rank": "family",
+    "authority": "Haworth, 1825"
+  },
+  {
+    "id": "problem",
+    "label": "Problem",
+    "kind": "topic",
+    "parents": [],
+    "aliases": []
   }
 ]

@@ -6,7 +6,8 @@
       "active": 130,
       "cells": 129,
       "ctype": 54,
-      "Zoom": 57
+      "Zoom": 57,
+      "SSgrid": 106
     },
     "_salColOrder": [
       "gname",
@@ -21,6 +22,7 @@
       "DateAdded",
       "DateModified",
       "Zoom",
+      "SSgrid",
       "1a",
       "1b",
       "1c",
@@ -297,7 +299,8 @@
     "active": "1",
     "ctype": "t",
     "Label": "Welcome",
-    "Lock": ""
+    "Lock": "",
+    "SSgrid": ""
   },
   {
     "Kind": "prose",
@@ -311,7 +314,8 @@
     "ctype": "t",
     "active": "1.5",
     "Label": "Apology",
-    "Lock": ""
+    "Lock": "",
+    "SSgrid": ""
   },
   {
     "Kind": "prose",
@@ -325,7 +329,8 @@
     "ctype": "t",
     "active": "2",
     "Label": "New",
-    "Lock": ""
+    "Lock": "",
+    "SSgrid": ""
   },
   {
     "Kind": "prose",
@@ -339,7 +344,8 @@
     "ctype": "t",
     "active": "2",
     "Label": "New",
-    "Lock": ""
+    "Lock": "",
+    "SSgrid": ""
   },
   {
     "Kind": "prose",
@@ -353,7 +359,8 @@
     "ctype": " ",
     "active": "",
     "Label": "New",
-    "Lock": ""
+    "Lock": "",
+    "SSgrid": ""
   },
   {
     "Kind": "prose",
@@ -367,7 +374,8 @@
     "ctype": "t",
     "active": "2",
     "Label": "New",
-    "Lock": ""
+    "Lock": "",
+    "SSgrid": ""
   },
   {
     "Kind": "grids",
@@ -381,7 +389,8 @@
     "ctype": "t",
     "active": "3",
     "Label": "Grids",
-    "Lock": "1"
+    "Lock": "1",
+    "SSgrid": ""
   },
   {
     "Kind": "fun",
@@ -395,7 +404,8 @@
     "ctype": "t",
     "active": "3.1",
     "Label": "Fun",
-    "Lock": "1"
+    "Lock": "1",
+    "SSgrid": ""
   },
   {
     "Kind": "flash",
@@ -409,7 +419,8 @@
     "ctype": "t",
     "active": "4",
     "Label": "Flashcards",
-    "Lock": "1"
+    "Lock": "1",
+    "SSgrid": ""
   },
   {
     "Kind": "search",
@@ -423,7 +434,8 @@
     "ctype": "t",
     "active": "5",
     "Label": "Search",
-    "Lock": "1"
+    "Lock": "1",
+    "SSgrid": ""
   },
   {
     "Kind": "saved",
@@ -437,7 +449,8 @@
     "ctype": "t",
     "active": "6",
     "Label": "Saved Searches",
-    "Lock": "1"
+    "Lock": "1",
+    "SSgrid": ""
   },
   {
     "Kind": "loops",
@@ -451,7 +464,8 @@
     "ctype": "t",
     "active": "7",
     "Label": "Saved Loops",
-    "Lock": "1"
+    "Lock": "1",
+    "SSgrid": ""
   },
   {
     "Kind": "prose",
@@ -494,7 +508,8 @@
     "active": "8",
     "ctype": "t",
     "Label": "Other",
-    "Lock": ""
+    "Lock": "",
+    "SSgrid": ""
   },
   {
     "Kind": "signin",
@@ -508,7 +523,8 @@
     "ctype": "t",
     "active": "9",
     "Label": "Contact",
-    "Lock": ""
+    "Lock": "",
+    "SSgrid": ""
   },
   {
     "Kind": "intro",
@@ -551,7 +567,8 @@
     "active": "",
     "ctype": "t",
     "Label": "Welcome",
-    "Lock": ""
+    "Lock": "",
+    "SSgrid": ""
   },
   {
     "Kind": "intro",
@@ -592,7 +609,8 @@
     "3P": "",
     "ctxt": "<h2>Mostly marine-themed images and videos... and more!</h2><h3>Click/tap on lines with blue triangles to hide or reveal single line.</h3><p></p><p></p><details open=\"\"><summary>Taylor's sea hare</summary><div style=\"float: left; width: 75%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><div class=\"te-slot\" style=\"border: 2px dashed rgb(106, 166, 255); border-radius: 6px; padding: 18px 10px; text-align: center; color: rgb(142, 197, 255); font-size: 0.85em; line-height: 1.5;\"><p>📅 Video of the day<br>fills from the Intro’s date cell</p></div><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Taylor's sea hare, the savior of the Elkhorn slough's eelgrass See more</p></div></div><p></p></details><details open=\"\"><summary>Taylor's sea hare</summary><div style=\"float: left; width: 75%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><video src=\"https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4\" preload=\"metadata\" autoplay=\"autoplay\" loop=\"loop\" muted=\"muted\" playsinline=\"playsinline\" style=\"width: 100%; border-radius: 4px;\"></video></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Taylor's sea hare, the savior of the Elkhorn slough's eelgrass <a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"?i=709\">See more</a></p></div></div><p></p></details><p></p><p></p><p></p><div class=\"te-cut te-cut-below\"><p></p></div><p></p><h3><span data-xall=\"open\" class=\"te-xall\">▼▼</span> Reveals all, <span data-xall=\"close\" class=\"te-xall\">▶▶</span> Hides all.</h3><details open=\"\"><summary>Skeleton shrimp</summary><div style=\"float: left; width: 50%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><video src=\"https://video.sealifeandmore.com/SkeletonShrimpCleanEat.mp4\" preload=\"metadata\" controls=\"controls\" autoplay=\"autoplay\" loop=\"loop\" muted=\"muted\" playsinline=\"playsinline\" style=\"width: 100%; border-radius: 4px;\"></video></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Skeleton shrimp</p></div></div><p></p></details><p></p><details><summary>Taylor's sea hare</summary><div style=\"float: left; width: 60%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><video src=\"https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4\" preload=\"metadata\" autoplay=\"autoplay\" loop=\"loop\" muted=\"muted\" playsinline=\"playsinline\" style=\"width: 100%; border-radius: 4px;\"></video></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Taylor's sea hare</p></div></div><p></p></details><p></p><details><summary>Yellowfin rockfish</summary><div style=\"float: left; width: 60%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><img src=\"https://sealifeandmore.org/wp-content/uploads/2025/07/codblackface_20250720.gif\" alt=\"\" style=\"width: 100%; border-radius: 4px;\"></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Yellowfin rockfish with hemifacial melanosis</p></div></div><p></p></details><details><summary>Navigating site: Sample navigation below, also use presentation mode grids teaching navigation</summary><p>=&gt; Grids (multiple cells containing text or image or video)</p><p>=&gt; Presentation mode (text and instruction and quiz)</p><p>=&gt; Full window with loop and enlarge</p><p>=&gt; Fun modes</p></details><p>To continue, press \"Choose a View\". I recommend you start with \"Octopus Hatchlings\", that video collection is the first to teach how to navigate the site.</p><h4>Keyboard \"H\" at any point gives context-sensitive help screen.</h4><h2>Log in, join a higher tier, and maybe win a fortune!</h2><p>Basic tier: Use all the basic site features for free, no login required</p><p>Premium tier: basic site features plus perks. Cost is basic tier price x 2</p><p>Super premium tier: perks of premium tier, plus opportunity to win ten-million-dollar ($10,000,000) lottery as soon as it can be fully funded by proceeds from premium tiers. Cost is premium tier x 2</p><details><summary>Input from users, and my responses</summary><details><summary>Doubts about my premium tiers and lottery.</summary><p>My response: consider increasing lottery prize to $20,000,000.</p></details><details><summary>Website is too complicated to navigate, needs back arrow.</summary><p>My response: back arrow added, but swipe left does the same.</p><p>There <u>is</u> a learning curve to use the website.</p></details><details><summary>Put more of my own photos and videos on the website.</summary><p>Coming.</p></details></details><p></p><p></p><div class=\"te-cut te-cut-below\"><p></p></div><h2>Welcome to sealifeandmore.com!</h2><p>Putting mostly marine-themed images in a variety of modes:</p><p>=&gt; Grids (the primary mode)</p><p>=&gt; Presentation mode (text and instruction and quiz)</p><p>=&gt; Full window (for image and video)</p><p>To continue, press \"Choose a View\". I recommend you start with \"Octopus Hatchlings\", that video collection is the first to teach how to navigate the site.</p><h2>Join a higher tier and maybe win a fortune!</h2><p>Basic tier: use of most site features, free.</p><p>Premium tier: basic use of site plus perks; your cost: basic tier price x 2</p><p>Super premium tier: perks of premium tier, plus opportunity to win ten-million-dollar ($10,000,000) lottery whenever it is fully funded by proceeds of premium tiers; Your cost: premium tier x 2</p><details><summary>Input from users, and my responses</summary><p>Doubts about my premium tiers and lottery.</p><p>My response: consider increasing lottery prize to $20,000,000.</p><p>Website is too complicated to navigate, needs back arrow.</p><p>My response: back arrow added, but swipe left does the same.</p><p>There <u>is</u> a learning curve to use the website.</p><p>Put more of my own photos and videos on the website.</p><p>That will come.</p></details><p></p><div class=\"te-cut te-cut-below\"><p></p></div><p></p><h2>Welcome to sealifeandmore.com!</h2><p>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium), as well as my desire to put images in a beautiful and conceivably useful form</p><h3>Learning how to navigate.</h3><p>To start:</p><h2>Swipe right on desktop means:</h2><h2>--&gt; Hold down left mouse button.</h2><h2>--&gt; While holding down button, move mouse briskly to the right a short distance.</h2><h2>--&gt; Then release left mouse button.</h2><h2>\"Swipe right\" on cells in grid will generally bring up larger text or images.</h2><p>The upper right cell often helps instruct, initially in how to use options of the site,</p><p>later in helping learn content. Swipe right activates it!<br></p><p>Some navigation instructions are shown below, but better to learn by doing.</p><details><summary>Help!</summary><p>In Gridveiw, swipe right on cell for full screen.</p><p>Once full screen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-hold-mouse reduces zoom.&nbsp; Double-click goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p><strong>To get back to gridview:</strong></p><p><strong>- Swipe left on desktop or phone.</strong></p></details><p><br></p><details><summary>Slideshows!</summary><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore.com as an adjustable slide show.</p><p>Local disk shows your option for playing from your own image files (probably available on Chrome and Edge browsers on Windows computers, possibly available on other browsers.)</p></details><details><summary><br></summary><p><br></p></details><hr><p><br></p>",
     "active": "",
-    "ctype": "t"
+    "ctype": "t",
+    "SSgrid": ""
   },
   {
     "Kind": "intro",
@@ -633,7 +651,8 @@
     "3P": "",
     "ctxt": "<h1>Introduction</h1><h4>Mostly marine-themed images and videos, and more!</h4><h3>Click/tap on lines with blue triangles to hide or reveal single line.</h3><h3><span data-xall=\"open\" class=\"te-xall\">▼▼</span> Reveals all, <span data-xall=\"close\" class=\"te-xall\">▶▶</span> Hides all.</h3><details><summary>Skeleton shrimp</summary><div style=\"float: left; width: 50%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><video src=\"https://video.sealifeandmore.com/SkeletonShrimpCleanEat.mp4\" preload=\"metadata\" controls=\"controls\" autoplay=\"autoplay\" loop=\"loop\" muted=\"muted\" playsinline=\"playsinline\" style=\"width: 100%; border-radius: 4px;\"></video></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Skeleton shrimp</p></div></div><p></p></details><details><summary>Taylor's sea hare</summary><div style=\"float: left; width: 60%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><video src=\"https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4\" preload=\"metadata\" autoplay=\"autoplay\" loop=\"loop\" muted=\"muted\" playsinline=\"playsinline\" style=\"width: 100%; border-radius: 4px;\"></video></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Taylor's sea hare</p></div></div><p></p></details><details><summary>Yellowfin rockfish</summary><div style=\"float: left; width: 60%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><img src=\"https://sealifeandmore.org/wp-content/uploads/2025/07/codblackface_20250720.gif\" alt=\"\" style=\"width: 100%; border-radius: 4px;\"></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Yellowfin rockfish with hemifacial melanosis</p></div></div><p></p></details><details><summary>Navigating site: Sample navigation below, also use presentation mode grids teaching navigation</summary><p>=&gt; Grids (multiple cells containing text or image or video)</p><p>=&gt; Presentation mode (text and instruction and quiz)</p><p>=&gt; Full window with loop and enlarge</p><p>=&gt; Fun modes</p></details><p>To continue, press \"Choose a View\". I recommend you start with \"Octopus Hatchlings\", that video collection is the first to teach how to navigate the site.</p><h4>Keyboard \"H\" at any point gives context-sensitive help screen.</h4><h2>Log in, join a higher tier, and maybe win a fortune!</h2><p>Basic tier: Use all the basic site features for free, no login required</p><p>Premium tier: basic site features plus perks. Cost is basic tier price x 2</p><p>Super premium tier: perks of premium tier, plus opportunity to win ten-million-dollar ($10,000,000) lottery as soon as it can be fully funded by proceeds from premium tiers. Cost is premium tier x 2</p><details><summary>Input from users, and my responses</summary><details><summary>Doubts about my premium tiers and lottery.</summary><p>My response: consider increasing lottery prize to $20,000,000.</p></details><details><summary>Website is too complicated to navigate, needs back arrow.</summary><p>My response: back arrow added, but swipe left does the same.</p><p>There <u>is</u> a learning curve to use the website.</p></details><details><summary>Put more of my own photos and videos on the website.</summary><p>Coming.</p></details></details><p></p><p></p><div class=\"te-cut te-cut-below\"><p></p></div><h2>Welcome to sealifeandmore.com!</h2><p>Putting mostly marine-themed images in a variety of modes:</p><p>=&gt; Grids (the primary mode)</p><p>=&gt; Presentation mode (text and instruction and quiz)</p><p>=&gt; Full window (for image and video)</p><p>To continue, press \"Choose a View\". I recommend you start with \"Octopus Hatchlings\", that video collection is the first to teach how to navigate the site.</p><h2>Join a higher tier and maybe win a fortune!</h2><p>Basic tier: use of most site features, free.</p><p>Premium tier: basic use of site plus perks; your cost: basic tier price x 2</p><p>Super premium tier: perks of premium tier, plus opportunity to win ten-million-dollar ($10,000,000) lottery whenever it is fully funded by proceeds of premium tiers; Your cost: premium tier x 2</p><details><summary>Input from users, and my responses</summary><p>Doubts about my premium tiers and lottery.</p><p>My response: consider increasing lottery prize to $20,000,000.</p><p>Website is too complicated to navigate, needs back arrow.</p><p>My response: back arrow added, but swipe left does the same.</p><p>There <u>is</u> a learning curve to use the website.</p><p>Put more of my own photos and videos on the website.</p><p>That will come.</p></details><p></p><div class=\"te-cut te-cut-below\"><p></p></div><p></p><h2>Welcome to sealifeandmore.com!</h2><p>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium), as well as my desire to put images in a beautiful and conceivably useful form</p><h3>Learning how to navigate.</h3><p>To start:</p><h2>Swipe right on desktop means:</h2><h2>--&gt; Hold down left mouse button.</h2><h2>--&gt; While holding down button, move mouse briskly to the right a short distance.</h2><h2>--&gt; Then release left mouse button.</h2><h2>\"Swipe right\" on cells in grid will generally bring up larger text or images.</h2><p>The upper right cell often helps instruct, initially in how to use options of the site,</p><p>later in helping learn content. Swipe right activates it!<br></p><p>Some navigation instructions are shown below, but better to learn by doing.</p><details><summary>Help!</summary><p>In Gridveiw, swipe right on cell for full screen.</p><p>Once full screen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-hold-mouse reduces zoom.&nbsp; Double-click goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p><strong>To get back to gridview:</strong></p><p><strong>- Swipe left on desktop or phone.</strong></p></details><p><br></p><details><summary>Slideshows!</summary><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore.com as an adjustable slide show.</p><p>Local disk shows your option for playing from your own image files (probably available on Chrome and Edge browsers on Windows computers, possibly available on other browsers.)</p></details><details><summary><br></summary><p><br></p></details><hr><p><br></p>",
     "active": "",
-    "ctype": "t"
+    "ctype": "t",
+    "SSgrid": ""
   },
   {
     "Kind": "intro",
@@ -674,7 +693,8 @@
     "3P": "",
     "ctxt": "<h1>Introduction</h1><h4>Mostly marine-themed images and videos, and more!</h4><h3>Click/tap on lines with blue triangles to hide or reveal single line.</h3><h3><span data-xall=\"open\" class=\"te-xall\">▼▼</span> Reveals all, <span data-xall=\"close\" class=\"te-xall\">▶▶</span> Hides all.</h3><details><summary>Skeleton shrimp</summary><div style=\"float: left; width: 50%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><video src=\"https://video.sealifeandmore.com/SkeletonShrimpCleanEat.mp4\" preload=\"metadata\" controls=\"controls\" autoplay=\"autoplay\" loop=\"loop\" muted=\"muted\" playsinline=\"playsinline\" style=\"width: 100%; border-radius: 4px;\"></video></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Skeleton shrimp</p></div></div><p></p></details><details><summary>Taylor's sea hare</summary><div style=\"float: left; width: 60%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><video src=\"https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4\" preload=\"metadata\" autoplay=\"autoplay\" loop=\"loop\" muted=\"muted\" playsinline=\"playsinline\" style=\"width: 100%; border-radius: 4px;\"></video></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Taylor's sea hare</p></div></div><p></p></details><details><summary>Yellowfin rockfish</summary><div style=\"float: left; width: 60%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><img src=\"https://sealifeandmore.org/wp-content/uploads/2025/07/codblackface_20250720.gif\" alt=\"\" style=\"width: 100%; border-radius: 4px;\"></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Yellowfin rockfish with hemifacial melanosis</p></div></div><p></p></details><details><summary>Navigating site: Sample navigation below, also use presentation mode grids teaching navigation</summary><p>=&gt; Grids (multiple cells containing text or image or video)</p><p>=&gt; Presentation mode (text and instruction and quiz)</p><p>=&gt; Full window with loop and enlarge</p><p>=&gt; Fun modes</p></details><p>To continue, press \"Choose a View\". I recommend you start with \"Octopus Hatchlings\", that video collection is the first to teach how to navigate the site.</p><h4>Keyboard \"H\" at any point gives context-sensitive help screen.</h4><h2>Log in, join a higher tier, and maybe win a fortune!</h2><p>Basic tier: Use all the basic site features for free, no login required</p><p>Premium tier: basic site features plus perks. Cost is basic tier price x 2</p><p>Super premium tier: perks of premium tier, plus opportunity to win ten-million-dollar ($10,000,000) lottery as soon as it can be fully funded by proceeds from premium tiers. Cost is premium tier x 2</p><details><summary>Input from users, and my responses</summary><details><summary>Doubts about my premium tiers and lottery.</summary><p>My response: consider increasing lottery prize to $20,000,000.</p></details><details><summary>Website is too complicated to navigate, needs back arrow.</summary><p>My response: back arrow added, but swipe left does the same.</p><p>There <u>is</u> a learning curve to use the website.</p></details><details><summary>Put more of my own photos and videos on the website.</summary><p>Coming.</p></details></details><h2>Welcome to sealifeandmore.com!</h2><p>Putting mostly marine-themed images in a variety of modes:</p><p>=&gt; Grids (the primary mode)</p><p>=&gt; Presentation mode (text and instruction and quiz)</p><p>=&gt; Full window (for image and video)</p><p>To continue, press \"Choose a View\". I recommend you start with \"Octopus Hatchlings\", that video collection is the first to teach how to navigate the site.</p><h2>Join a higher tier and maybe win a fortune!</h2><p>Basic tier: use of most site features, free.</p><p>Premium tier: basic use of site plus perks; your cost: basic tier price x 2</p><p>Super premium tier: perks of premium tier, plus opportunity to win ten-million-dollar ($10,000,000) lottery whenever it is fully funded by proceeds of premium tiers; Your cost: premium tier x 2</p><details><summary>Input from users, and my responses</summary><p>Doubts about my premium tiers and lottery.</p><p>My response: consider increasing lottery prize to $20,000,000.</p><p>Website is too complicated to navigate, needs back arrow.</p><p>My response: back arrow added, but swipe left does the same.</p><p>There <u>is</u> a learning curve to use the website.</p><p>Put more of my own photos and videos on the website.</p><p>That will come.</p></details><p></p><div class=\"te-cut te-cut-below\"><p></p></div><p></p><h2>Welcome to sealifeandmore.com!</h2><p>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium), as well as my desire to put images in a beautiful and conceivably useful form</p><h3>Learning how to navigate.</h3><p>To start:</p><h2>Swipe right on desktop means:</h2><h2>--&gt; Hold down left mouse button.</h2><h2>--&gt; While holding down button, move mouse briskly to the right a short distance.</h2><h2>--&gt; Then release left mouse button.</h2><h2>\"Swipe right\" on cells in grid will generally bring up larger text or images.</h2><p>The upper right cell often helps instruct, initially in how to use options of the site,</p><p>later in helping learn content. Swipe right activates it!<br></p><p>Some navigation instructions are shown below, but better to learn by doing.</p><details><summary>Help!</summary><p>In Gridveiw, swipe right on cell for full screen.</p><p>Once full screen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-hold-mouse reduces zoom.&nbsp; Double-click goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p><strong>To get back to gridview:</strong></p><p><strong>- Swipe left on desktop or phone.</strong></p></details><p><br></p><details><summary>Slideshows!</summary><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore.com as an adjustable slide show.</p><p>Local disk shows your option for playing from your own image files (probably available on Chrome and Edge browsers on Windows computers, possibly available on other browsers.)</p></details><details><summary><br></summary><p><br></p></details><hr><p><br></p>",
     "active": "",
-    "ctype": "t"
+    "ctype": "t",
+    "SSgrid": ""
   },
   {
     "Kind": "intro",
@@ -715,7 +735,8 @@
     "3P": "",
     "ctxt": "<h1>Introduction</h1><h4>Mostly marine-themed images and videos, and more!</h4><h3>Click/tap on lines with blue triangles to hide or reveal.</h3><details><summary>Skeleton shrimp</summary><div style=\"float: left; width: 25%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><video src=\"https://video.sealifeandmore.com/SkeletonShrimpCleanEat.mp4\" preload=\"metadata\" controls=\"controls\" autoplay=\"autoplay\" loop=\"loop\" muted=\"muted\" playsinline=\"playsinline\" style=\"width: 100%; border-radius: 4px;\"></video></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Skeleton shrimp</p></div></div></details><details><summary>Taylor's sea hare</summary><div style=\"float: left; width: 60%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><video src=\"https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4\" preload=\"metadata\" autoplay=\"autoplay\" loop=\"loop\" muted=\"muted\" playsinline=\"playsinline\" style=\"width: 100%; border-radius: 4px;\"></video></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Taylor's sea hare</p></div></div><p></p></details><details><summary>Yellowfin rockfish</summary><div style=\"float: left; width: 60%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><img src=\"https://sealifeandmore.org/wp-content/uploads/2025/07/codblackface_20250720.gif\" alt=\"\" style=\"width: 100%; border-radius: 4px;\"></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Yellowfin rockfish with hemifacial melanosis</p></div></div><p></p></details><details><summary>Navigating site: Sample navigation below, also use presentation mode grids teaching navigation</summary><p>=&gt; Grids (multiple cells containing text or image or video)</p><p>=&gt; Presentation mode (text and instruction and quiz)</p><p>=&gt; Full window with loop and enlarge</p><p>=&gt; Fun modes</p></details><p>To continue, press \"Choose a View\". I recommend you start with \"Octopus Hatchlings\", that video collection is the first to teach how to navigate the site.</p><h4>Keyboard \"H\" at any point gives context-sensitive help screen.</h4><h2>Log in, join a higher tier, and maybe win a fortune!</h2><p>Basic tier: Use all the basic site features for free, no login required</p><p>Premium tier: basic site features plus perks. Cost is basic tier price x 2</p><p>Super premium tier: perks of premium tier, plus opportunity to win ten-million-dollar ($10,000,000) lottery as soon as it can be fully funded by proceeds from premium tiers. Cost is premium tier x 2</p><details><summary>Input from users, and my responses</summary><details><summary>Doubts about my premium tiers and lottery.</summary><p>My response: consider increasing lottery prize to $20,000,000.</p></details><details><summary>Website is too complicated to navigate, needs back arrow.</summary><p>My response: back arrow added, but swipe left does the same.</p><p>There <u>is</u> a learning curve to use the website.</p></details><details><summary>Put more of my own photos and videos on the website.</summary><p>Coming.</p></details></details><h2>Welcome to sealifeandmore.com!</h2><p>Putting mostly marine-themed images in a variety of modes:</p><p>=&gt; Grids (the primary mode)</p><p>=&gt; Presentation mode (text and instruction and quiz)</p><p>=&gt; Full window (for image and video)</p><p>To continue, press \"Choose a View\". I recommend you start with \"Octopus Hatchlings\", that video collection is the first to teach how to navigate the site.</p><h2>Join a higher tier and maybe win a fortune!</h2><p>Basic tier: use of most site features, free.</p><p>Premium tier: basic use of site plus perks; your cost: basic tier price x 2</p><p>Super premium tier: perks of premium tier, plus opportunity to win ten-million-dollar ($10,000,000) lottery whenever it is fully funded by proceeds of premium tiers; Your cost: premium tier x 2</p><details><summary>Input from users, and my responses</summary><p>Doubts about my premium tiers and lottery.</p><p>My response: consider increasing lottery prize to $20,000,000.</p><p>Website is too complicated to navigate, needs back arrow.</p><p>My response: back arrow added, but swipe left does the same.</p><p>There <u>is</u> a learning curve to use the website.</p><p>Put more of my own photos and videos on the website.</p><p>That will come.</p></details><p></p><div class=\"te-cut te-cut-below\"><p></p></div><p></p><h2>Welcome to sealifeandmore.com!</h2><p>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium), as well as my desire to put images in a beautiful and conceivably useful form</p><h3>Learning how to navigate.</h3><p>To start:</p><h2>Swipe right on desktop means:</h2><h2>--&gt; Hold down left mouse button.</h2><h2>--&gt; While holding down button, move mouse briskly to the right a short distance.</h2><h2>--&gt; Then release left mouse button.</h2><h2>\"Swipe right\" on cells in grid will generally bring up larger text or images.</h2><p>The upper right cell often helps instruct, initially in how to use options of the site,</p><p>later in helping learn content. Swipe right activates it!<br></p><p>Some navigation instructions are shown below, but better to learn by doing.</p><details><summary>Help!</summary><p>In Gridveiw, swipe right on cell for full screen.</p><p>Once full screen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-hold-mouse reduces zoom.&nbsp; Double-click goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p><strong>To get back to gridview:</strong></p><p><strong>- Swipe left on desktop or phone.</strong></p></details><p><br></p><details><summary>Slideshows!</summary><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore.com as an adjustable slide show.</p><p>Local disk shows your option for playing from your own image files (probably available on Chrome and Edge browsers on Windows computers, possibly available on other browsers.)</p></details><details><summary><br></summary><p><br></p></details><hr><p><br></p>",
     "active": "",
-    "ctype": "t"
+    "ctype": "t",
+    "SSgrid": ""
   },
   {
     "Kind": "intro",
@@ -756,7 +777,8 @@
     "3P": "",
     "ctxt": "<h2>Welcome to sealifeandmore.com</h2><p>Mostly marine-themed images and videos, and more!</p><p>Important navigation tip: Click on lines with blue triangles to hide or reveal.</p><details><summary>Invertebrates and vertebrates at work and play.</summary><div style=\"float: left; width: 25%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><video src=\"https://video.sealifeandmore.com/SkeletonShrimpCleanEat.mp4\" preload=\"metadata\" controls=\"controls\" autoplay=\"autoplay\" loop=\"loop\" muted=\"muted\" playsinline=\"playsinline\" style=\"width: 100%; border-radius: 4px;\"></video></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Skeleton shrimp</p></div></div><div style=\"float: left; width: 40%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><video src=\"https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4\" preload=\"metadata\" controls=\"controls\" autoplay=\"autoplay\" loop=\"loop\" muted=\"muted\" playsinline=\"playsinline\" style=\"width: 100%; border-radius: 4px;\"></video></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Taylor's sea hare</p></div></div><div style=\"float: left; width: 33%; box-sizing: border-box; padding-right: 14px; margin: 6px 0px;\"><p><img src=\"https://sealifeandmore.org/wp-content/uploads/2025/07/codblackface_20250720.gif\" alt=\"\" style=\"width: 100%; border-radius: 4px;\"></p><div style=\"font-size: 0.78em; text-align: center; margin-top: 3px;\"><p>Yellowfin rockfish with hemifacial melanosis</p></div></div></details><details><summary>Navigating site: Sample navigation below, also use presentation mode grids teaching navigation</summary><p>=&gt; Grids (multiple cells containing text or image or video)</p><p>=&gt; Presentation mode (text and instruction and quiz)</p><p>=&gt; Full window with loop and enlarge</p><p>=&gt; Fun modes</p></details><p>To continue, press \"Choose a View\". I recommend you start with \"Octopus Hatchlings\", that video collection is the first to teach how to navigate the site.</p><h4>Keyboard \"H\" at any point gives context-sensitive help screen.</h4><h2>Log in, join a higher tier, and maybe win a fortune!</h2><p>Basic tier: Use all the basic site features for free, no login required</p><p>Premium tier: basic site features plus perks. Cost is basic tier price x 2</p><p>Super premium tier: perks of premium tier, plus opportunity to win ten-million-dollar ($10,000,000) lottery as soon as it can be fully funded by proceeds from premium tiers. Cost is premium tier x 2</p><details><summary>Input from users, and my responses</summary><details><summary>Doubts about my premium tiers and lottery.</summary><p>My response: consider increasing lottery prize to $20,000,000.</p></details><details><summary>Website is too complicated to navigate, needs back arrow.</summary><p>My response: back arrow added, but swipe left does the same.</p><p>There <u>is</u> a learning curve to use the website.</p></details><details><summary>Put more of my own photos and videos on the website.</summary><p>Coming.</p></details></details><h2>Welcome to sealifeandmore.com!</h2><p>Putting mostly marine-themed images in a variety of modes:</p><p>=&gt; Grids (the primary mode)</p><p>=&gt; Presentation mode (text and instruction and quiz)</p><p>=&gt; Full window (for image and video)</p><p>To continue, press \"Choose a View\". I recommend you start with \"Octopus Hatchlings\", that video collection is the first to teach how to navigate the site.</p><h2>Join a higher tier and maybe win a fortune!</h2><p>Basic tier: use of most site features, free.</p><p>Premium tier: basic use of site plus perks; your cost: basic tier price x 2</p><p>Super premium tier: perks of premium tier, plus opportunity to win ten-million-dollar ($10,000,000) lottery whenever it is fully funded by proceeds of premium tiers; Your cost: premium tier x 2</p><details><summary>Input from users, and my responses</summary><p>Doubts about my premium tiers and lottery.</p><p>My response: consider increasing lottery prize to $20,000,000.</p><p>Website is too complicated to navigate, needs back arrow.</p><p>My response: back arrow added, but swipe left does the same.</p><p>There <u>is</u> a learning curve to use the website.</p><p>Put more of my own photos and videos on the website.</p><p>That will come.</p></details><h2>Welcome to sealifeandmore.com!</h2><p>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium), as well as my desire to put images in a beautiful and conceivably useful form</p><h3>Learning how to navigate.</h3><p>To start:</p><h2>Swipe right on desktop means:</h2><h2>--&gt; Hold down left mouse button.</h2><h2>--&gt; While holding down button, move mouse briskly to the right a short distance.</h2><h2>--&gt; Then release left mouse button.</h2><h2>\"Swipe right\" on cells in grid will generally bring up larger text or images.</h2><p>The upper right cell often helps instruct, initially in how to use options of the site,</p><p>later in helping learn content. Swipe right activates it!<br></p><p>Some navigation instructions are shown below, but better to learn by doing.</p><details><summary>Help!</summary><p>In Gridveiw, swipe right on cell for full screen.</p><p>Once full screen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-hold-mouse reduces zoom.&nbsp; Double-click goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p><strong>To get back to gridview:</strong></p><p><strong>- Swipe left on desktop or phone.</strong></p></details><p><br></p><details><summary>Slideshows!</summary><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore.com as an adjustable slide show.</p><p>Local disk shows your option for playing from your own image files (probably available on Chrome and Edge browsers on Windows computers, possibly available on other browsers.)</p></details><details><summary><br></summary><p><br></p></details><hr><p><br></p>",
     "active": "",
-    "ctype": "t"
+    "ctype": "t",
+    "SSgrid": ""
   },
   {
     "Kind": "loops",
@@ -770,7 +792,8 @@
     "ctype": "t",
     "active": "",
     "Label": "Add your own",
-    "Lock": "1"
+    "Lock": "1",
+    "SSgrid": ""
   },
   {
     "gname": "Sources",
@@ -781,7 +804,8 @@
     "Zoom": "",
     "ctxt": "<h2>Sources — where the animal information comes from</h2><p>Ordered roughly from the most general and authoritative down to the one-off, personal and bloggish. Anything here is a fair starting point for a caption, a card back, or a story.</p><h3><span data-xall=\"open\" class=\"te-xall\">▼▼</span> Reveals all, <span data-xall=\"close\" class=\"te-xall\">▶▶</span> Hides all.</h3><hr><details><summary>1. Names and identity — the taxonomic backbone</summary><p>First stop for “what <em>is</em> this, and what is it called today?” These are the databases the tag aliases get checked against.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.marinespecies.org\">WoRMS — World Register of Marine Species</a> — the authority for accepted marine names, synonyms and authorship. If WoRMS and Wikipedia disagree on a name, WoRMS wins.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.gbif.org\">GBIF</a> — global occurrence records, distribution maps, and a clean species API. The best answer to “does this actually live here?”</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.catalogueoflife.org\">Catalogue of Life</a> — the consolidated checklist across all kingdoms.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.itis.gov\">ITIS</a> — US federal taxonomy; useful for North American common names.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.algaebase.org\">AlgaeBase</a> — seaweeds, diatoms and other algae, which the general databases handle poorly.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.molluscabase.org\">MolluscaBase</a> — the mollusc arm of WoRMS; the place to settle a nudibranch or chiton name.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://species.wikimedia.org\">Wikispecies</a> — bare classification with literature citations, no prose.</p></details><details><summary>2. General encyclopedic accounts</summary><p>Broad, readable, safe to paraphrase. Where most card backs start.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org\">Wikipedia</a> — the workhorse. The <em>References</em> section at the bottom is usually worth more than the article.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://eol.org\">Encyclopedia of Life</a> — aggregated trait data (size, depth, diet) in structured form.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://animaldiversity.org\">Animal Diversity Web</a> — University of Michigan; consistent accounts with real behaviour and life-history sections.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.fishbase.se\">FishBase</a> and <a target=\"_blank\" rel=\"noopener\" href=\"https://www.sealifebase.ca\">SeaLifeBase</a> — per-species data sheets for fish, and for everything else marine.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://ocean.si.edu\">Smithsonian Ocean</a> — short, well-edited explainers written for non-specialists.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.britannica.com\">Britannica</a> — good for the one-paragraph definition of a group.</p></details><details><summary>3. Institutions, aquaria and agencies</summary><p>Slower to update, but reliable, quotable, and often the source of the best natural-history detail.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.montereybayaquarium.org/animals\">Monterey Bay Aquarium</a> — excellent short species pages for the California coast.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.mbari.org\">MBARI</a> and the <a target=\"_blank\" rel=\"noopener\" href=\"https://dsg.mbari.org\">Deep-Sea Guide</a> — the reference for midwater and deep-sea animals, with their own ROV footage.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.fisheries.noaa.gov/species-directory\">NOAA Fisheries species directory</a> — status, range, management.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.aquariumofpacific.org/onlinelearningcenter\">Aquarium of the Pacific — Online Learning Center</a></p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.elkhornslough.org\">Elkhorn Slough Reserve</a> — local context for the slough footage.</p></details><details><summary>4. Regional field guides — Pacific coast and Salish Sea</summary><p>Where these animals actually live. For identification these beat the global databases.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://inverts.wallawalla.edu/\">Invertebrates of the Salish Sea (Walla Walla University)</a> — the best free key to Pacific Northwest invertebrates. Deep, illustrated, written by people who dive there.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.centralcoastbiodiversity.org\">Central Coast Biodiversity (BC)</a> — beautifully photographed accounts of the same fauna, further north.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.inaturalist.org\">iNaturalist</a> — verified local observations with photos and dates. Filter by place to see what is really found where, and read the identification comments — the arguments are where the diagnostic characters get explained.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.seaslugforum.net\">Sea Slug Forum (archived)</a> — Bill Rudman’s answers are still the best writing on nudibranch behaviour anywhere.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.nudibranch.com.au\">Nudibranch Domain</a> and <a target=\"_blank\" rel=\"noopener\" href=\"https://seaslugsofhawaii.com\">Sea Slugs of Hawaii</a> — specialist ID sites.</p></details><details><summary>5. Primary literature — when the popular sources contradict each other</summary><p>Go here when a striking claim has to be true before it goes on a card.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://scholar.google.com\">Google Scholar</a> — start here; follow “cited by” to find the review paper.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.biodiversitylibrary.org\">Biodiversity Heritage Library</a> — scanned historical monographs, out of copyright. The original species descriptions and their plates.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://pubmed.ncbi.nlm.nih.gov\">PubMed</a> — physiology, toxins, symbiosis.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.semanticscholar.org\">Semantic Scholar</a> — free abstracts and figures, good API.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.biorxiv.org\">bioRxiv</a> — preprints, for the very recent claims.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.int-res.com\">Inter-Research (MEPS, DAO)</a> — marine ecology journals, many articles open.</p></details><details><summary>6. Images and video — provenance and rights</summary><p>Where the media itself comes from, and where to check who made it.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.macaulaylibrary.org\">Macaulay Library (Cornell)</a> — catalogued wildlife video and audio with full attribution.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://commons.wikimedia.org\">Wikimedia Commons</a> — freely licensed, with the licence stated on every file.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.flickr.com\">Flickr</a> — still the best source of high-resolution amateur natural-history photos with real licences.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://nautiluslive.org\">Nautilus Live</a> and <a target=\"_blank\" rel=\"noopener\" href=\"https://www.youtube.com/@EVNautilus\">E/V Nautilus on YouTube</a> — deep-sea ROV footage with the scientists narrating live.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.youtube.com/@MBARIvideo\">MBARI video</a> — the same for Monterey Canyon.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://lens.google.com\">Google Lens</a> — reverse-image search, to find the original poster of a photo or a first-pass identification.</p></details><details><summary>7. Story and narrative — writing worth stealing a rhythm from</summary><p>Not references so much as models for how to tell it.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://hakaimagazine.com\">Hakai Magazine</a> — the best coastal-science journalism there is, and free.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://nautil.us\">Nautilus</a> — long-form science essays.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.themarginalian.org\">The Marginalian</a> — natural history braided with art and biography.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.smithsonianmag.com/science-nature\">Smithsonian Magazine — Science &amp; Nature</a></p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.quantamagazine.org/biology\">Quanta — biology</a> — for the mechanism behind a discovery.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.theatlantic.com/author/ed-yong\">Ed Yong archive</a> — the standard for animal-behaviour writing.</p></details><details><summary>8. Specialist blogs and scientists posting their own work</summary><p>Idiosyncratic, sometimes out of date, and often the only place a question is answered at all.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"http://echinoblog.blogspot.com\">The Echinoblog</a> — Chris Mah on sea stars, urchins and crinoids. Deeply expert, and plainly delighted by the subject.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.thecephalopodpage.org\">The Cephalopod Page</a> — the octopus and squid questions people actually ask.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.deepseanews.com\">Deep Sea News</a> — working deep-sea biologists, informal.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.reddit.com/r/marinebiology/\">r/marinebiology</a> and <a target=\"_blank\" rel=\"noopener\" href=\"https://www.reddit.com/r/whatsthisfish/\">r/whatsthisfish</a> — a last resort for identification; surprisingly good, always verify elsewhere.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.instagram.com\">Instagram</a> — a real source, not a picture feed. A good number of the accounts collected here belong to working scientists, taxonomists and professional macro photographers posting their own field and lab work, and the caption is often the only published account of a behaviour, written by the person who watched it happen.</p><p><strong>Those captions are already local.</strong> <code>ig.json</code> holds about 47,800 of them from 365 authors, searchable on the <strong>I</strong> screen without going back to Instagram. Search that corpus before searching the web — it is written closer to the animal than most of what is above it on this page.</p><p>Judge the poster, not the platform: an identification from a taxonomist and one from a repost aggregator look identical in the feed. Check who is writing before leaning on it.</p></details><hr><details><summary>How to search — the moves that work</summary><p>Put the accepted scientific name in the query, not the common name. Common names are regional and they collide: <em>Aplysia californica</em> finds the literature, “sea hare” finds aquarium shops.</p><p>Add <strong>site:</strong> to force a good source — <em>Pycnopodia site:inverts.wallawalla.edu</em>.</p><p>Add <strong>filetype:pdf</strong> to jump straight to papers and agency reports.</p><p>For a photo of unknown origin, reverse-image it in Google Lens first, then look for the same frame on Flickr or iNaturalist, where the licence is stated.</p><p>When a claim sounds too good (“it can see with its skin”), find the paper before writing it down. The popular sources copy each other, errors included.</p><p>Read an animal that looks strange as a real life stage first — a juvenile, a moult, a spawning or feeding posture — before assuming a photographic artefact.</p></details><details><summary>My own sites</summary><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.sealifeandmore.org\">sealifeandmore.org</a> — the WordPress site.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://pwassm.github.io/braintrain\">braintrain</a></p></details><p><br><a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://nrm.dfg.ca.gov/FileHandler.ashx?DocumentID=33863\">https://nrm.dfg.ca.gov/FileHandler.ashx?DocumentID=33863</a>.</p><p></p>",
     "active": "",
-    "ctype": "o"
+    "ctype": "o",
+    "SSgrid": ""
   },
   {
     "gname": "SecondGridToSave",
@@ -821,7 +845,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Quiz2Snowflakes",
@@ -861,7 +886,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "April16",
@@ -901,7 +927,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Pufferfish Plus",
@@ -941,7 +968,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "PhotosBeautiful1",
@@ -981,7 +1009,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "LotsOf121Clicks25a",
@@ -1021,7 +1050,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Big Pictures - 25!",
@@ -1061,7 +1091,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "TaylorSeaHare1",
@@ -1101,7 +1132,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "SkelShrimp",
@@ -1141,7 +1173,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "InstaTryMyvideo",
@@ -1180,7 +1213,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "4 Creatures",
@@ -1200,7 +1234,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "gchiton1",
@@ -1223,7 +1258,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "All Portrait",
@@ -1253,7 +1289,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "ShowoffSlideshow",
@@ -1292,7 +1329,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "gchiton1zoomed",
@@ -1316,7 +1354,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "HermitCrabAndPix_d",
@@ -1356,7 +1395,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "EatingKelpAndBryozoans",
@@ -1396,7 +1436,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Sheephead v Urchin 1",
@@ -1419,7 +1460,8 @@
     "3P": "",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Sheephead v Urchin 2",
@@ -1443,7 +1485,8 @@
     "3P": "",
     "ctxt": "<details><summary>Sheephead eats sea urchin</summary><h2>Last frame: Garabaldi takes a bite, too.</h2><p>Purple sea urchins can live up to 40 years, this one was pretty big,</p><p>big enough for a California sheephead's lunch!</p></details><p><br></p>",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "1st try 17",
@@ -1479,7 +1522,8 @@
     "1L": "1032",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "1st try 19",
@@ -1508,7 +1552,8 @@
     "DateAdded": "2026-06-11 06:10:25",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "ConsiderEdgeMove",
@@ -1538,7 +1583,8 @@
     "ss": "EdgeMoves!",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Ttennis",
@@ -1576,7 +1622,8 @@
     "3P": "87_5",
     "ctxt": "<h2></h2><details open=\"\"><summary>Table tennis fun</summary><div><h2>Table tennis fun!</h2><div>amazing rallies</div></div></details><div></div>",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "2nd try 17",
@@ -1602,7 +1649,8 @@
     "5e": "1033/0.8",
     "DateAdded": "2026-06-13 05:13:24",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Instagrams",
@@ -1636,7 +1684,8 @@
     "5e": "",
     "DateAdded": "2026-06-17 03:16:38",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Sunfish2",
@@ -1655,7 +1704,8 @@
     "DateAdded": "2026-06-17 17:58:54",
     "ctxt": "Sunfish2",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Marginalian Birds 1",
@@ -1690,7 +1740,8 @@
     "DateAdded": "2026-06-18 16:29:47",
     "ctxt": "Marginalian Birds",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Marginalian Birds 2 and Mola",
@@ -1724,7 +1775,8 @@
     "5e": "1149",
     "DateAdded": "2026-06-18 16:37:27",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Marginalian Birds 2 and Mola 2",
@@ -1759,7 +1811,8 @@
     "DateAdded": "2026-06-18 16:51:39",
     "ss": "<h2>Title</h2><p>Your content here...</p>",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "TtennisSmaller",
@@ -1787,7 +1840,8 @@
     "5e": "",
     "DateAdded": "2026-06-25 04:38:55",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "PortraitBirds",
@@ -1824,7 +1878,8 @@
     "DateAdded": "2026-06-28 12:56:25",
     "ctxt": "PortraitBirds",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Squares!",
@@ -1858,7 +1913,8 @@
     "5e": "1296",
     "DateAdded": "2026-07-01 04:50:54",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "CoralMorphologic17No2",
@@ -1885,7 +1941,8 @@
     "DateAdded": "2026-07-04 03:58:07",
     "ctxt": "CoralM Videos",
     "active": " ",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "BoxerCrabsImages17",
@@ -1912,7 +1969,8 @@
     "DateAdded": "2026-07-04 17:53:43",
     "ctxt": "BoxerCrabImages",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "BoxerCrabsVideos25",
@@ -1947,7 +2005,8 @@
     "DateAdded": "2026-07-04 21:41:41",
     "ctxt": "BoxerCrabVideos25!",
     "active": "2",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "First_T",
@@ -1972,7 +2031,8 @@
     "4d": "",
     "DateAdded": "2026-07-12 02:51:09",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "GPO Hatchlings",
@@ -1986,7 +2046,8 @@
     "DateAdded": "2026-07-12 23:49:28",
     "ctxt": "",
     "active": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "OctopusHatchlings!",
@@ -2005,7 +2066,8 @@
     "DateAdded": "2026-07-13 04:00:58",
     "ctxt": "OctopusHatchlings!",
     "active": "1",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Grid4teaching",
@@ -2018,7 +2080,8 @@
     "2b": "890_2",
     "DateAdded": "2026-07-13 05:33:47",
     "active": "3",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "BoxerCrabsImages17t",
@@ -2045,7 +2108,8 @@
     "DateAdded": "2026-07-13 05:36:09",
     "active": "4",
     "ctxt": "Boxer Crab Images",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "IG ondra_scubainstructor 2026-07-16",
@@ -2065,7 +2129,8 @@
     "2d": "https://www.instagram.com/ondra_scubainstructor/reel/Dakt1bDpWWq/",
     "2e": "https://www.instagram.com/ondra_scubainstructor/reel/DakbFMmtCVv/",
     "2f": "https://www.instagram.com/ondra_scubainstructor/reel/DahieinNoMp/",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Sanchez-Blanco 1",
@@ -2076,7 +2141,8 @@
     "1b": "1767",
     "1c": "1766",
     "DateAdded": "2026-07-17 00:23:33",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Radula4",
@@ -2100,7 +2166,8 @@
     "4c": "1783",
     "4d": "1783_d/1.7",
     "DateAdded": "2026-07-18 22:12:37",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "RadulaMixedTextAndVideo",
@@ -2135,7 +2202,8 @@
     "DateAdded": "2026-07-19 04:02:31",
     "active": "5",
     "ctxt": "RadulaMixedTextVideo",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "GridOf9video to teach navigation",
@@ -2154,7 +2222,8 @@
     "DateAdded": "2026-07-19 04:08:43",
     "active": "6",
     "ctxt": "GridOf9toTeachNavigation",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "CoralMorphologic17No3",
@@ -2181,7 +2250,8 @@
     "DateAdded": "2026-07-19 04:18:02",
     "active": "7",
     "ctxt": "CoralMorphologic3",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "IG tardigrade 12",
@@ -2201,7 +2271,8 @@
     "2d": "https://www.instagram.com/desi_morrison/reel/CpDA-2Qsawt/",
     "2e": "https://www.instagram.com/jam_and_germs/reel/DZLWgYXKNim/",
     "2f": "https://www.instagram.com/jam_and_germs/reel/DX_UkevKqxI/",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "IG the_story_of_a_biologist 2026-07-25",
@@ -2221,7 +2292,8 @@
     "2d": "https://www.instagram.com/the_story_of_a_biologist/p/DXd4xboETH6/",
     "2e": "https://www.instagram.com/the_story_of_a_biologist/p/DXBzATkDVQh/",
     "2f": "https://www.instagram.com/the_story_of_a_biologist/reel/DWx5AzoDNSl/",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "IG _bugdreamer_ 2026-07-26",
@@ -2241,7 +2313,8 @@
     "2d": "https://www.instagram.com/_bugdreamer_/reel/DSDHhaaCZj9/",
     "2e": "https://www.instagram.com/_bugdreamer_/reel/DR7kzTsDzLs/",
     "2f": "https://www.instagram.com/_bugdreamer_/reel/DRue8PwiczL/",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "IG tardigrades 2026-08-01",
@@ -2261,7 +2334,8 @@
     "2d": "https://www.instagram.com/my.microscopic.world/reel/BvuW9ajhmXC/",
     "2e": "https://www.instagram.com/my.microscopic.world/reel/ByqSZb3Bms4/",
     "2f": "https://www.instagram.com/my.microscopic.world/reel/By3RefFhfvn/",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "IG mobula 2026-08-02",
@@ -2281,7 +2355,8 @@
     "2d": "",
     "2e": "",
     "2f": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "IG skel shrimp 2026-08-02",
@@ -2301,7 +2376,8 @@
     "2d": "",
     "2e": "",
     "2f": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "wolfie2",
@@ -2326,7 +2402,8 @@
     "4d": "1140",
     "DateAdded": "2026-08-07 14:36:30",
     "ss": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "wolfyPoly3",
@@ -2355,7 +2432,8 @@
     "DateAdded": "2026-08-07 17:51:16",
     "active": "8",
     "ctxt": "MyStuff",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Mobulae",
@@ -2382,7 +2460,8 @@
     "DateAdded": "2026-08-13 16:56:30",
     "active": "9",
     "ctxt": "Mobulae for Jen",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "IG ingo.vision 2026-08-18",
@@ -2402,7 +2481,8 @@
     "2d": "https://www.instagram.com/ingo.vision/reel/DXh9E1qTiyA/",
     "2e": "https://www.instagram.com/ingo.vision/reel/DXP7iQXhFr-/",
     "2f": "https://www.instagram.com/ingo.vision/reel/DXINKYhBMlJ/",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "IG rawrszn 2026-08-19",
@@ -2422,7 +2502,8 @@
     "2d": "https://www.instagram.com/ingo.vision/p/DbP5lrUoM4Q/",
     "2e": "https://www.instagram.com/ingo.vision/p/DbWkkdYiMwK/",
     "2f": "https://www.instagram.com/ingo.vision/p/DbMRYbfE0tu/",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "BirdWooUrchinConch",
@@ -2433,7 +2514,8 @@
     "1b": "2084_d2",
     "1c": "2084_d",
     "DateAdded": "2026-08-22 13:20:34",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Instagram3a",
@@ -2444,7 +2526,8 @@
     "1b": "2095",
     "1c": "2094",
     "DateAdded": "2026-08-22 13:40:46",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Seattle1",
@@ -2457,7 +2540,8 @@
     "DateAdded": "2026-08-22 17:04:30",
     "ctxt": "Seattle",
     "active": "10",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Astropecten1",
@@ -2471,7 +2555,8 @@
     "DateAdded": "2026-08-30 23:48:53",
     "ctxt": "sand sifting stars",
     "active": "11",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "SandShiftSeaStars and More!",
@@ -2490,7 +2575,8 @@
     "DateAdded": "2026-08-31 15:25:23",
     "active": "",
     "ctxt": "",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "ssss2",
@@ -2509,7 +2595,8 @@
     "DateAdded": "2026-09-01 15:01:08",
     "ctxt": "SandSiftingStars9",
     "active": "1",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "FlashTry1",
@@ -2535,7 +2622,8 @@
     "DateAdded": "2026-09-02 17:38:10",
     "ctype": "f",
     "ctxt": "FirstFlash",
-    "active": "1"
+    "active": "1",
+    "SSgrid": ""
   },
   {
     "gname": "Moonsnail vs Flatfish",
@@ -2554,7 +2642,8 @@
     "DateAdded": "2026-09-08 03:17:26",
     "ctxt": "Moonsnail vs Flatfish",
     "active": "1",
-    "Label": "1"
+    "Label": "1",
+    "SSgrid": ""
   },
   {
     "gname": "Moonsnail3",
@@ -2571,7 +2660,8 @@
     "3b": "",
     "3c": "2256",
     "DateAdded": "2026-09-12 21:12:16",
-    "Label": " "
+    "Label": " ",
+    "SSgrid": ""
   },
   {
     "gname": "mollym1",
@@ -2592,7 +2682,8 @@
     "ss": "mollym1",
     "ctxt": "MollyMoonsnail",
     "active": " ",
-    "ctype": ""
+    "ctype": "",
+    "SSgrid": ""
   },
   {
     "gname": "Hummingbird211",
@@ -2611,7 +2702,8 @@
     "DateAdded": "2026-09-12 21:21:46",
     "active": "1",
     "ctxt": "Hummingbird211",
-    "ss": "Hummingbird211"
+    "ss": "Hummingbird211",
+    "SSgrid": ""
   },
   {
     "gname": "moon25",
@@ -2643,7 +2735,8 @@
     "5c": "2260_3",
     "5d": "2260_4",
     "5e": "2260_5",
-    "DateAdded": "2026-09-14 04:25:56"
+    "DateAdded": "2026-09-14 04:25:56",
+    "SSgrid": ""
   },
   {
     "gname": "Moonsnail30",
@@ -2675,7 +2768,8 @@
     "5c": "2260_3",
     "5d": "2260_4",
     "5e": "2260_5",
-    "DateAdded": "2026-09-28 03:02:18"
+    "DateAdded": "2026-09-28 03:02:18",
+    "SSgrid": ""
   },
   {
     "gname": "Stargazer1",
@@ -2707,7 +2801,8 @@
     "5c": "2450",
     "5d": "",
     "5e": "",
-    "DateAdded": "2026-09-30 15:44:18"
+    "DateAdded": "2026-09-30 15:44:18",
+    "SSgrid": ""
   },
   {
     "gname": "BrownTurbanSnailZoo",
@@ -2718,7 +2813,8 @@
     "1b": "2534",
     "2a": "2535",
     "2b": "2536",
-    "DateAdded": "2026-10-07 04:26:19"
+    "DateAdded": "2026-10-07 04:26:19",
+    "SSgrid": ""
   },
   {
     "gname": "DancingHC",
@@ -2754,7 +2850,8 @@
     "ctxt": "DancingHC",
     "Label": "1",
     "active": "1",
-    "ss": "DancingHC"
+    "ss": "DancingHC",
+    "SSgrid": ""
   },
   {
     "gname": "HermitCrabDance2",
@@ -2786,7 +2883,8 @@
     "5c": "2643",
     "5d": "",
     "5e": "",
-    "DateAdded": "2026-10-20 05:21:01"
+    "DateAdded": "2026-10-20 05:21:01",
+    "SSgrid": ""
   },
   {
     "gname": "PelagicRedCrab4",
@@ -2797,7 +2895,8 @@
     "1b": "2658",
     "2a": "2657",
     "2b": "2516",
-    "DateAdded": "2026-10-25 21:46:08"
+    "DateAdded": "2026-10-25 21:46:08",
+    "SSgrid": ""
   },
   {
     "gname": "trematode2",
@@ -2813,7 +2912,8 @@
     "3a": "2690",
     "3b": "",
     "3c": "",
-    "DateAdded": "2026-10-26 14:40:42"
+    "DateAdded": "2026-10-26 14:40:42",
+    "SSgrid": ""
   },
   {
     "gname": "trematode10",
@@ -2833,7 +2933,8 @@
     "ctxt": "trematode10",
     "Label": "1",
     "ss": "trematode10",
-    "active": "1"
+    "active": "1",
+    "SSgrid": ""
   },
   {
     "gname": "2IgOneHcrab",
@@ -2847,6 +2948,7 @@
     "active": "2",
     "ctxt": "FlyingCrab",
     "ctype": "u",
-    "Kind": "fun"
+    "Kind": "fun",
+    "SSgrid": ""
   }
 ]

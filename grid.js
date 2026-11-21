@@ -188,6 +188,7 @@ function _gridConfigLayout(cfg) {
 // Returns the {layout, gsize}. Used by cMakeActive and the mobile config picker.
 function _gridApplyConfigToRows(cfg, rows) {
   _gridSlideState = null;   // (dev1189) a fresh activation starts the slides at page 1
+  window._salShowPending = cfg;   // (dev1206) a show row in 1a opens the show (see the s SHOW section)
   const info = _gridConfigLayout(cfg);
   rows.forEach(r => { if (r && r.cell) r.cell = ''; });
   for (const spec of _gridCellList(info.gsize, info.layout)) {
@@ -4103,6 +4104,8 @@ function gridShow() {
   
   // (dev1189) Slide grid: the slide pane covers everything but 1a.
   if (_gridSlideDims(_layout)) _gridSlideBuild(container);
+  // (dev1206) A config whose 1a holds a show script opens the show over the grid.
+  if (typeof window._salShowGridHook === 'function') window._salShowGridHook();
 
   // (dev0820) The fold grid: snap every cell to the current fold state. Any OTHER
   // layout flattens that state first, so a fold can never carry over into the next
@@ -5735,3 +5738,358 @@ function gridWriteToT() {
   if (focus !== null && typeof _tScrollRowIntoView === 'function') _tScrollRowIntoView(focus.r);
   toast('✓ Written to T — sorted on cell', 1400);
 }
+
+// ── (dev1206) "s" SHOW ──────────────────────────────────────────────────────
+// A script row (ltype "s") whose text starts "5*", "4*" or "3*" is a SHOW: an
+// N×N screen where the top row and the left column are small RIM cells and the
+// rest is one big block playing ONE video of the whole script (made on the dev
+// machine by make_show.py, which mirrors the parsing here — keep the two in
+// step). Only the part above the first section separator counts.
+//   (2563 1b)            under a line: UID 2563 in rim cell 1b during that line,
+//                        silent, gone when the line ends
+//   … at 40              appears 40% of the way through the line
+//   … sound              plays with its sound
+//   … keep               stays until something else is put in that cell
+//   (clear 1b)           empties 1b
+//   (2563 main) (black main)   the big block — baked into the video, not done here
+//   ( )  /  (5)          no line: nobody speaks (3 s, or the number of seconds)
+//   Calypso: from zoea (2842 1c) to megalopa    a command INSIDE a line starts
+//                        when that word is reached
+//   commands above the first line fill the rim when the show opens
+// The rim follows the video's clock, so pause, scrub and replay stay in step.
+// Line times + the video: row.sstimes ("0.6-2.93,3.73-10.61,…") and row.link
+// when set; otherwise, on the dev machine, show_local.json beside index.html.
+// Opens from: a C config whose 1a holds the show row, or ?show=UID.
+(function () {
+  var PARA_SPLIT = /<\/p>|<br\s*\/?>|<\/h\d>|<\/li>|<\/div>/i;
+  var HEAD_RE = /^([345])\s*\*/;
+  var WHOLE_RE = /^\(([^()]*)\)$/;
+  var INLINE_RE = /\(\s*((?:\d[\w-]*|clear|black)\b[^()]*)\)/g;
+  var SPK_RE = /^\s*([A-Za-z][A-Za-z .'-]{0,24}?)\s*:\s+([\s\S]*)$/;
+  var CELL_RE = /^\d[a-z]$/;
+  var st = null;
+
+  function rowByUid(uid) {
+    if (!uid || typeof data === "undefined" || !Array.isArray(data)) return null;
+    return data.find(function (r) { return r && String(r.UID) === String(uid); }) || null;
+  }
+  function plain(htmlPiece) {
+    var ta = document.createElement("textarea");
+    ta.innerHTML = String(htmlPiece).replace(/<[^>]+>/g, " ");
+    return ta.value.replace(/\s+/g, " ").trim();
+  }
+  function parseCmd(inner) {
+    var tok = inner.trim().split(/\s+/);
+    if (!tok[0]) return null;
+    var c = { uid: "", cell: "", at: 0, sound: false, keep: false, clear: false };
+    var first = tok[0].toLowerCase();
+    if (first === "clear") c.clear = true;
+    else if (first === "black" || /^\d[\w-]*$/.test(tok[0])) c.uid = (first === "black") ? "black" : tok[0];
+    else return null;
+    for (var i = 1; i < tok.length; i++) {
+      var w = tok[i].toLowerCase();
+      if (w === "main" || CELL_RE.test(w)) c.cell = w;
+      else if (w === "at" && i + 1 < tok.length) {
+        var v = parseFloat(tok[++i]);
+        if (!isNaN(v)) c.at = Math.max(0, Math.min(100, v));
+      } else if (w === "sound") c.sound = true;
+      else if (w === "keep") c.keep = true;
+    }
+    return c.cell ? c : null;
+  }
+  // → { n, pre:[cmd], beats:[{ kind:"line"|"gap", text, cmds:[cmd] }] } or null.
+  function parseScript(ftext) {
+    var src = String(ftext || "").split(/<hr/i)[0];
+    var out = { n: 0, pre: [], beats: [] }, first = true;
+    src.split(PARA_SPLIT).forEach(function (p) {
+      var t = plain(p);
+      if (!t) return;
+      if (first) {
+        first = false;
+        var hm = HEAD_RE.exec(t);
+        if (hm) { out.n = parseInt(hm[1], 10); return; }
+      }
+      var wm = WHOLE_RE.exec(t);
+      if (wm) {
+        var inner = wm[1].trim();
+        if (inner === "" || /^\d+(\.\d+)?$/.test(inner)) { out.beats.push({ kind: "gap", text: "", cmds: [] }); return; }
+        var c = parseCmd(inner);
+        if (c) (out.beats.length ? out.beats[out.beats.length - 1].cmds : out.pre).push(c);
+        return;
+      }
+      var sm = SPK_RE.exec(t);
+      var body = sm ? sm[2] : t;
+      var cmds = [], clean = "", last = 0, m;
+      INLINE_RE.lastIndex = 0;
+      while ((m = INLINE_RE.exec(body))) {
+        clean += body.slice(last, m.index);
+        var ic = parseCmd(m[1]);
+        if (ic) { ic.pos = clean.replace(/\s+/g, " ").trim().length; cmds.push(ic); }
+        else clean += m[0];
+        last = m.index + m[0].length;
+      }
+      clean = (clean + body.slice(last)).replace(/\s+/g, " ").trim().replace(/\s+([.,!?;:])/g, "$1");
+      cmds.forEach(function (x) { x.at = 100 * Math.min(1, x.pos / Math.max(1, clean.length)); });
+      out.beats.push({ kind: "line", text: clean, cmds: cmds });
+    });
+    return out.n ? out : null;
+  }
+  function isShowRow(row) {
+    return !!(row && typeof row.ftext === "string" && HEAD_RE.test(plain(row.ftext.split(PARA_SPLIT)[0] || "")));
+  }
+  window._salIsShowRow = isShowRow;
+
+  function cellName(r, c) { return r + String.fromCharCode(96 + c); }
+
+  // Per rim cell: [{t0, t1, uid, sound}] sorted by t0. uid "" = empty.
+  function buildEvents(script, times) {
+    var by = {};
+    var add = function (cell, e) { (by[cell] = by[cell] || []).push(e); };
+    var firstStart = times.length ? times[0][0] : 0;
+    script.pre.forEach(function (c) {
+      if (c.cell === "main") return;
+      add(c.cell, { t0: -1, t1: c.keep ? Infinity : firstStart, uid: c.clear ? "" : c.uid, sound: c.sound });
+    });
+    script.beats.forEach(function (b, i) {
+      var tm = times[i];
+      if (!tm) return;
+      b.cmds.forEach(function (c) {
+        if (c.cell === "main") return;
+        var t0 = tm[0] + (c.at / 100) * (tm[1] - tm[0]);
+        add(c.cell, { t0: t0, t1: (c.keep || c.clear) ? Infinity : tm[1], uid: c.clear ? "" : c.uid, sound: c.sound });
+      });
+    });
+    Object.keys(by).forEach(function (cell) {
+      var a = by[cell].sort(function (x, y) { return x.t0 - y.t0; });
+      for (var i = 0; i < a.length - 1; i++) if (a[i].t1 > a[i + 1].t0) a[i].t1 = a[i + 1].t0;
+    });
+    return by;
+  }
+
+  function css() {
+    if (document.getElementById("salShowCss")) return;
+    var s = document.createElement("style");
+    s.id = "salShowCss";
+    s.textContent =
+        "#salShow{position:fixed;inset:0;z-index:2147483000;background:#000;display:flex;"
+      + "align-items:center;justify-content:center;font-family:Arial,sans-serif;}"
+      + "#salShow .ss-stage{width:min(100vw,calc(100vh * 16 / 9));aspect-ratio:16/9;display:grid;gap:2px;background:#000;}"
+      + "#salShow .ss-cell{position:relative;overflow:hidden;background:#0b0f14;min-width:0;min-height:0;}"
+      + "#salShow .ss-cell video,#salShow .ss-cell img,#salShow .ss-cell iframe{position:absolute;inset:0;"
+      + "width:100%;height:100%;object-fit:cover;border:0;}"
+      + "#salShow .ss-main video{object-fit:contain;background:#000;}"
+      + "#salShow .ss-tag{position:absolute;left:4px;top:3px;z-index:2;font:10px monospace;color:rgba(255,255,255,0.4);pointer-events:none;}"
+      + "#salShow .ss-note{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"
+      + "padding:8%;text-align:center;color:#9ab;font-size:15px;line-height:1.4;}"
+      + "#salShow .ss-start{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;"
+      + "background:rgba(0,0,0,0.45);cursor:pointer;}"
+      + "#salShow .ss-start span{font-size:28px;color:#fff;border:2px solid #fff;border-radius:40px;padding:12px 30px;}"
+      + "#salShow .ss-x{position:absolute;right:10px;top:8px;z-index:5;width:34px;height:34px;border-radius:17px;"
+      + "border:1px solid rgba(255,255,255,0.5);background:rgba(0,0,0,0.5);color:#fff;font-size:18px;cursor:pointer;}";
+    document.head.appendChild(s);
+  }
+
+  function ytId(link) {
+    var m = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/.exec(String(link || ""));
+    return m ? m[1] : "";
+  }
+  function fillCell(el, ev) {
+    Array.prototype.slice.call(el.querySelectorAll("video")).forEach(function (v) {
+      try { v.pause(); v.removeAttribute("src"); v.load(); } catch (_) {}
+    });
+    var tag = el.querySelector(".ss-tag");
+    el.innerHTML = "";
+    if (tag) el.appendChild(tag);
+    if (!ev || !ev.uid) return;
+    var row = rowByUid(ev.uid);
+    var link = row ? String(row.link || "") : "";
+    var node;
+    if (/\.(mp4|m4v|mov|webm|ogv)([?#]|$)/i.test(link)) {
+      node = document.createElement("video");
+      node.src = link; node.loop = true; node.muted = !ev.sound; node.playsInline = true; node.autoplay = true;
+      node.setAttribute("playsinline", "");
+      var p = node.play(); if (p && p.catch) p.catch(function () {});
+    } else if (/\.(jpe?g|png|gif|webp|avif|bmp)([?#]|$)/i.test(link)) {
+      node = document.createElement("img");
+      node.src = link; node.alt = "";
+    } else if (ytId(link)) {
+      var id = ytId(link);
+      node = document.createElement("iframe");
+      node.allow = "autoplay; encrypted-media";
+      node.src = "https://www.youtube-nocookie.com/embed/" + id + "?autoplay=1&mute=" + (ev.sound ? 0 : 1)
+        + "&controls=0&playsinline=1&loop=1&playlist=" + id + "&rel=0&modestbranding=1";
+    } else {
+      node = document.createElement("div");
+      node.className = "ss-note";
+      node.textContent = row ? ("UID " + ev.uid + " cannot play in a small cell yet") : ("UID " + ev.uid + " is not in T");
+    }
+    el.appendChild(node);
+  }
+
+  function sync() {
+    if (!st) return;
+    var t = (st.video && st.started) ? st.video.currentTime : -0.5;
+    Object.keys(st.cells).forEach(function (cell) {
+      var list = st.events[cell] || [], want = null;
+      for (var i = 0; i < list.length; i++) if (list[i].t0 <= t && t < list[i].t1) want = list[i];
+      if (st.shown[cell] === want) return;
+      st.shown[cell] = want;
+      fillCell(st.cells[cell], want);
+    });
+  }
+  function loop() {
+    if (!st) return;
+    sync();
+    st.raf = requestAnimationFrame(loop);
+  }
+
+  function close() {
+    if (!st) return;
+    cancelAnimationFrame(st.raf);
+    window.removeEventListener("keydown", onKey, true);
+    try { if (st.video) { st.video.pause(); st.video.removeAttribute("src"); st.video.load(); } } catch (_) {}
+    Object.keys(st.cells).forEach(function (c) { fillCell(st.cells[c], null); });
+    st.root.remove();
+    st = null;
+  }
+  function onKey(e) {
+    if (!st) return;
+    if (e.ctrlKey || e.metaKey || e.key === "F5" || e.key === "F12") return;   // reload etc. still work
+    if (e.key === "Escape") close();
+    else if (e.key === " " && st.video) { if (st.video.paused) st.video.play(); else st.video.pause(); }
+    else if (e.key === "ArrowLeft" && st.video) st.video.currentTime = Math.max(0, st.video.currentTime - 3);
+    else if (e.key === "ArrowRight" && st.video) st.video.currentTime = st.video.currentTime + 3;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+
+  function parseTimes(s) {
+    return String(s || "").split(",").map(function (x) {
+      var m = /^\s*([\d.]+)\s*-\s*([\d.]+)\s*$/.exec(x);
+      return m ? [parseFloat(m[1]), parseFloat(m[2])] : null;
+    }).filter(Boolean);
+  }
+  // Where the video and the line times come from: the row itself, else (dev
+  // machine only) the generator's show_local.json.
+  async function findMedia(row) {
+    var times = parseTimes(row.sstimes);
+    if (times.length && String(row.link || "").trim()) return { src: String(row.link).trim(), times: times };
+    var local = (typeof window._salIsLocalHost === "function") && window._salIsLocalHost();
+    if (!local) return null;
+    try {
+      var r = await fetch("show_local.json?t=" + Date.now(), { cache: "no-store" });
+      if (!r.ok) return null;
+      var j = (await r.json())[String(row.UID)];
+      if (!j || !j.file) return null;
+      return { src: "http://127.0.0.1:8081/localfile?p=" + encodeURIComponent(j.file) + "&t=" + Date.now(), times: j.times || [] };
+    } catch (_) { return null; }
+  }
+
+  window.salShowOpen = async function (uid) {
+    var row = rowByUid(uid);
+    var script = row ? parseScript(row.ftext) : null;
+    if (!script) {
+      if (typeof _gridToast === "function") _gridToast("UID " + uid + " is not a show (its text must start 5*, 4* or 3*)", 2500);
+      return false;
+    }
+    if (st) close();
+    css();
+    var n = script.n;
+    var root = document.createElement("div");
+    root.id = "salShow";
+    var stage = document.createElement("div");
+    stage.className = "ss-stage";
+    stage.style.gridTemplateColumns = "repeat(" + n + ",1fr)";
+    stage.style.gridTemplateRows = "repeat(" + n + ",1fr)";
+    var cells = {};
+    var mk = function (r, c) {
+      var el = document.createElement("div");
+      el.className = "ss-cell";
+      el.style.gridRow = String(r); el.style.gridColumn = String(c);
+      var tag = document.createElement("span");
+      tag.className = "ss-tag"; tag.textContent = cellName(r, c);
+      el.appendChild(tag);
+      stage.appendChild(el);
+      cells[cellName(r, c)] = el;
+    };
+    for (var c = 1; c <= n; c++) mk(1, c);
+    for (var r = 2; r <= n; r++) mk(r, 1);
+    var main = document.createElement("div");
+    main.className = "ss-cell ss-main";
+    main.style.gridRow = "2 / -1"; main.style.gridColumn = "2 / -1";
+    stage.appendChild(main);
+    var x = document.createElement("button");
+    x.className = "ss-x"; x.textContent = "✕"; x.title = "Close (Esc)";
+    x.addEventListener("click", close);
+    root.appendChild(stage); root.appendChild(x);
+    document.body.appendChild(root);
+    st = { root: root, cells: cells, shown: {}, events: {}, video: null, started: false, raf: 0 };
+    window.addEventListener("keydown", onKey, true);
+
+    var media = await findMedia(row);
+    if (!st || st.root !== root) return true;   // closed while waiting
+    if (!media) {
+      var note = document.createElement("div");
+      note.className = "ss-note";
+      note.textContent = "No video has been made for show " + uid + " yet.";
+      main.appendChild(note);
+      st.events = buildEvents(script, []);
+      sync();
+      return true;
+    }
+    st.events = buildEvents(script, media.times);
+    var v = document.createElement("video");
+    v.src = media.src; v.controls = true; v.playsInline = true; v.preload = "auto";
+    v.setAttribute("playsinline", "");
+    main.appendChild(v);
+    st.video = v;
+    var start = document.createElement("div");
+    start.className = "ss-start";
+    start.innerHTML = "<span>▶ Start</span>";
+    start.addEventListener("click", function () {
+      start.remove();
+      st.started = true;
+      var p = v.play(); if (p && p.catch) p.catch(function () {});
+    });
+    main.appendChild(start);
+    // Rim videos stop and go with the main video.
+    var rim = function (fn) {
+      if (!st) return;
+      Object.keys(st.cells).forEach(function (k) {
+        var rv = st.cells[k].querySelector("video");
+        if (rv) { try { var q = rv[fn](); if (q && q.catch) q.catch(function () {}); } catch (_) {} }
+      });
+    };
+    v.addEventListener("play", function () {
+      if (!st) return;
+      st.started = true;
+      if (start.isConnected) start.remove();
+      rim("play");
+    });
+    v.addEventListener("pause", function () { if (!v.ended) rim("pause"); });
+    loop();
+    return true;
+  };
+
+  // gridShow hook: a C config whose 1a holds a show row opens the show, once
+  // per activation (see _gridApplyConfigToRows).
+  window._salShowGridHook = function () {
+    var cfg = window._salShowPending;
+    if (!cfg || _gridSource !== "C") return;
+    window._salShowPending = null;
+    var uid = _gridParseCellVal(cfg["1a"]).uid;
+    if (isShowRow(rowByUid(uid))) window.salShowOpen(uid);
+  };
+
+  // ?show=UID opens it once the rows are in.
+  try {
+    var want = new URLSearchParams(window.location.search).get("show");
+    if (want && /^[\w-]+$/.test(want)) {
+      var tries = 0;
+      var iv = setInterval(function () {
+        if (rowByUid(want)) { clearInterval(iv); window.salShowOpen(want); }
+        else if (++tries > 120) clearInterval(iv);
+      }, 250);
+    }
+  } catch (_) {}
+})();
