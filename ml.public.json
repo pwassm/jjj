@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1795239644954,
+    "_salPushTime": 1795286394778,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -618,7 +618,7 @@
       }
     },
     "_salActiveView": "lastmodtop2",
-    "_salSavedAt": 1795239644954
+    "_salSavedAt": 1795286394778
   },
   {
     "UID": "1",
@@ -59648,8 +59648,8 @@
     "VidRange": "text",
     "ftext": "",
     "DateAdded": "2026-11-11 05:24:05",
-    "DateModified": "2026-11-21 05:40:44",
-    "ftextSize": "2739",
+    "DateModified": "2026-11-21 18:39:54",
+    "ftextSize": "2861",
     "FtextJunk": "0",
     "DictSize": "0",
     "ltype": "s",
@@ -60796,6 +60796,169 @@
     "DictSize": "1509",
     "VidTitle": "The Giant Fish That Rises From The Deep | Blue Planet III | 4K | BBC Earth",
     "VidAuthor": "@bbcearth",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2855",
+    "link": "https://youtu.be/G2uRzFfJce0",
+    "show": "1",
+    "DateAdded": "2026-11-21 06:19:43",
+    "DateModified": "2026-11-21 06:19:48",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "3395",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "The TRUTH About Tendon Training (What AI Channels Won't Tell You)",
+    "VidAuthor": "@More4Life",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2856",
+    "link": "https://youtu.be/j5IgUgd9INU",
+    "show": "1",
+    "DateAdded": "2026-11-21 06:26:19",
+    "DateModified": "2026-11-21 06:26:24",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "3009",
+    "FtextJunk": "3",
+    "DictSize": "0",
+    "VidTitle": "Back Pain? A WEAK CORE Isn't Your Problem (The Real Cause)",
+    "VidAuthor": "@More4Life",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2857",
+    "link": "https://youtu.be/4BU56Gs6jBc",
+    "show": "1",
+    "DateAdded": "2026-11-21 06:30:38",
+    "DateModified": "2026-11-21 06:30:43",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "3409",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "Sciatica or Hip Pain? 3 Signs and How to Relieve It",
+    "VidAuthor": "@More4Life",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2858",
+    "link": "https://youtu.be/QRkrcV6bQ28",
+    "show": "1",
+    "DateAdded": "2026-11-21 06:39:44",
+    "DateModified": "2026-11-21 18:17:24",
+    "tags": [
+      "hermit-crab",
+      "megalopa"
+    ],
+    "Mute": "0",
+    "ftextSize": "372",
+    "FtextJunk": "20",
+    "DictSize": "1098",
+    "VidTitle": "Hermit crab megalopa",
+    "VidAuthor": "@lodewijkvanwalraven2051",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2859",
+    "link": "https://youtu.be/x01EeDxZoFs",
+    "show": "1",
+    "DateAdded": "2026-11-21 06:43:11",
+    "DateModified": "2026-11-21 06:43:14",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "447",
+    "FtextJunk": "17",
+    "DictSize": "0",
+    "VidTitle": "⚠️ 5 Hours of Dissection… Why Does the Ocean Sunfish Look Like It’s Just a Head?",
+    "VidAuthor": "@FishyScience",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2860",
+    "link": "https://youtu.be/LY9UqetuqmE",
+    "show": "1",
+    "DateAdded": "2026-11-21 06:44:10",
+    "DateModified": "2026-11-21 06:44:13",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "577",
+    "FtextJunk": "13",
+    "DictSize": "0",
+    "VidTitle": "“I Accidentally Picked Up a Remora… Let’s Show You How Its Suction Disc Really Works”",
+    "VidAuthor": "@FishyScience",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2861",
+    "link": "https://youtu.be/Pl-4yX0yHOw",
+    "show": "1",
+    "DateAdded": "2026-11-21 06:45:03",
+    "DateModified": "2026-11-21 06:45:07",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "719",
+    "FtextJunk": "11",
+    "DictSize": "0",
+    "VidTitle": "I MEGADOSED Glycine for 2 Years - Here's What Happened",
+    "VidAuthor": "@SiimLand",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2862",
+    "link": "https://youtu.be/QbEjCG2QiLw",
+    "show": "1",
+    "DateAdded": "2026-11-21 06:49:31",
+    "DateModified": "2026-11-21 06:49:34",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "3831",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "Seniors: Stop Rushing Your Shots! The Simple Swedish Timing Fix to Attack Backspin",
+    "VidAuthor": "@LarsPingPongPro",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2863",
+    "link": "https://youtu.be/YkOPzcTQeK0",
+    "show": "1",
+    "DateAdded": "2026-11-21 06:52:09",
+    "DateModified": "2026-11-21 06:52:13",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "3632",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "Simple Swedish Way to Return Any Serve in Table Tennis After 60 (Beginner & Intermediate)",
+    "VidAuthor": "@LarsPingPongPro",
     "Mode": "L",
     "ftext": ""
   }

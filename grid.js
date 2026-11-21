@@ -5755,18 +5755,23 @@ function gridWriteToT() {
 //   ( )  /  (5)          no line: nobody speaks (3 s, or the number of seconds)
 //   Calypso: from zoea (2842 1c) to megalopa    a command INSIDE a line starts
 //                        when that word is reached
-//   commands above the first line fill the rim when the show opens
+//   (dev1207) a command line belongs to the line BELOW it; "play 15 seconds" /
+//   "for 15" = its own no-line stretch; (wait 6); "with sound", "muted", "loop";
+//   (clear 1b 1c), (clear all); (interviewer main), (tank main); ";" = off
 // The rim follows the video's clock, so pause, scrub and replay stay in step.
 // Line times + the video: row.sstimes ("0.6-2.93,3.73-10.61,…") and row.link
 // when set; otherwise, on the dev machine, show_local.json beside index.html.
 // Opens from: a C config whose 1a holds the show row, or ?show=UID.
 (function () {
   var PARA_SPLIT = /<\/p>|<br\s*\/?>|<\/h\d>|<\/li>|<\/div>/i;
-  var HEAD_RE = /^([345])\s*\*/;
+  var HEAD_RE = /^[A-Za-z]?\s*([345])\s*\*/;   // a stray letter before 5* is forgiven
   var WHOLE_RE = /^\(([^()]*)\)$/;
-  var INLINE_RE = /\(\s*((?:\d[\w-]*|clear|black)\b[^()]*)\)/g;
+  var SHOTS = { black: 1, interviewer: 1, calypso: 1, tank: 1, crab: 1, room: 1, wide: 1 };
+  var INLINE_RE = /\(\s*((?:\d[\w-]*|clear|black|calypso|crab|interviewer|room|tank|wide)\b[^()]*)\)/gi;
+  var WAIT_RE = /^(?:wait\s+)?(\d+(?:\.\d+)?)(?:\s*(?:seconds?|secs?|s))?$/i;
   var SPK_RE = /^\s*([A-Za-z][A-Za-z .'-]{0,24}?)\s*:\s+([\s\S]*)$/;
   var CELL_RE = /^\d[a-z]$/;
+  var NUM_RE = /^\d+(\.\d+)?$/;
   var st = null;
 
   function rowByUid(uid) {
@@ -5778,29 +5783,46 @@ function gridWriteToT() {
     ta.innerHTML = String(htmlPiece).replace(/<[^>]+>/g, " ");
     return ta.value.replace(/\s+/g, " ").trim();
   }
-  function parseCmd(inner) {
-    var tok = inner.trim().split(/\s+/);
-    if (!tok[0]) return null;
-    var c = { uid: "", cell: "", at: 0, sound: false, keep: false, clear: false };
+  // (dev1207) One "( … )" → a list of commands (several for "clear 1b 1c"),
+  // [] when it is not a command. Plain words are understood: "play 15 seconds",
+  // "for 15", "with sound", "muted", "loop" / "keep" / "stay".
+  function parseCmds(inner) {
+    var tok = String(inner).replace(/,/g, " ").trim().split(/\s+/);
+    if (!tok[0]) return [];
     var first = tok[0].toLowerCase();
-    if (first === "clear") c.clear = true;
-    else if (first === "black" || /^\d[\w-]*$/.test(tok[0])) c.uid = (first === "black") ? "black" : tok[0];
-    else return null;
+    var mk = function (o) {
+      var c = { uid: "", cell: "", at: 0, sound: false, keep: false, clear: false, secs: 0 };
+      for (var k in o) c[k] = o[k];
+      return c;
+    };
+    if (first === "clear") {
+      return tok.slice(1).map(function (w) { return w.toLowerCase(); })
+        .filter(function (w) { return CELL_RE.test(w) || w === "main" || w === "all"; })
+        .map(function (w) { return mk({ cell: w, clear: true }); });
+    }
+    var c;
+    if (SHOTS[first]) c = mk({ uid: first });
+    else if (/^\d[\w-]*$/.test(tok[0]) && !CELL_RE.test(first)) c = mk({ uid: tok[0] });
+    else return [];
     for (var i = 1; i < tok.length; i++) {
       var w = tok[i].toLowerCase();
+      var nxt = (i + 1 < tok.length) ? tok[i + 1].toLowerCase() : "";
       if (w === "main" || CELL_RE.test(w)) c.cell = w;
-      else if (w === "at" && i + 1 < tok.length) {
-        var v = parseFloat(tok[++i]);
-        if (!isNaN(v)) c.at = Math.max(0, Math.min(100, v));
-      } else if (w === "sound") c.sound = true;
-      else if (w === "keep") c.keep = true;
+      else if (w === "at" && NUM_RE.test(nxt)) { c.at = Math.max(0, Math.min(100, parseFloat(nxt))); i++; }
+      else if (w === "for" && NUM_RE.test(nxt)) { c.secs = parseFloat(nxt); i++; }
+      else if (NUM_RE.test(w) && /^(seconds?|secs?|s)$/.test(nxt)) { c.secs = parseFloat(w); i++; }
+      else if (w === "sound") c.sound = true;
+      else if (w === "muted" || w === "mute" || w === "silent") c.sound = false;
+      else if (w === "keep" || w === "loop" || w === "stay" || w === "stays") c.keep = true;
     }
-    return c.cell ? c : null;
+    return c.cell ? [c] : [];
   }
-  // → { n, pre:[cmd], beats:[{ kind:"line"|"gap", text, cmds:[cmd] }] } or null.
+  // → { n, beats:[{ kind:"line"|"gap", text, cmds:[cmd] }] } or null. A command
+  // line belongs to the beat BELOW it; a command with its own seconds is a
+  // no-line stretch of that length. A line starting ";" is switched off.
   function parseScript(ftext) {
     var src = String(ftext || "").split(/<hr/i)[0];
-    var out = { n: 0, pre: [], beats: [] }, first = true;
+    var out = { n: 0, beats: [] }, first = true, pending = [];
     src.split(PARA_SPLIT).forEach(function (p) {
       var t = plain(p);
       if (!t) return;
@@ -5809,12 +5831,20 @@ function gridWriteToT() {
         var hm = HEAD_RE.exec(t);
         if (hm) { out.n = parseInt(hm[1], 10); return; }
       }
+      if (t.charAt(0) === ";") return;
       var wm = WHOLE_RE.exec(t);
       if (wm) {
         var inner = wm[1].trim();
-        if (inner === "" || /^\d+(\.\d+)?$/.test(inner)) { out.beats.push({ kind: "gap", text: "", cmds: [] }); return; }
-        var c = parseCmd(inner);
-        if (c) (out.beats.length ? out.beats[out.beats.length - 1].cmds : out.pre).push(c);
+        if (inner === "" || WAIT_RE.test(inner)) {
+          out.beats.push({ kind: "gap", text: "", cmds: pending });
+          pending = [];
+          return;
+        }
+        var cs = parseCmds(inner);
+        if (cs.length === 1 && cs[0].secs > 0) {
+          out.beats.push({ kind: "gap", text: "", cmds: pending.concat(cs) });
+          pending = [];
+        } else pending = pending.concat(cs);
         return;
       }
       var sm = SPK_RE.exec(t);
@@ -5823,15 +5853,19 @@ function gridWriteToT() {
       INLINE_RE.lastIndex = 0;
       while ((m = INLINE_RE.exec(body))) {
         clean += body.slice(last, m.index);
-        var ic = parseCmd(m[1]);
-        if (ic) { ic.pos = clean.replace(/\s+/g, " ").trim().length; cmds.push(ic); }
-        else clean += m[0];
+        var ics = parseCmds(m[1]);
+        if (ics.length) {
+          var pos = clean.replace(/\s+/g, " ").trim().length;
+          ics.forEach(function (x) { x.pos = pos; cmds.push(x); });
+        } else clean += m[0];
         last = m.index + m[0].length;
       }
       clean = (clean + body.slice(last)).replace(/\s+/g, " ").trim().replace(/\s+([.,!?;:])/g, "$1");
       cmds.forEach(function (x) { x.at = 100 * Math.min(1, x.pos / Math.max(1, clean.length)); });
-      out.beats.push({ kind: "line", text: clean, cmds: cmds });
+      out.beats.push({ kind: "line", text: clean, cmds: pending.concat(cmds) });
+      pending = [];
     });
+    if (pending.length) out.beats.push({ kind: "gap", text: "", cmds: pending });
     return out.n ? out : null;
   }
   function isShowRow(row) {
@@ -5840,23 +5874,27 @@ function gridWriteToT() {
   window._salIsShowRow = isShowRow;
 
   function cellName(r, c) { return r + String.fromCharCode(96 + c); }
+  function rimNames(n) {
+    var out = [], i;
+    for (i = 1; i <= n; i++) out.push(cellName(1, i));
+    for (i = 2; i <= n; i++) out.push(cellName(i, 1));
+    return out;
+  }
 
   // Per rim cell: [{t0, t1, uid, sound}] sorted by t0. uid "" = empty.
   function buildEvents(script, times) {
     var by = {};
     var add = function (cell, e) { (by[cell] = by[cell] || []).push(e); };
-    var firstStart = times.length ? times[0][0] : 0;
-    script.pre.forEach(function (c) {
-      if (c.cell === "main") return;
-      add(c.cell, { t0: -1, t1: c.keep ? Infinity : firstStart, uid: c.clear ? "" : c.uid, sound: c.sound });
-    });
     script.beats.forEach(function (b, i) {
       var tm = times[i];
       if (!tm) return;
       b.cmds.forEach(function (c) {
         if (c.cell === "main") return;
         var t0 = tm[0] + (c.at / 100) * (tm[1] - tm[0]);
-        add(c.cell, { t0: t0, t1: (c.keep || c.clear) ? Infinity : tm[1], uid: c.clear ? "" : c.uid, sound: c.sound });
+        var t1 = (c.keep || c.clear) ? Infinity : (c.secs > 0 ? t0 + c.secs : tm[1]);
+        (c.cell === "all" ? rimNames(script.n) : [c.cell]).forEach(function (cell) {
+          add(cell, { t0: t0, t1: t1, uid: c.clear ? "" : c.uid, sound: c.sound });
+        });
       });
     });
     Object.keys(by).forEach(function (cell) {
@@ -6080,6 +6118,74 @@ function gridWriteToT() {
     var uid = _gridParseCellVal(cfg["1a"]).uid;
     if (isShowRow(rowByUid(uid))) window.salShowOpen(uid);
   };
+
+  // (dev1207) In the Xe editor, clicking a UID inside a ( command ) shows a small
+  // picture of that row beside the click. Any other click closes it.
+  function thumbHide() {
+    var p = document.getElementById("salShowThumb");
+    if (!p) return;
+    Array.prototype.slice.call(p.querySelectorAll("video")).forEach(function (v) {
+      try { v.pause(); v.removeAttribute("src"); v.load(); } catch (_) {}
+    });
+    p.remove();
+  }
+  function thumbShow(row, x, y) {
+    var link = String(row.link || "");
+    var p = document.createElement("div");
+    p.id = "salShowThumb";
+    p.style.cssText = "position:fixed;z-index:2147483600;width:320px;background:#111;color:#ddd;"
+      + "border:1px solid #6af;border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,0.6);"
+      + "font:12px Arial,sans-serif;overflow:hidden;";
+    var box = document.createElement("div");
+    box.style.cssText = "position:relative;width:100%;aspect-ratio:16/9;background:#000;";
+    var fit = "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;";
+    var node = null, id = ytId(link);
+    if (/\.(mp4|m4v|mov|webm|ogv)([?#]|$)/i.test(link)) {
+      node = document.createElement("video");
+      node.src = link; node.muted = true; node.loop = true; node.autoplay = true; node.playsInline = true;
+    } else if (/\.(jpe?g|png|gif|webp|avif|bmp)([?#]|$)/i.test(link)) {
+      node = document.createElement("img"); node.src = link;
+    } else if (id) {
+      node = document.createElement("img"); node.src = "https://img.youtube.com/vi/" + id + "/hqdefault.jpg";
+    }
+    if (node) { node.style.cssText = fit; box.appendChild(node); p.appendChild(box); }
+    var cap = document.createElement("div");
+    cap.style.cssText = "padding:5px 8px;line-height:1.35;word-break:break-word;";
+    var name = row.n1 || row.VidTitle || row.t1 || link.split("/").pop().split("?")[0] || "";
+    cap.textContent = "UID " + row.UID + (row.vidLength ? " · " + row.vidLength : "") + (name ? " · " + name : "")
+      + (node ? "" : " · no picture for this kind of row");
+    p.appendChild(cap);
+    document.body.appendChild(p);
+    var w = 320, h = p.offsetHeight || 220;
+    p.style.left = Math.max(6, Math.min(x + 12, window.innerWidth - w - 6)) + "px";
+    p.style.top = Math.max(6, (y + 18 + h > window.innerHeight) ? y - h - 12 : y + 18) + "px";
+  }
+  document.addEventListener("click", function (e) {
+    thumbHide();
+    var ed = (e.target && e.target.closest) ? e.target.closest("#xe2Overlay .ProseMirror") : null;
+    if (!ed) return;
+    var node = null, off = 0;
+    if (document.caretRangeFromPoint) {
+      var r = document.caretRangeFromPoint(e.clientX, e.clientY);
+      if (r) { node = r.startContainer; off = r.startOffset; }
+    } else if (document.caretPositionFromPoint) {
+      var cp = document.caretPositionFromPoint(e.clientX, e.clientY);
+      if (cp) { node = cp.offsetNode; off = cp.offset; }
+    }
+    if (!node || node.nodeType !== 3) return;
+    var s = node.nodeValue || "";
+    var a = s.lastIndexOf("(", Math.max(0, off - 1)), z = s.indexOf(")", off);
+    if (a < 0 || z < 0 || s.slice(a, off).indexOf(")") >= 0) return;
+    if (!parseCmds(s.slice(a + 1, z)).length) return;
+    var ws = off, we = off;
+    while (ws > a + 1 && /[\w-]/.test(s.charAt(ws - 1))) ws--;
+    while (we < z && /[\w-]/.test(s.charAt(we))) we++;
+    var word = s.slice(ws, we);
+    if (!/^\d[\w-]*$/.test(word) || CELL_RE.test(word)) return;
+    var row = rowByUid(word);
+    if (row) thumbShow(row, e.clientX, e.clientY);
+  }, true);
+  document.addEventListener("keydown", thumbHide, true);
 
   // ?show=UID opens it once the rows are in.
   try {
