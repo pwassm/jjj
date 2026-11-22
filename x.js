@@ -756,7 +756,8 @@
       { title: 'Tags', field: 'tags', width: 120, formatter: tagsCell, editor: 'input',
         mutatorEdit: v => String(v || '').split(',').map(s => s.trim()).filter(Boolean) },
       { title: 'Status', field: 'status', width: 86, formatter: statusCell },
-      { title: 'Added', field: 'DateAdded', width: 148, hozAlign: 'right' },
+      { title: 'Added', field: 'DateAdded', width: 148, hozAlign: 'right', sorter: 'string',
+        headerTooltip: 'When the row arrived. The list opens sorted on this, newest first (dev1212).' },
       { title: 'Kind', field: 'kind', width: 76, formatter: kindBadge, headerFilter: false,
         headerTooltip: 'image / video — the primary split (facet in the toolbar)' },
       { title: 'Type', field: 'type', width: 74, formatter: typeBadge, headerFilter: false },
@@ -778,6 +779,9 @@
       placeholder: '',
       reactiveData: false,
       movableColumns: true,
+      // (dev1212) Newest first, so results that just arrived are at the top instead of
+      // under everything older. Rows that arrived together keep the order they came in.
+      initialSort: [{ column: 'DateAdded', dir: 'desc' }],
       rowFormatter: row => {
         row.getElement().classList.toggle('x-focus', row.getData().id === focusId);
       }
@@ -1821,6 +1825,9 @@
     document.getElementById('xOverlay').classList.add('open');
     try { await loadTabulator(); }
     catch (e) { xToast('✗ ' + e.message, 5000); return; }
+    // (dev1212) Every open starts newest first, whatever heading was clicked last time.
+    // Set before the load so the first focused row is the newest one.
+    if (table) { try { table.setSort('DateAdded', 'desc'); } catch (_) {} }
     await loadData();
     if (!table) buildTable();
   }
