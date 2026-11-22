@@ -5761,6 +5761,12 @@ function gridWriteToT() {
 //   "for 15" = its own no-line stretch; (wait 6); "with sound", "muted", "loop";
 //   (clear 1b 1c), (clear all); (interviewer main), (tank main); ";" = off
 //   (dev1210) "close" = "clear"
+//   (dev1214) a command with NO cell = the whole screen (main, baked into the
+//   video); a small cell now STAYS until closed, ended or replaced ("duration
+//   next line" = that line only, "6 seconds" = that long); sound is ON unless
+//   "muted"; "noloop" = plays once and holds its last frame; (2873 end) ends
+//   that UID wherever it is; "show" = keep; 15s = 15 seconds; (I) (C) = shots;
+//   words in "quotes" inside a command are spoken, not read as command words.
 // The rim follows the video's clock, so pause, scrub and replay stay in step.
 // Line times + the video: row.sstimes ("0.6-2.93,3.73-10.61,…") and row.link
 // when set; otherwise, on the dev machine, show_local.json beside index.html.
@@ -5790,11 +5796,13 @@ function gridWriteToT() {
   // [] when it is not a command. Plain words are understood: "play 15 seconds",
   // "for 15", "with sound", "muted", "loop" / "keep" / "stay".
   function parseCmds(inner) {
-    var tok = String(inner).replace(/,/g, " ").trim().split(/\s+/);
+    // (dev1214) quoted words are for the voice, not command words
+    var tok = String(inner).replace(/["“][^"”]*["”]/, " ").replace(/,/g, " ").trim().split(/\s+/);
     if (!tok[0]) return [];
     var first = tok[0].toLowerCase();
+    if (first === "i") first = "interviewer"; else if (first === "c") first = "calypso";   // (dev1214) (I) (C)
     var mk = function (o) {
-      var c = { uid: "", cell: "", at: 0, sound: false, keep: false, clear: false, secs: 0 };
+      var c = { uid: "", cell: "", at: 0, sound: true, keep: false, clear: false, secs: 0, line: false, noloop: false, end: false };
       for (var k in o) c[k] = o[k];
       return c;
     };
@@ -5814,11 +5822,17 @@ function gridWriteToT() {
       else if (w === "at" && NUM_RE.test(nxt)) { c.at = Math.max(0, Math.min(100, parseFloat(nxt))); i++; }
       else if (w === "for" && NUM_RE.test(nxt)) { c.secs = parseFloat(nxt); i++; }
       else if (NUM_RE.test(w) && /^(seconds?|secs?|s)$/.test(nxt)) { c.secs = parseFloat(w); i++; }
+      else if (/^\d+(\.\d+)?(s|secs?|seconds?)$/.test(w)) c.secs = parseFloat(w);   // (dev1214) 15s
       else if (w === "sound") c.sound = true;
       else if (w === "muted" || w === "mute" || w === "silent") c.sound = false;
-      else if (w === "keep" || w === "loop" || w === "stay" || w === "stays") c.keep = true;
+      else if (w === "keep" || w === "loop" || w === "stay" || w === "stays" || w === "show") c.keep = true;
+      else if (w === "noloop" || w === "once") c.noloop = true;
+      else if (w === "duration") c.line = true;
+      else if (w === "end" || w === "ends" || w === "stop" || w === "off") c.end = true;
     }
-    return c.cell ? [c] : [];
+    if (c.secs > 0) c.line = false;
+    if (!c.cell) c.cell = "main";   // (dev1214) no cell = the whole screen
+    return [c];
   }
   // → { n, beats:[{ kind:"line"|"gap", text, cmds:[cmd] }] } or null. A command
   // line belongs to the beat BELOW it; a command with its own seconds is a
@@ -5893,16 +5907,30 @@ function gridWriteToT() {
   function buildEvents(script, times) {
     var by = {};
     var add = function (cell, e) { (by[cell] = by[cell] || []).push(e); };
+    // (dev1214) in time order, so (UID end) can find the cell its UID is in. A
+    // cell stays until closed, ended or replaced, unless it has its own seconds
+    // or "duration next line".
+    var all = [], where = {};
     script.beats.forEach(function (b, i) {
       var tm = times[i];
       if (!tm) return;
       b.cmds.forEach(function (c) {
-        if (c.cell === "main") return;
-        var t0 = tm[0] + (c.at / 100) * (tm[1] - tm[0]);
-        var t1 = (c.keep || c.clear) ? Infinity : (c.secs > 0 ? t0 + c.secs : tm[1]);
-        (c.cell === "all" ? rimNames(script.n) : [c.cell]).forEach(function (cell) {
-          add(cell, { t0: t0, t1: t1, uid: c.clear ? "" : c.uid, sound: c.sound });
-        });
+        if (c.cell === "main" && !c.end) return;
+        all.push({ t0: tm[0] + (c.at / 100) * (tm[1] - tm[0]), lineEnd: tm[1], c: c, k: all.length });
+      });
+    });
+    all.sort(function (x, y) { return (x.t0 - y.t0) || (x.k - y.k); });
+    all.forEach(function (a) {
+      var c = a.c;
+      if (c.end) {
+        if (where[c.uid]) add(where[c.uid], { t0: a.t0, t1: Infinity, uid: "", sound: false });
+        delete where[c.uid];
+        return;
+      }
+      var t1 = c.clear ? Infinity : (c.secs > 0 ? a.t0 + c.secs : (c.line ? a.lineEnd : Infinity));
+      (c.cell === "all" ? rimNames(script.n) : [c.cell]).forEach(function (cell) {
+        add(cell, { t0: a.t0, t1: t1, uid: c.clear ? "" : c.uid, sound: c.sound, noloop: c.noloop });
+        if (!c.clear) where[c.uid] = cell;
       });
     });
     Object.keys(by).forEach(function (cell) {
@@ -6047,7 +6075,7 @@ function gridWriteToT() {
     var node;
     if (/\.(mp4|m4v|mov|webm|ogv)([?#]|$)/i.test(link)) {
       node = document.createElement("video");
-      node.src = link; node.loop = true; node.muted = !ev.sound; node.playsInline = true; node.autoplay = true;
+      node.src = link; node.loop = !ev.noloop; node.muted = !ev.sound;   // (dev1214) noloop: once, last frame held node.playsInline = true; node.autoplay = true;
       node.setAttribute("playsinline", "");
       var p = node.play(); if (p && p.catch) p.catch(function () {});
     } else if (/\.(jpe?g|png|gif|webp|avif|bmp)([?#]|$)/i.test(link)) {
