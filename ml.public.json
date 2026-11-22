@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1795287569937,
+    "_salPushTime": 1795324744621,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -95,7 +95,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "UID",
+      "col": "ltype",
       "dir": "desc"
     },
     "_salGsize": 5,
@@ -618,7 +618,7 @@
       }
     },
     "_salActiveView": "lastmodtop2",
-    "_salSavedAt": 1795287569938
+    "_salSavedAt": 1795324744621
   },
   {
     "UID": "1",
@@ -59648,8 +59648,8 @@
     "VidRange": "text",
     "ftext": "",
     "DateAdded": "2026-11-11 05:24:05",
-    "DateModified": "2026-11-21 18:59:29",
-    "ftextSize": "2893",
+    "DateModified": "2026-11-22 05:19:04",
+    "ftextSize": "2883",
     "FtextJunk": "0",
     "DictSize": "0",
     "ltype": "s",

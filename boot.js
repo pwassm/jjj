@@ -5272,7 +5272,8 @@ load().then(() => {
 })();
 
 // (dev1190) ── T toolbar: 🗣 TTS card ─────────────────────────────────────────
-// Speaks the FOCUSED row when it is a script (ltype "s"). The local TTS studio,
+// Speaks the FOCUSED row when it is a script (ltype "s", or (dev1210) "p" for a
+// presentation). The local TTS studio,
 // driven through proxy.js /tts/* (which starts it when it isn't running), makes
 // every line as it is set up on the studio page and copies them into a new
 // folder UID_yy_mm_dd_hh_mm. The menu says how long the studio (a few GB of
@@ -5520,9 +5521,9 @@ load().then(() => {
       return;
     }
     const row = focusedRow();
-    if (!row) { say('🗣 TTS: click a script row (ltype s) first', 2500); return; }
-    if (String(row.ltype || '') !== 's') {
-      say('🗣 TTS reads a script row (ltype s) — UID ' + row.UID + ' is ltype "' + (row.ltype || '') + '"', 3500);
+    if (!row) { say('🗣 TTS: click a script row (ltype s or p) first', 2500); return; }
+    if (!/^[sp]$/.test(String(row.ltype || ''))) {   // (dev1210) p = presentation
+      say('🗣 TTS reads a script row (ltype s or p) — UID ' + row.UID + ' is ltype "' + (row.ltype || '') + '"', 3500);
       return;
     }
     uid = String(row.UID);

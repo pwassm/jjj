@@ -5739,12 +5739,14 @@ function gridWriteToT() {
   toast('✓ Written to T — sorted on cell', 1400);
 }
 
-// ── (dev1206) "s" SHOW ──────────────────────────────────────────────────────
-// A script row (ltype "s") whose text starts "5*", "4*" or "3*" is a SHOW: an
-// N×N screen where the top row and the left column are small RIM cells and the
-// rest is one big block playing ONE video of the whole script (made on the dev
-// machine by make_show.py, which mirrors the parsing here — keep the two in
-// step). Only the part above the first section separator counts.
+// ── (dev1206) "s" SHOW — (dev1210) a PRESENTATION, ltype "p" ────────────────
+// A row with ltype "p" (or any row whose text starts "5*", "4*" or "3*") is a
+// presentation: ONE video of the whole script (made on the dev machine by
+// make_show.py, which mirrors the parsing here — keep the two in step) fills
+// the whole screen, and small RIM cells (the top row and the left column of an
+// N×N grid, N from the 5*/4*/3* first line, else 5) lie OVER it when something
+// is put in them; an empty rim cell shows the video through. Only the part
+// above the first section separator counts.
 //   (2563 1b)            under a line: UID 2563 in rim cell 1b during that line,
 //                        silent, gone when the line ends
 //   … at 40              appears 40% of the way through the line
@@ -5758,6 +5760,7 @@ function gridWriteToT() {
 //   (dev1207) a command line belongs to the line BELOW it; "play 15 seconds" /
 //   "for 15" = its own no-line stretch; (wait 6); "with sound", "muted", "loop";
 //   (clear 1b 1c), (clear all); (interviewer main), (tank main); ";" = off
+//   (dev1210) "close" = "clear"
 // The rim follows the video's clock, so pause, scrub and replay stay in step.
 // Line times + the video: row.sstimes ("0.6-2.93,3.73-10.61,…") and row.link
 // when set; otherwise, on the dev machine, show_local.json beside index.html.
@@ -5767,7 +5770,7 @@ function gridWriteToT() {
   var HEAD_RE = /^[A-Za-z]?\s*([345])\s*\*/;   // a stray letter before 5* is forgiven
   var WHOLE_RE = /^\(([^()]*)\)$/;
   var SHOTS = { black: 1, interviewer: 1, calypso: 1, tank: 1, crab: 1, room: 1, wide: 1 };
-  var INLINE_RE = /\(\s*((?:\d[\w-]*|clear|black|calypso|crab|interviewer|room|tank|wide)\b[^()]*)\)/gi;
+  var INLINE_RE = /\(\s*((?:\d[\w-]*|clear|close|black|calypso|crab|interviewer|room|tank|wide)\b[^()]*)\)/gi;
   var WAIT_RE = /^(?:wait\s+)?(\d+(?:\.\d+)?)(?:\s*(?:seconds?|secs?|s))?$/i;
   var SPK_RE = /^\s*([A-Za-z][A-Za-z .'-]{0,24}?)\s*:\s+([\s\S]*)$/;
   var CELL_RE = /^\d[a-z]$/;
@@ -5795,7 +5798,7 @@ function gridWriteToT() {
       for (var k in o) c[k] = o[k];
       return c;
     };
-    if (first === "clear") {
+    if (first === "clear" || first === "close") {
       return tok.slice(1).map(function (w) { return w.toLowerCase(); })
         .filter(function (w) { return CELL_RE.test(w) || w === "main" || w === "all"; })
         .map(function (w) { return mk({ cell: w, clear: true }); });
@@ -5820,7 +5823,8 @@ function gridWriteToT() {
   // → { n, beats:[{ kind:"line"|"gap", text, cmds:[cmd] }] } or null. A command
   // line belongs to the beat BELOW it; a command with its own seconds is a
   // no-line stretch of that length. A line starting ";" is switched off.
-  function parseScript(ftext) {
+  // (dev1210) defN = the grid size when there is no 5*/4*/3* first line.
+  function parseScript(ftext, defN) {
     var src = String(ftext || "").split(/<hr/i)[0];
     var out = { n: 0, beats: [] }, first = true, pending = [];
     src.split(PARA_SPLIT).forEach(function (p) {
@@ -5867,10 +5871,13 @@ function gridWriteToT() {
       pending = [];
     });
     if (pending.length) out.beats.push({ kind: "gap", text: "", cmds: pending });
+    out.n = out.n || defN || 0;
     return out.n ? out : null;
   }
+  function isPres(row) { return !!row && String(row.ltype == null ? "" : row.ltype).trim() === "p"; }
   function isShowRow(row) {
-    return !!(row && typeof row.ftext === "string" && HEAD_RE.test(plain(row.ftext.split(PARA_SPLIT)[0] || "")));
+    if (!row || typeof row.ftext !== "string") return false;
+    return isPres(row) || HEAD_RE.test(plain(row.ftext.split(PARA_SPLIT)[0] || ""));
   }
   window._salIsShowRow = isShowRow;
 
@@ -5913,11 +5920,17 @@ function gridWriteToT() {
         "#salShow{position:fixed;inset:0;z-index:2147483000;background:#000;display:flex;"
       + "align-items:center;justify-content:center;font-family:Arial,sans-serif;}"
       + "#salShow .ss-stage{width:min(100vw,calc(100vh * 16 / 9));aspect-ratio:16/9;display:grid;gap:2px;background:#000;}"
-      + "#salShow .ss-cell{position:relative;overflow:hidden;background:#0b0f14;min-width:0;min-height:0;}"
+      + "#salShow .ss-cell{position:relative;overflow:hidden;min-width:0;min-height:0;}"
       + "#salShow .ss-cell video,#salShow .ss-cell img,#salShow .ss-cell iframe{position:absolute;inset:0;"
       + "width:100%;height:100%;object-fit:cover;border:0;}"
+      // (dev1210) the main video fills the stage; rim cells lie over it, see-through
+      // while empty, and let clicks through to the video's own controls.
+      + "#salShow .ss-main{z-index:0;background:#000;}"
       + "#salShow .ss-main video{object-fit:contain;background:#000;}"
+      + "#salShow .ss-rim{z-index:1;pointer-events:none;background:transparent;}"
+      + "#salShow .ss-rim.ss-on{background:#0b0f14;box-shadow:0 0 0 1px rgba(0,0,0,0.85);}"
       + "#salShow .ss-tag{position:absolute;left:4px;top:3px;z-index:2;font:10px monospace;color:rgba(255,255,255,0.4);pointer-events:none;}"
+      + "#salShow .ss-rim:not(.ss-on) .ss-tag{display:none;}"
       + "#salShow .ss-note{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"
       + "padding:8%;text-align:center;color:#9ab;font-size:15px;line-height:1.4;}"
       + "#salShow .ss-start{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;"
@@ -6046,6 +6059,7 @@ function gridWriteToT() {
     if (st.cur[cell]) { ytKill(st.cur[cell]); st.cur[cell] = null; }
     var w = st.warm[cell];
     wipe(el, w ? w.y.wrap : null);
+    el.classList.toggle("ss-on", !!(ev && ev.uid));   // (dev1210) an empty rim cell is see-through
     if (!ev || !ev.uid) return;
     if (w && w.ev === ev) {               // warmed up in advance: just show it
       st.cur[cell] = w.y; st.warm[cell] = null;
@@ -6102,6 +6116,7 @@ function gridWriteToT() {
 
   function close() {
     if (!st) return;
+    try { if (document.fullscreenElement === st.root) document.exitFullscreen().catch(function () {}); } catch (_) {}
     cancelAnimationFrame(st.raf);
     window.removeEventListener("keydown", onKey, true);
     try { if (st.video) { st.video.pause(); st.video.removeAttribute("src"); st.video.load(); } } catch (_) {}
@@ -6147,9 +6162,9 @@ function gridWriteToT() {
 
   window.salShowOpen = async function (uid) {
     var row = rowByUid(uid);
-    var script = row ? parseScript(row.ftext) : null;
+    var script = row ? parseScript(row.ftext, isPres(row) ? 5 : 0) : null;
     if (!script) {
-      if (typeof _gridToast === "function") _gridToast("UID " + uid + " is not a show (its text must start 5*, 4* or 3*)", 2500);
+      if (typeof _gridToast === "function") _gridToast("UID " + uid + " is not a presentation (ltype p, or text starting 5*, 4* or 3*)", 2500);
       return false;
     }
     if (st) close();
@@ -6162,9 +6177,13 @@ function gridWriteToT() {
     stage.style.gridTemplateColumns = "repeat(" + n + ",1fr)";
     stage.style.gridTemplateRows = "repeat(" + n + ",1fr)";
     var cells = {};
+    var main = document.createElement("div");
+    main.className = "ss-cell ss-main";
+    main.style.gridRow = "1 / -1"; main.style.gridColumn = "1 / -1";   // (dev1210) the whole screen
+    stage.appendChild(main);
     var mk = function (r, c) {
       var el = document.createElement("div");
-      el.className = "ss-cell";
+      el.className = "ss-cell ss-rim";
       el.style.gridRow = String(r); el.style.gridColumn = String(c);
       var tag = document.createElement("span");
       tag.className = "ss-tag"; tag.textContent = cellName(r, c);
@@ -6174,10 +6193,6 @@ function gridWriteToT() {
     };
     for (var c = 1; c <= n; c++) mk(1, c);
     for (var r = 2; r <= n; r++) mk(r, 1);
-    var main = document.createElement("div");
-    main.className = "ss-cell ss-main";
-    main.style.gridRow = "2 / -1"; main.style.gridColumn = "2 / -1";
-    stage.appendChild(main);
     var x = document.createElement("button");
     x.className = "ss-x"; x.textContent = "✕"; x.title = "Close (Esc)";
     x.addEventListener("click", close);
@@ -6209,6 +6224,8 @@ function gridWriteToT() {
     start.addEventListener("click", function () {
       start.remove();
       st.started = true;
+      // (dev1210) the whole screen, not just the browser window (Esc leaves it)
+      try { if (!document.fullscreenElement && root.requestFullscreen) root.requestFullscreen().catch(function () {}); } catch (_) {}
       var p = v.play(); if (p && p.catch) p.catch(function () {});
     });
     main.appendChild(start);
