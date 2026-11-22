@@ -5924,7 +5924,7 @@ function gridWriteToT() {
       + "#salShow .ss-cell video,#salShow .ss-cell img,#salShow .ss-cell iframe{position:absolute;inset:0;"
       + "width:100%;height:100%;object-fit:cover;border:0;}"
       // (dev1210) the main video fills the stage; rim cells lie over it, see-through
-      // while empty, and let clicks through to the video's own controls.
+      // while empty.
       + "#salShow .ss-main{z-index:0;background:#000;}"
       + "#salShow .ss-main video{object-fit:contain;background:#000;}"
       + "#salShow .ss-rim{z-index:1;pointer-events:none;background:transparent;}"
@@ -5945,101 +5945,75 @@ function gridWriteToT() {
     var m = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/.exec(String(link || ""));
     return m ? m[1] : "";
   }
-  // (dev1209) YouTube in a rim cell never shows its play/pause furniture:
-  //  - it is started early (YT_WARM s before its moment) in an invisible frame,
-  //    then rewound and made visible at the moment;
-  //  - to loop, a second invisible frame is started YT_SPARE s before the end
-  //    and swapped in as the first one ends.
-  // The frames report their own clock (YouTube's "infoDelivery" messages).
-  var YT_WARM = 5, YT_SPARE = 4, YT_SWAP = 0.4;
-  var ytAll = [];
-  function ytCmd(f, func, args) {
+  // (dev1211) YouTube in a rim cell never shows its play/pause furniture. A
+  // paused, just-loaded or just-rewound YouTube player always draws it, so the
+  // dev1209 rewind-at-the-moment could not work. The cell now uses the grid's
+  // two-copy player (video.js mountYouTubeClipBuffered, the Ctrl+B "clean"
+  // player): a copy only ever comes on screen after it has been PLAYING out of
+  // sight for a few seconds, and the loop is a swap to a second such copy.
+  //  - it is mounted YT_WARM s before its moment, out of sight;
+  //  - at its moment it is shown only once a copy is playing clean (or after
+  //    YT_WAIT s, whatever is there), so the cell stays see-through until then;
+  //  - the price: a clip is first seen a few seconds in (from its VidRange
+  //    start when that is later than the warm-up).
+  // YouTube will not start a player under 200 px, so in a smaller cell the
+  // player is made 204 px and its edges are cut off by the cell.
+  var YT_WARM = 7, YT_WAIT = 8, YT_MIN = 204, ytSeq = 0;
+  function ytCmd(frame, func, args) {
     try {
-      f.el.contentWindow.postMessage(JSON.stringify({ event: "command", func: func, args: args || [] }), "*");
+      frame.contentWindow.postMessage(JSON.stringify({ event: "command", func: func, args: args || [] }), "*");
     } catch (_) {}
   }
-  function ytFrame(y) {
-    var f = { el: document.createElement("iframe"), t: 0, at: 0, d: 0, ready: false, gone: false };
-    f.el.allow = "autoplay; encrypted-media";
-    f.el.style.opacity = "0";
-    f.el.style.pointerEvents = "none";   // no hover, so no title bar or buttons
-    f.el.src = "https://www.youtube-nocookie.com/embed/" + y.id
-      + "?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&disablekb=1&iv_load_policy=3&fs=0"
-      + "&enablejsapi=1&origin=" + encodeURIComponent(window.location.origin);
-    f.el.addEventListener("load", function () {
-      var n = 0;
-      var iv = setInterval(function () {
-        if (f.gone || f.ready || ++n > 60) { clearInterval(iv); return; }
-        try { f.el.contentWindow.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*"); } catch (_) {}
-      }, 250);
-    });
-    y.wrap.appendChild(f.el);
-    ytAll.push(f);
-    return f;
-  }
-  function ytDrop(f) {
-    if (!f) return;
-    f.gone = true;
-    try { f.el.remove(); } catch (_) {}
-    var i = ytAll.indexOf(f);
-    if (i >= 0) ytAll.splice(i, 1);
-  }
-  function ytMake(cellEl, id, sound) {
-    var y = { id: id, sound: !!sound, wrap: document.createElement("div"), active: null, spare: null, shown: false };
-    y.wrap.style.cssText = "position:absolute;inset:0;pointer-events:none;";
-    cellEl.appendChild(y.wrap);
-    y.active = ytFrame(y);
+  function ytMake(cellEl, row, sound) {
+    var host = document.createElement("div");
+    host.id = "salShowYt" + (++ytSeq);
+    var k = Math.max(1, YT_MIN / Math.max(1, cellEl.clientWidth), YT_MIN / Math.max(1, cellEl.clientHeight));
+    host.style.cssText = "position:absolute;left:50%;top:50%;width:" + (k * 100).toFixed(2) + "%;height:"
+      + (k * 100).toFixed(2) + "%;transform:translate(-50%,-50%);opacity:0;pointer-events:none;background:#000;";
+    cellEl.appendChild(host);
+    var y = { host: host, sound: !!sound, due: 0, shown: false, front: null };
+    try {
+      var segs = (window.parseVideoAsset && window.parseVideoAsset(row.VidRange)) || [{ start: 0, dur: 99999 }];
+      var pr = window.mountYouTubeClipBuffered(host, row.link, segs, true, "cut", 3.5);
+      // dropped again before the player had finished mounting: stop what it then set up
+      if (pr && pr.then) pr.then(function () { if (y.dead) { try { window.stopCellVideoLoop(host.id); } catch (_) {} } });
+    } catch (_) {}
     return y;
   }
-  function ytVoice(y, f) {
-    if (!y.sound) return;
-    ytCmd(f, "unMute"); ytCmd(f, "setVolume", [100]);
-  }
-  function ytReveal(y, rewind) {
-    y.shown = true;
-    y.active.el.style.opacity = "1";
-    if (rewind) { ytCmd(y.active, "seekTo", [0, true]); y.active.t = 0; y.active.at = performance.now(); }
-    ytCmd(y.active, "playVideo");
-    ytVoice(y, y.active);
+  // The copy that is on screen inside the player = one that is playing clean.
+  function ytFront(y) {
+    var ls = y.host.querySelectorAll(".sal-buf-layer");
+    for (var i = 0; i < ls.length; i++) if (ls[i].style.opacity === "1") return ls[i];
+    return null;
   }
   function ytKill(y) {
     if (!y) return;
-    ytDrop(y.active); ytDrop(y.spare);
-    try { y.wrap.remove(); } catch (_) {}
+    y.dead = true;
+    try { window.stopCellVideoLoop(y.host.id); } catch (_) {}
+    try { y.host.remove(); } catch (_) {}
   }
-  function ytTick(y) {
-    if (!y.shown) return;
-    var a = y.active;
-    if (!(a.d > 0)) return;
-    var left = a.d - (a.t + (a.ready ? (performance.now() - a.at) / 1000 : 0));
-    if (left < YT_SPARE && !y.spare) y.spare = ytFrame(y);
-    if (left < YT_SWAP) {
-      var sp = y.spare;
-      if (sp && sp.ready) {
-        ytCmd(sp, "seekTo", [0, true]);
-        sp.t = 0; sp.at = performance.now();
-        sp.el.style.opacity = "1"; sp.el.style.zIndex = "1";
-        ytVoice(y, sp);
-        y.active = sp; y.spare = null;
-        setTimeout(function () { ytDrop(a); sp.el.style.zIndex = ""; }, 500);
-      } else if (left < 0.15) {            // the spare is not up yet: rewind this one
-        ytCmd(a, "seekTo", [0, true]); ytCmd(a, "playVideo");
-        a.t = 0; a.at = performance.now();
-      }
+  function ytTick(y, cellEl) {
+    var front = ytFront(y);
+    if (y.due && !y.shown && (front || performance.now() - y.due > YT_WAIT * 1000)) {
+      y.shown = true;
+      y.host.style.opacity = "1";
+      cellEl.classList.add("ss-on");
+    }
+    if (y.sound && y.shown && front && front !== y.front) {   // sound follows the copy on screen
+      y.front = front;
+      Array.prototype.forEach.call(y.host.querySelectorAll(".sal-buf-layer"), function (l) {
+        var f = l.querySelector("iframe");
+        if (!f) return;
+        if (l === front) { ytCmd(f, "unMute"); ytCmd(f, "setVolume", [100]); }
+        else ytCmd(f, "mute");
+      });
     }
   }
-  window.addEventListener("message", function (e) {
-    if (!ytAll.length || typeof e.data !== "string" || e.data.indexOf("infoDelivery") < 0) return;
-    var f = null;
-    for (var i = 0; i < ytAll.length; i++) if (ytAll[i].el.contentWindow === e.source) { f = ytAll[i]; break; }
-    if (!f) return;
-    var d;
-    try { d = JSON.parse(e.data); } catch (_) { return; }
-    var info = d.info || {};
-    if (typeof info.duration === "number" && info.duration > 0) f.d = info.duration;
-    if (typeof info.currentTime === "number") { f.t = info.currentTime; f.at = performance.now(); }
-    if (info.playerState === 1) f.ready = true;
-  });
+  function ytPause(y, on) {
+    var pl = y && window.seeLearnVideoPlayers && window.seeLearnVideoPlayers[y.host.id];
+    if (!pl) return;
+    try { if (on) pl.pauseVideo(); else pl.playVideo(); } catch (_) {}
+  }
 
   function rowYt(uid) {
     var row = rowByUid(uid);
@@ -6058,12 +6032,14 @@ function gridWriteToT() {
     var el = st.cells[cell];
     if (st.cur[cell]) { ytKill(st.cur[cell]); st.cur[cell] = null; }
     var w = st.warm[cell];
-    wipe(el, w ? w.y.wrap : null);
-    el.classList.toggle("ss-on", !!(ev && ev.uid));   // (dev1210) an empty rim cell is see-through
+    wipe(el, w ? w.y.host : null);
+    // (dev1210) an empty rim cell is see-through; (dev1211) so is a YouTube
+    // cell until it is playing clean — ytTick shows it then.
+    el.classList.toggle("ss-on", !!(ev && ev.uid) && !rowYt(ev.uid));
     if (!ev || !ev.uid) return;
-    if (w && w.ev === ev) {               // warmed up in advance: just show it
+    if (w && w.ev === ev) {               // warmed up in advance: its moment has come
       st.cur[cell] = w.y; st.warm[cell] = null;
-      ytReveal(w.y, true);
+      w.y.due = performance.now();
       return;
     }
     var row = rowByUid(ev.uid);
@@ -6078,8 +6054,8 @@ function gridWriteToT() {
       node = document.createElement("img");
       node.src = link; node.alt = "";
     } else if (ytId(link)) {
-      st.cur[cell] = ytMake(el, ytId(link), ev.sound);
-      ytReveal(st.cur[cell], false);
+      st.cur[cell] = ytMake(el, row, ev.sound);   // not warmed (a jump): it appears once playing clean
+      st.cur[cell].due = performance.now();
       return;
     } else {
       node = document.createElement("div");
@@ -6100,12 +6076,12 @@ function gridWriteToT() {
       }
       var w = st.warm[cell];
       if (w && w.ev !== want && w.ev !== next) { ytKill(w.y); st.warm[cell] = null; w = null; }
-      if (next && !w && st.started) st.warm[cell] = { ev: next, y: ytMake(st.cells[cell], rowYt(next.uid), next.sound) };
+      if (next && !w && st.started) st.warm[cell] = { ev: next, y: ytMake(st.cells[cell], rowByUid(next.uid), next.sound) };
       if (st.shown[cell] !== want) {
         st.shown[cell] = want;
         fillCell(cell, want);
       }
-      if (st.cur[cell]) ytTick(st.cur[cell]);
+      if (st.cur[cell]) ytTick(st.cur[cell], st.cells[cell]);
     });
   }
   function loop() {
@@ -6114,9 +6090,30 @@ function gridWriteToT() {
     st.raf = requestAnimationFrame(loop);
   }
 
+  // (dev1211) Full screen under whichever name the browser has for it (older
+  // Safari: webkit…). Every browser allows it only from a click or a key press,
+  // never by itself on load; iPhone Safari has none for a page at all.
+  function fsEl() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+  function fsOn(el) {
+    try {
+      if (fsEl()) return;
+      var f = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen;
+      var p = f && f.call(el);
+      if (p && p.catch) p.catch(function () {});
+    } catch (_) {}
+  }
+  function fsOff(el) {
+    try {
+      if (fsEl() !== el) return;
+      var f = document.exitFullscreen || document.webkitExitFullscreen;
+      var p = f && f.call(document);
+      if (p && p.catch) p.catch(function () {});
+    } catch (_) {}
+  }
+
   function close() {
     if (!st) return;
-    try { if (document.fullscreenElement === st.root) document.exitFullscreen().catch(function () {}); } catch (_) {}
+    fsOff(st.root);
     cancelAnimationFrame(st.raf);
     window.removeEventListener("keydown", onKey, true);
     try { if (st.video) { st.video.pause(); st.video.removeAttribute("src"); st.video.load(); } } catch (_) {}
@@ -6131,6 +6128,7 @@ function gridWriteToT() {
     if (!st) return;
     if (e.ctrlKey || e.metaKey || e.key === "F5" || e.key === "F12") return;   // reload etc. still work
     if (e.key === "Escape") close();
+    else if ((e.key === " " || e.key === "Enter") && st.startEl && st.startEl.isConnected) st.startEl.click();
     else if (e.key === " " && st.video) { if (st.video.paused) st.video.play(); else st.video.pause(); }
     else if (e.key === "ArrowLeft" && st.video) st.video.currentTime = Math.max(0, st.video.currentTime - 3);
     else if (e.key === "ArrowRight" && st.video) st.video.currentTime = st.video.currentTime + 3;
@@ -6214,18 +6212,22 @@ function gridWriteToT() {
     }
     st.events = buildEvents(script, media.times);
     var v = document.createElement("video");
-    v.src = media.src; v.controls = true; v.playsInline = true; v.preload = "auto";
+    // (dev1211) no control bar: a presentation just plays (Space and the arrow
+    // keys still pause and jump 3 s, for working on it)
+    v.src = media.src; v.controls = false; v.playsInline = true; v.preload = "auto";
+    v.disablePictureInPicture = true;
+    v.addEventListener("contextmenu", function (e) { e.preventDefault(); });
     v.setAttribute("playsinline", "");
     main.appendChild(v);
     st.video = v;
     var start = document.createElement("div");
     start.className = "ss-start";
     start.innerHTML = "<span>▶ Start</span>";
+    st.startEl = start;
     start.addEventListener("click", function () {
       start.remove();
       st.started = true;
-      // (dev1210) the whole screen, not just the browser window (Esc leaves it)
-      try { if (!document.fullscreenElement && root.requestFullscreen) root.requestFullscreen().catch(function () {}); } catch (_) {}
+      fsOn(root);   // (dev1210) the whole screen, not just the browser window (Esc leaves it)
       var p = v.play(); if (p && p.catch) p.catch(function () {});
     });
     main.appendChild(start);
@@ -6235,6 +6237,7 @@ function gridWriteToT() {
       Object.keys(st.cells).forEach(function (k) {
         var rv = st.cells[k].querySelector("video");
         if (rv) { try { var q = rv[fn](); if (q && q.catch) q.catch(function () {}); } catch (_) {} }
+        ytPause(st.cur[k], fn === "pause");
       });
     };
     v.addEventListener("play", function () {

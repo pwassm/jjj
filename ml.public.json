@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1795324744621,
+    "_salPushTime": 1795326288308,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -95,7 +95,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "ltype",
+      "col": "DateAdded",
       "dir": "desc"
     },
     "_salGsize": 5,
@@ -618,7 +618,7 @@
       }
     },
     "_salActiveView": "lastmodtop2",
-    "_salSavedAt": 1795324744621
+    "_salSavedAt": 1795326288308
   },
   {
     "UID": "1",
@@ -59652,7 +59652,7 @@
     "ftextSize": "2883",
     "FtextJunk": "0",
     "DictSize": "0",
-    "ltype": "s",
+    "ltype": "p",
     "tags": [
       "humor",
       "mbaq"
@@ -60959,6 +60959,42 @@
     "DictSize": "0",
     "VidTitle": "Simple Swedish Way to Return Any Serve in Table Tennis After 60 (Beginner & Intermediate)",
     "VidAuthor": "@LarsPingPongPro",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2864",
+    "link": "https://youtu.be/WgtS8kxRlM8",
+    "show": "1",
+    "DateAdded": "2026-11-22 05:42:16",
+    "DateModified": "2026-11-22 05:42:21",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "298",
+    "FtextJunk": "26",
+    "DictSize": "0",
+    "VidTitle": "I Study Aging. These Are the 5 Supplements You Should Prioritize",
+    "VidAuthor": "@FoundMyFitnessClips",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2865",
+    "link": "https://youtu.be/DCedN07mIbo",
+    "show": "1",
+    "DateAdded": "2026-11-22 05:44:27",
+    "DateModified": "2026-11-22 05:44:31",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "260",
+    "FtextJunk": "29",
+    "DictSize": "0",
+    "VidTitle": "Live Mollusks in their Shells",
+    "VidAuthor": "@sanibelshellclub",
     "Mode": "L",
     "ftext": ""
   }
