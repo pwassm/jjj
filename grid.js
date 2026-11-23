@@ -5781,6 +5781,7 @@ function gridWriteToT() {
   var SPK_RE = /^\s*([A-Za-z][A-Za-z .'-]{0,24}?)\s*:\s+([\s\S]*)$/;
   var CELL_RE = /^\d[a-z]-?$/;   // (dev1216) "2d-" = the cell is only the anchor: the whole picture is shown
   var NUM_RE = /^\d+(\.\d+)?$/;
+  var SEC_TOK = /^\d+(\.\d+)?(s|secs?|seconds?)?$/;
   var st = null;
 
   function rowByUid(uid) {
@@ -5819,7 +5820,21 @@ function gridWriteToT() {
     for (var i = 1; i < tok.length; i++) {
       var w = tok[i].toLowerCase();
       var nxt = (i + 1 < tok.length) ? tok[i + 1].toLowerCase() : "";
-      if (w === "main" || CELL_RE.test(w)) { c.cell = w.replace(/-$/, ""); c.free = /-$/.test(w); }
+      // (dev1217) "8s" is 8 seconds, not a cell
+      if (w === "main" || (CELL_RE.test(w) && !/^\d+s$/.test(w))) { c.cell = w.replace(/-$/, ""); c.free = /-$/.test(w); }
+      // (dev1217) "starts at 6 seconds", "start 1sec end 5 seconds" = places in
+      // the clip or sound (used when the video is baked): not a length, not "end"
+      else if (/^(start|starts|starting|from)$/.test(w) || (/^(end|ends|to)$/.test(w) && SEC_TOK.test(nxt))) {
+        var j = i + 1;
+        if (j < tok.length && tok[j].toLowerCase() === "at") j++;
+        if (j < tok.length && SEC_TOK.test(tok[j].toLowerCase())) {
+          i = j;
+          if (i + 1 < tok.length && /^(seconds?|secs?|s)$/.test(tok[i + 1].toLowerCase())) i++;
+        }
+      }
+      else if (w === "through" || w === "thru") break;   // (dev1217) "through C and I and 2875": names, not commands
+      else if (w === "double" || w === "2x") c.scale = 2;   // (dev1217) "2d- double size"
+      else if (w === "triple") c.scale = 3;
       else if (w === "at" && NUM_RE.test(nxt)) { c.at = Math.max(0, Math.min(100, parseFloat(nxt))); i++; }
       else if (w === "for" && NUM_RE.test(nxt)) { c.secs = parseFloat(nxt); i++; }
       else if (NUM_RE.test(w) && /^(seconds?|secs?|s)$/.test(nxt)) { c.secs = parseFloat(w); i++; }
@@ -5852,7 +5867,16 @@ function gridWriteToT() {
         if (hm) { out.n = parseInt(hm[1], 10); return; }
       }
       if (t.charAt(0) === ";") return;
-      var wm = WHOLE_RE.exec(t);
+      // (dev1217) a command line may hold brackets of its own: "( … (10 pixel margin) … )"
+      var wm = null;
+      if (t.charAt(0) === "(" && t.charAt(t.length - 1) === ")") {
+        var depth = 0, okWhole = true;
+        for (var ci = 0; ci < t.length; ci++) {
+          depth += (t.charAt(ci) === "(") - (t.charAt(ci) === ")");
+          if (depth === 0 && ci < t.length - 1) { okWhole = false; break; }
+        }
+        if (okWhole && depth === 0) wm = [t, t.slice(1, -1).replace(/[()]/g, " ")];
+      }
       if (wm) {
         var inner = wm[1].trim();
         // (dev1216) "(2875)" alone = a row, not a 2875-second wait
@@ -5865,6 +5889,12 @@ function gridWriteToT() {
         if (cs.length === 1 && cs[0].secs > 0) {
           out.beats.push({ kind: "gap", text: "", cmds: pending.concat(cs) });
           pending = [];
+        } else if (cs.length === 1 && cs[0].full && !pending.length && out.beats.length
+            && out.beats[out.beats.length - 1].cmds.some(function (x) {
+              return x.cell === "main" && !x.clear && !x.end && x.uid === cs[0].uid; })) {
+          // (dev1217) "(2876 full volume to end)" under the line 2876 played over:
+          // the clip carries on alone to its end, a stretch of its own
+          out.beats.push({ kind: "gap", text: "", cmds: cs });
         } else pending = pending.concat(cs);
         return;
       }
@@ -5933,7 +5963,7 @@ function gridWriteToT() {
       }
       var t1 = c.clear ? Infinity : (c.secs > 0 ? a.t0 + c.secs : (c.line ? a.lineEnd : Infinity));
       (c.cell === "all" ? rimNames(script.n) : [c.cell]).forEach(function (cell) {
-        add(cell, { t0: a.t0, t1: t1, uid: c.clear ? "" : c.uid, sound: c.sound, noloop: c.noloop, free: !!c.free });
+        add(cell, { t0: a.t0, t1: t1, uid: c.clear ? "" : c.uid, sound: c.sound, noloop: c.noloop, free: !!c.free, scale: c.scale || 1 });
         if (!c.clear) where[c.uid] = cell;
       });
     });
@@ -6106,7 +6136,7 @@ function gridWriteToT() {
         var w = node.naturalWidth || node.videoWidth, h = node.naturalHeight || node.videoHeight;
         var cw = el.clientWidth, ch = el.clientHeight;
         if (!w || !h || !cw || !ch) return;
-        var k = Math.max(cw / w, ch / h);
+        var k = Math.max(cw / w, ch / h) * (ev.scale || 1);   // (dev1217) "double size"
         node.style.width = (100 * w * k / cw).toFixed(2) + "%";
         node.style.height = (100 * h * k / ch).toFixed(2) + "%";
       };
