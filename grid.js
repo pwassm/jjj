@@ -5828,6 +5828,7 @@ function gridWriteToT() {
       else if (w === "keep" || w === "loop" || w === "stay" || w === "stays" || w === "show") c.keep = true;
       else if (w === "noloop" || w === "once") c.noloop = true;
       else if (w === "duration") c.line = true;
+      else if ((w === "till" || w === "until" || w === "to") && nxt === "end") { c.full = true; i++; }   // (dev1215) clip plays to its own end (baked)
       else if (w === "end" || w === "ends" || w === "stop" || w === "off") c.end = true;
     }
     if (c.secs > 0) c.line = false;
@@ -5897,9 +5898,10 @@ function gridWriteToT() {
 
   function cellName(r, c) { return r + String.fromCharCode(96 + c); }
   function rimNames(n) {
-    var out = [], i;
-    for (i = 1; i <= n; i++) out.push(cellName(1, i));
-    for (i = 2; i <= n; i++) out.push(cellName(i, 1));
+    // (dev1215) every cell of the N×N grid can hold something (Phil put a
+    // picture in 2d), not only the top row and the left column.
+    var out = [], r, c;
+    for (r = 1; r <= n; r++) for (c = 1; c <= n; c++) out.push(cellName(r, c));
     return out;
   }
 
@@ -6217,8 +6219,7 @@ function gridWriteToT() {
       stage.appendChild(el);
       cells[cellName(r, c)] = el;
     };
-    for (var c = 1; c <= n; c++) mk(1, c);
-    for (var r = 2; r <= n; r++) mk(r, 1);
+    for (var r = 1; r <= n; r++) for (var c = 1; c <= n; c++) mk(r, c);   // (dev1215) all cells, see-through while empty
     var x = document.createElement("button");
     x.className = "ss-x"; x.textContent = "✕"; x.title = "Close (Esc)";
     x.addEventListener("click", close);
