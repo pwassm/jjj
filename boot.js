@@ -244,6 +244,25 @@ _markUserModeClass();
         window._deepUnlocked = hasUnlock;
       }
     }
+    // (dev1219) Named item link: `?t=NAME` opens the row whose `ttxt` says
+    // NAME, e.g. ?t=interview. A name can only reach a row that was given one,
+    // so it is the public way to hand out a single item; a number (?i=NNN)
+    // stays refused for every row without a ttxt (_openItemByUid). The row is
+    // not known until the rows are in, so only the name is kept here and
+    // _openItemByUid looks it up. Same lock as a bare ?i=; /unlock lifts it.
+    const tRaw = (p.get('t') || '').trim();
+    if (tRaw && !window._deepUid) {
+      const { val: tName, hasUnlock } = strip(tRaw);
+      if (tName) {
+        document.documentElement.classList.add('deep-uid');
+        if (!hasUnlock) {
+          document.documentElement.classList.add('locked-mode');
+          window._lockedUid = 't=' + tName;   // the row's own UID replaces this once it is found
+        }
+        window._deepTtxt = tName;
+        window._deepUnlocked = hasUnlock;
+      }
+    }
     // (dev0253) Config deep-link: `?c=NAME` opens G with that c.json
     // config activated. `?c=NAME/unlock` leaves the Configs picker
     // visible; bare form hides nav (same locked-mode CSS as ?i=).
@@ -4625,6 +4644,7 @@ function _routeInitialScreen() {
   // `_deepUid` is the bare UID (slash-suffix stripped); `_lockedUid` is
   // set iff the link did NOT end in /unlock.
   const deepUid = window._deepUid || params.get('i') || null;
+  const deepT = deepUid ? null : (window._deepTtxt || null);   // (dev1219) ?t=NAME
   const deepConfig = window._deepConfig || null;
   const deepSs = window._deepSs || null;
   const isLocked = !!window._lockedUid;
@@ -4651,7 +4671,7 @@ function _routeInitialScreen() {
   }
   // (zip0141) In user mode, default to G regardless of device — the user
   // version doesn't have a meaningful T view.
-  if (!target && (_isMobileDevice() || _isUserMode() || deepUid || deepConfig || deepSs)) target = 'g';
+  if (!target && (_isMobileDevice() || _isUserMode() || deepUid || deepT || deepConfig || deepSs)) target = 'g';
   if (!target) return;
   setTimeout(() => {
     // (dev0249) In LOCKED deep-link mode, skip opening G — V will render
@@ -4660,7 +4680,7 @@ function _routeInitialScreen() {
     // directly, eliminating the brief "flash of G" before V mounts.
     // The user can still get to G by closing V (vpClose's no-op return-
     // to-grid behavior).
-    if (deepUid) {
+    if (deepUid || deepT) {
       // skip gridShow / openCScreen — go straight to V
     } else if (deepSs) {
       // (dev0267) ?ss=ID — find c.json row with matching ss field, activate
@@ -4693,6 +4713,7 @@ function _routeInitialScreen() {
       else if (typeof openCScreen === 'function') openCScreen();
     }
     if (deepUid) _openItemByUid(deepUid);
+    else if (deepT) _openItemByUid(deepT, true);   // (dev1219) by its ttxt name
   }, 200);
 }
 
@@ -4878,11 +4899,33 @@ window._salOpenConfig = _salOpenConfig;
 // it has to be wired per DOCUMENT, because the V reader's slide lives in a
 // srcdoc iframe that a listener on this document can never see.
 
+// (dev1219) The names a row can be opened by with ?t=NAME: the <summary> of its
+// ttxt, its first line, and the whole of it. Compared as letters and digits
+// only, so ?t=Interview, ?t=interview and ?t=the-interview all find a ttxt
+// that says "The Interview". The greeting row's ttxt is a marker, not a name.
+function _salTtxtKey(s) { return String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, ''); }
+function _salTtxtNames(ttxt) {
+  const src = String(ttxt == null ? '' : ttxt).trim();
+  if (!src || /^greet/i.test(src)) return [];
+  const t = document.createElement('template');   // inert: nothing inside it loads
+  t.innerHTML = src;
+  const sum = t.content.querySelector('summary');
+  let first = '';
+  for (const n of t.content.childNodes) {
+    first = (n.textContent || '').trim();
+    if (first) break;
+  }
+  return [sum ? sum.textContent : '', first, t.content.textContent || '']
+    .map(_salTtxtKey).filter(Boolean);
+}
+
 // (zip0142) Resolve a UID (string or number) to a row in `data` and open
 // it in V (fullscreen). Tolerant of leading/trailing whitespace and of
 // either string or numeric storage in ml.json. Toasts on miss so the
 // user knows the link was bad.
-function _openItemByUid(uid) {
+// (dev1219) byName = `uid` is not a number but the NAME a row is shared under
+// (?t=NAME): what its ttxt says. See _salTtxtNames.
+function _openItemByUid(uid, byName) {
   const want = String(uid).trim();
   if (!want) return;
   // (dev0366) When V was launched from the shareable menu, `_smOpenV` forces a
@@ -4926,12 +4969,18 @@ function _openItemByUid(uid) {
       setTimeout(tryOpen, 100);
       return;
     }
-    const row = rows.find(r => String(r.UID) === want);
+    // (dev1219) ?t=NAME finds the row by what its ttxt says, not by number.
+    const key = byName ? _salTtxtKey(want) : '';
+    const row = byName
+      ? (key ? rows.find(r => r && !r._salMeta && r.UID != null && _salTtxtNames(r.ttxt).indexOf(key) >= 0) : null)
+      : rows.find(r => String(r.UID) === want);
     if (!row) {
-      if (typeof toast === 'function') toast('No item with UID ' + want, 2000);
+      if (typeof toast === 'function') toast(byName ? 'Not found' : ('No item with UID ' + want), 2000);
       _recoverMenu();
       return;
     }
+    // The lock held the name until now; from here on it names the row.
+    if (byName && window._lockedUid) window._lockedUid = String(row.UID);
     // (dev0315) Anti-enumeration on the public site: a LOCKED link (?i=NNN
     // with no /unlock) may only open items that were explicitly shared —
     // i.e. rows carrying a non-empty `ttxt` block (dev0378: was `Direct`).
