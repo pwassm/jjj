@@ -793,7 +793,10 @@ function gridOpenFullscreen(row, contained) {
   const fs = document.getElementById('gridFullscreen');
   const content = document.getElementById('gridFsContent');
   const info = document.getElementById('gridFsInfo');
-  
+
+  // (dev1218) Insets laid over the video that was here (grid.js
+  // salOvMount) stop before their host is thrown away.
+  if (typeof window.salOvClose === 'function') { try { window.salOvClose(); } catch (_) {} }
   content.innerHTML = '';
   // (zip0144) Reset content's inline style. The image-fullscreen branch
   // (below) mutates content.style with display:flex centering; without
@@ -3118,6 +3121,8 @@ function vpClose() {
   
   // Also use stopCellVideoLoop as backup
   if (window.stopCellVideoLoop) window.stopCellVideoLoop('grid-fs-video');
+  // (dev1218) …and the insets laid over this video (grid.js salOvMount)
+  if (typeof window.salOvClose === 'function') { try { window.salOvClose(); } catch (_) {} }
 
   // (dev0281) If this V was driven by the slideshow, hand its final mute/speed/
   // A-B state back so the choices persist to the next video this session.
@@ -13988,6 +13993,16 @@ function vpMountDirectVideo(host, link, seg, muted) {
   host.appendChild(vid);
   _vpMountDiskInfoOverlay(host, vid, window._vpCurrentRow);
   _vpMountCropOverlay(host, vid, window._vpCurrentRow);
+  // (dev1218) Overlay lines. "(2842 1d 32.5-36.6 muted noloop)" in this row's
+  // ftext lays row 2842 over the picture, in cell 1d of a 5×5 grid, during
+  // those seconds of the video (grid.js, the "s" SHOW section: this is how the
+  // baked video of a presentation gets its live insets). The layer goes INSIDE
+  // the host, so the transform _vApply writes on the host for hold-to-enlarge,
+  // panning and the double-click reset carries the insets with the picture.
+  // A row with no such line gets no layer: nothing changes for it.
+  if (typeof window.salOvMount === 'function') {
+    try { window.salOvMount(host, vid, window._vpCurrentRow); } catch (_) {}
+  }
   // (dev0747) Opened from the file manager → start cropping straight away. The
   // rect is sized from the video's dimensions, which are not known until
   // metadata arrives, so wait for it (or fire now if it already has).

@@ -1157,13 +1157,28 @@ function _mlLeadOnly(row, gridUids) {
   return parts.join(' ');
 }
 
+// (dev1218) A video FILE row with no route still publishes its OVERLAY LINES,
+// "(2842 1d 32.5-36.6 muted noloop)" (grid.js salOvMount): the regular
+// viewer lays those rows over the video during those seconds, on the live site
+// too. It is how the baked video of a presentation gets its insets. Only those
+// lines, one <p> each: the rest of that ftext is a harvested description.
+// Same file types as the viewer's own test (vp.js, before vpMountDirectVideo).
+const _ML_OVERLAY_VIDEO_RE = /[.](mp4|mov|webm|ogv|ogg|avi|mkv|m4v)([?#]|$)/i;
+function _mlOverlayOnly(row) {
+  if (typeof window._salOvLines !== 'function') return '';
+  if (!_ML_OVERLAY_VIDEO_RE.test(String(row.link || '').trim())) return '';
+  return window._salOvLines(row.ftext)
+    .map(l => '<p>' + l.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</p>').join('');
+}
+
 function _mlPublicRows(rows, gridUids, plusUids) {
   return rows.map(r => {
     if (!r || r._salMeta) return r;
     if (typeof r.ftext !== 'string' || !r.ftext) return r;
     if (_mlFtextRoute(r, gridUids, plusUids)) return r;
     const c = Object.assign({}, r);
-    c.ftext = _mlLeadOnly(r, gridUids);
+    // (dev1218) lead directives first: _salFtextLead reads them from the start
+    c.ftext = _mlLeadOnly(r, gridUids) + _mlOverlayOnly(r);
     return c;
   });
 }

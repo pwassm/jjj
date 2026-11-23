@@ -3608,6 +3608,9 @@ function _salAnnotParts(row) {
   // (dev0971) Lead directives never show. An ftext that was ONLY directives
   // ("8") captions nothing.
   ft = window._salFtextLead(ft).html;
+  // (dev1218) Nor do overlay lines, "(2842 1d 32.5-36.6 muted)": they are
+  // orders to the viewer (the "s" SHOW section, salOvMount), not words.
+  if (typeof window._salOvStrip === 'function') ft = window._salOvStrip(ft);
   var wins = _salCapWindows(ft);
   if (wins && !wins.length) return null;             // markers, but nothing between them
   var bare = ft.replace(_SAL_CAP_MARK_RE, '');
@@ -5771,6 +5774,19 @@ function gridWriteToT() {
 // Line times + the video: row.sstimes ("0.6-2.93,3.73-10.61,…") and row.link
 // when set; otherwise, on the dev machine, show_local.json beside index.html.
 // Opens from: a C config whose 1a holds the show row, or ?show=UID.
+//
+// (dev1218) OVERLAY LINES. The baked video of a presentation is also an
+// ordinary video row, played in the regular viewer (V). Lines in THAT row's
+// ftext lay other rows over the picture, timed in seconds of the video:
+//   (2842 1d 32.5-36.6 muted noloop)   row 2842 in cell 1d from 32.5 s to 36.6 s
+//   (2870 1e 32.9-36.6)                a picture in 1e
+//   (2873 1d- double 53.8-60.2)        "1d-": 1d is only the anchor, the whole
+//                                      picture is shown; "double" = twice as big
+// Cells are those of a 5×5 grid over the video (1a = top left). Sound is on
+// unless "muted" (and off while the viewer itself is muted); "noloop" = once.
+// This is the ONE form the viewer reads: the plain-English commands above are
+// read only by make_show.py, which prints these lines after a render. See
+// salOvMount below; the cells are filled by the same code as the show's.
 (function () {
   var PARA_SPLIT = /<\/p>|<br\s*\/?>|<\/h\d>|<\/li>|<\/div>/i;
   var HEAD_RE = /^[A-Za-z]?\s*([345])\s*\*/;   // a stray letter before 5* is forgiven
@@ -5967,6 +5983,11 @@ function gridWriteToT() {
         if (!c.clear) where[c.uid] = cell;
       });
     });
+    return noOverlap(by);
+  }
+  // Each cell's list in time order; one that is still up when the next begins
+  // ends there.
+  function noOverlap(by) {
     Object.keys(by).forEach(function (cell) {
       var a = by[cell].sort(function (x, y) { return x.t0 - y.t0; });
       for (var i = 0; i < a.length - 1; i++) if (a[i].t1 > a[i + 1].t0) a[i].t1 = a[i + 1].t0;
@@ -5978,25 +5999,32 @@ function gridWriteToT() {
     if (document.getElementById("salShowCss")) return;
     var s = document.createElement("style");
     s.id = "salShowCss";
+    // (dev1218) The cell rules serve two homes: the show (#salShow) and the
+    // overlay layer of the regular viewer (.sal-ov). :is() keeps one copy of
+    // each rule, at the weight it had.
+    var W = ":is(#salShow,.sal-ov)";
     s.textContent =
         "#salShow{position:fixed;inset:0;z-index:2147483000;background:#000;display:flex;"
       + "align-items:center;justify-content:center;font-family:Arial,sans-serif;}"
       + "#salShow .ss-stage{width:min(100vw,calc(100vh * 16 / 9));aspect-ratio:16/9;display:grid;gap:2px;background:#000;}"
-      + "#salShow .ss-cell{position:relative;overflow:hidden;min-width:0;min-height:0;}"
-      + "#salShow .ss-cell video,#salShow .ss-cell img,#salShow .ss-cell iframe{position:absolute;inset:0;"
+      // (dev1218) the overlay layer: laid over the picture of the viewer's video
+      // (salOvMount gives it the place and size), see-through, never clicked
+      + ".sal-ov{position:absolute;z-index:3;display:grid;gap:2px;pointer-events:none;font-family:Arial,sans-serif;}"
+      + W + " .ss-cell{position:relative;overflow:hidden;min-width:0;min-height:0;}"
+      + W + " .ss-cell video," + W + " .ss-cell img," + W + " .ss-cell iframe{position:absolute;inset:0;"
       + "width:100%;height:100%;object-fit:cover;border:0;}"
       // (dev1210) the main video fills the stage; rim cells lie over it, see-through
       // while empty.
       + "#salShow .ss-main{z-index:0;background:#000;}"
       + "#salShow .ss-main video{object-fit:contain;background:#000;}"
-      + "#salShow .ss-rim{z-index:1;pointer-events:none;background:transparent;}"
-      + "#salShow .ss-rim.ss-on{background:#0b0f14;box-shadow:0 0 0 1px rgba(0,0,0,0.85);}"
-      + "#salShow .ss-rim.ss-free{overflow:visible;z-index:2;background:transparent;box-shadow:none;}"
-      + "#salShow .ss-free video,#salShow .ss-free img{inset:0 auto auto 0;object-fit:fill;}"
-      + "#salShow .ss-free .ss-tag{display:none;}"
-      + "#salShow .ss-tag{position:absolute;left:4px;top:3px;z-index:2;font:10px monospace;color:rgba(255,255,255,0.4);pointer-events:none;}"
-      + "#salShow .ss-rim:not(.ss-on) .ss-tag{display:none;}"
-      + "#salShow .ss-note{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"
+      + W + " .ss-rim{z-index:1;pointer-events:none;background:transparent;}"
+      + W + " .ss-rim.ss-on{background:#0b0f14;box-shadow:0 0 0 1px rgba(0,0,0,0.85);}"
+      + W + " .ss-rim.ss-free{overflow:visible;z-index:2;background:transparent;box-shadow:none;}"
+      + W + " .ss-free video," + W + " .ss-free img{inset:0 auto auto 0;object-fit:fill;}"
+      + W + " .ss-free .ss-tag{display:none;}"
+      + W + " .ss-tag{position:absolute;left:4px;top:3px;z-index:2;font:10px monospace;color:rgba(255,255,255,0.4);pointer-events:none;}"
+      + W + " .ss-rim:not(.ss-on) .ss-tag{display:none;}"
+      + W + " .ss-note{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"
       + "padding:8%;text-align:center;color:#9ab;font-size:15px;line-height:1.4;}"
       + "#salShow .ss-start{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;"
       + "background:rgba(0,0,0,0.45);cursor:pointer;}"
@@ -6057,19 +6085,24 @@ function gridWriteToT() {
     try { window.stopCellVideoLoop(y.host.id); } catch (_) {}
     try { y.host.remove(); } catch (_) {}
   }
-  function ytTick(y, cellEl) {
+  // (dev1218) S = whose cells these are: the show's `st`, or the overlay layer
+  // of the regular viewer. Both are { cells, shown, cur, warm, events, video },
+  // plus muted() where the main video's own mute silences the cells too.
+  function ytTick(S, y, cellEl) {
     var front = ytFront(y);
     if (y.due && !y.shown && (front || performance.now() - y.due > YT_WAIT * 1000)) {
       y.shown = true;
       y.host.style.opacity = "1";
       cellEl.classList.add("ss-on");
     }
-    if (y.sound && y.shown && front && front !== y.front) {   // sound follows the copy on screen
-      y.front = front;
+    var snd = y.sound && !(S.muted && S.muted());
+    // sound follows the copy on screen, (dev1218) and the main video's mute
+    if (y.shown && front && (snd || y.snd) && (front !== y.front || snd !== y.snd)) {
+      y.front = front; y.snd = snd;
       Array.prototype.forEach.call(y.host.querySelectorAll(".sal-buf-layer"), function (l) {
         var f = l.querySelector("iframe");
         if (!f) return;
-        if (l === front) { ytCmd(f, "unMute"); ytCmd(f, "setVolume", [100]); }
+        if (l === front && snd) { ytCmd(f, "unMute"); ytCmd(f, "setVolume", [100]); }
         else ytCmd(f, "mute");
       });
     }
@@ -6093,10 +6126,10 @@ function gridWriteToT() {
       if (ch !== keep && !(ch.classList && ch.classList.contains("ss-tag"))) ch.remove();
     });
   }
-  function fillCell(cell, ev) {
-    var el = st.cells[cell];
-    if (st.cur[cell]) { ytKill(st.cur[cell]); st.cur[cell] = null; }
-    var w = st.warm[cell];
+  function fillCell(S, cell, ev) {
+    var el = S.cells[cell];
+    if (S.cur[cell]) { ytKill(S.cur[cell]); S.cur[cell] = null; }
+    var w = S.warm[cell];
     wipe(el, w ? w.y.host : null);
     // (dev1210) an empty rim cell is see-through; (dev1211) so is a YouTube
     // cell until it is playing clean — ytTick shows it then.
@@ -6104,7 +6137,7 @@ function gridWriteToT() {
     el.classList.toggle("ss-free", !!(ev && ev.uid && ev.free));   // (dev1216)
     if (!ev || !ev.uid) return;
     if (w && w.ev === ev) {               // warmed up in advance: its moment has come
-      st.cur[cell] = w.y; st.warm[cell] = null;
+      S.cur[cell] = w.y; S.warm[cell] = null;
       w.y.due = performance.now();
       return;
     }
@@ -6113,15 +6146,20 @@ function gridWriteToT() {
     var node;
     if (/\.(mp4|m4v|mov|webm|ogv)([?#]|$)/i.test(link)) {
       node = document.createElement("video");
-      node.src = link; node.loop = !ev.noloop; node.muted = !ev.sound;   // (dev1214) noloop: once, last frame held node.playsInline = true; node.autoplay = true;
+      // (dev1214) noloop: once, last frame held
+      node.src = link; node.loop = !ev.noloop;
+      node.muted = !ev.sound || !!(S.muted && S.muted());
+      node.playsInline = true;
       node.setAttribute("playsinline", "");
-      var p = node.play(); if (p && p.catch) p.catch(function () {});
+      // (dev1218) reached by a jump while the main video is paused: it waits,
+      // and starts with the main video (insetsRun)
+      if (!(S.video && S.video.paused)) { var p = node.play(); if (p && p.catch) p.catch(function () {}); }
     } else if (/\.(jpe?g|png|gif|webp|avif|bmp)([?#]|$)/i.test(link)) {
       node = document.createElement("img");
       node.src = link; node.alt = "";
     } else if (ytId(link)) {
-      st.cur[cell] = ytMake(el, row, ev.sound);   // not warmed (a jump): it appears once playing clean
-      st.cur[cell].due = performance.now();
+      S.cur[cell] = ytMake(el, row, ev.sound);   // not warmed (a jump): it appears once playing clean
+      S.cur[cell].due = performance.now();
       return;
     } else {
       node = document.createElement("div");
@@ -6146,24 +6184,64 @@ function gridWriteToT() {
     el.appendChild(node);
   }
 
-  function sync() {
-    if (!st) return;
-    var t = (st.video && st.started) ? st.video.currentTime : -0.5;
-    Object.keys(st.cells).forEach(function (cell) {
-      var list = st.events[cell] || [], want = null, next = null;
+  // Puts in every cell of S what belongs there at second t of the main video.
+  // canWarm = a YouTube clip due within YT_WARM s may start out of sight now.
+  function syncCells(S, t, canWarm) {
+    Object.keys(S.cells).forEach(function (cell) {
+      var list = S.events[cell] || [], want = null, next = null;
       for (var i = 0; i < list.length; i++) {
         if (list[i].t0 <= t && t < list[i].t1) want = list[i];
         else if (!next && list[i].t0 > t && list[i].t0 - t <= YT_WARM && list[i].uid && rowYt(list[i].uid)) next = list[i];
       }
-      var w = st.warm[cell];
-      if (w && w.ev !== want && w.ev !== next) { ytKill(w.y); st.warm[cell] = null; w = null; }
-      if (next && !w && st.started) st.warm[cell] = { ev: next, y: ytMake(st.cells[cell], rowByUid(next.uid), next.sound) };
-      if (st.shown[cell] !== want) {
-        st.shown[cell] = want;
-        fillCell(cell, want);
+      var w = S.warm[cell];
+      if (w && w.ev !== want && w.ev !== next) { ytKill(w.y); S.warm[cell] = null; w = null; }
+      if (next && !w && canWarm) S.warm[cell] = { ev: next, y: ytMake(S.cells[cell], rowByUid(next.uid), next.sound) };
+      if (S.shown[cell] !== want) {
+        S.shown[cell] = want;
+        fillCell(S, cell, want);
       }
-      if (st.cur[cell]) ytTick(st.cur[cell], st.cells[cell]);
+      if (S.cur[cell]) ytTick(S, S.cur[cell], S.cells[cell]);
     });
+  }
+  // Clips in the cells stop and go with the main video. One that has played to
+  // its end ("noloop") stays on its last frame. ytToo = YouTube cells as well.
+  function insetsRun(S, fn, ytToo) {
+    Object.keys(S.cells).forEach(function (k) {
+      var rv = S.cells[k].querySelector("video");
+      if (rv && !(fn === "play" && rv.ended)) {
+        try { var q = rv[fn](); if (q && q.catch) q.catch(function () {}); } catch (_) {}
+      }
+      if (ytToo) ytPause(S.cur[k], fn === "pause");
+    });
+  }
+  // Empties every cell and stops whatever was warming up for one.
+  function emptyCells(S) {
+    Object.keys(S.cells).forEach(function (c) {
+      if (S.warm[c]) { ytKill(S.warm[c].y); S.warm[c] = null; }
+      S.shown[c] = null;
+      fillCell(S, c, null);
+    });
+  }
+  // The N×N cells, see-through while empty. tags = each wears its name ("1d").
+  function mkCells(parent, n, tags) {
+    var cells = {};
+    for (var r = 1; r <= n; r++) for (var c = 1; c <= n; c++) {
+      var el = document.createElement("div");
+      el.className = "ss-cell ss-rim";
+      el.style.gridRow = String(r); el.style.gridColumn = String(c);
+      if (tags) {
+        var tag = document.createElement("span");
+        tag.className = "ss-tag"; tag.textContent = cellName(r, c);
+        el.appendChild(tag);
+      }
+      parent.appendChild(el);
+      cells[cellName(r, c)] = el;
+    }
+    return cells;
+  }
+  function sync() {
+    if (!st) return;
+    syncCells(st, (st.video && st.started) ? st.video.currentTime : -0.5, st.started);
   }
   function loop() {
     if (!st) return;
@@ -6198,10 +6276,7 @@ function gridWriteToT() {
     cancelAnimationFrame(st.raf);
     window.removeEventListener("keydown", onKey, true);
     try { if (st.video) { st.video.pause(); st.video.removeAttribute("src"); st.video.load(); } } catch (_) {}
-    Object.keys(st.cells).forEach(function (c) {
-      if (st.warm[c]) { ytKill(st.warm[c].y); st.warm[c] = null; }
-      fillCell(c, null);
-    });
+    emptyCells(st);
     st.root.remove();
     st = null;
   }
@@ -6255,22 +6330,11 @@ function gridWriteToT() {
     stage.className = "ss-stage";
     stage.style.gridTemplateColumns = "repeat(" + n + ",1fr)";
     stage.style.gridTemplateRows = "repeat(" + n + ",1fr)";
-    var cells = {};
     var main = document.createElement("div");
     main.className = "ss-cell ss-main";
     main.style.gridRow = "1 / -1"; main.style.gridColumn = "1 / -1";   // (dev1210) the whole screen
     stage.appendChild(main);
-    var mk = function (r, c) {
-      var el = document.createElement("div");
-      el.className = "ss-cell ss-rim";
-      el.style.gridRow = String(r); el.style.gridColumn = String(c);
-      var tag = document.createElement("span");
-      tag.className = "ss-tag"; tag.textContent = cellName(r, c);
-      el.appendChild(tag);
-      stage.appendChild(el);
-      cells[cellName(r, c)] = el;
-    };
-    for (var r = 1; r <= n; r++) for (var c = 1; c <= n; c++) mk(r, c);   // (dev1215) all cells, see-through while empty
+    var cells = mkCells(stage, n, true);   // (dev1215) all cells, see-through while empty
     var x = document.createElement("button");
     x.className = "ss-x"; x.textContent = "✕"; x.title = "Close (Esc)";
     x.addEventListener("click", close);
@@ -6312,14 +6376,7 @@ function gridWriteToT() {
     });
     main.appendChild(start);
     // Rim videos stop and go with the main video.
-    var rim = function (fn) {
-      if (!st) return;
-      Object.keys(st.cells).forEach(function (k) {
-        var rv = st.cells[k].querySelector("video");
-        if (rv) { try { var q = rv[fn](); if (q && q.catch) q.catch(function () {}); } catch (_) {} }
-        ytPause(st.cur[k], fn === "pause");
-      });
-    };
+    var rim = function (fn) { if (st) insetsRun(st, fn, true); };
     v.addEventListener("play", function () {
       if (!st) return;
       st.started = true;
@@ -6328,6 +6385,144 @@ function gridWriteToT() {
     });
     v.addEventListener("pause", function () { if (!v.ended) rim("pause"); });
     loop();
+    return true;
+  };
+
+  // ── (dev1218) OVERLAY LINES in the regular viewer (V) ─────────────────────
+  // The line form is at the head of this section. vp.js calls
+  // salOvMount(host, video, row) when it has put a video FILE in V, and
+  // salOvClose() when V closes. A row whose ftext holds no overlay line
+  // gets nothing at all: no layer, no timer.
+  //  - The layer is a child of the viewer's host (#grid-fs-video), laid exactly
+  //    over the picture. The viewer's hold-to-enlarge moves and scales the
+  //    HOST, so the cells grow, pan and reset with the picture and need no
+  //    zoom code of their own.
+  //  - Everything follows the video's currentTime, so a pause, a scrub and the
+  //    loop of a cut keep the cells in step.
+  //  - When the video pauses (enlarging past 1.05× pauses it, vp.js
+  //    _vpZoomStopPlayback), clips in the cells pause with it. A YouTube cell
+  //    plays on: a paused YouTube player draws its symbols.
+  var OV_N = 5;
+  var OV_LINE_RE = /\(\s*(\d[\w-]*)\s+([1-9])([a-z])(-?)\s+([^()]*)\)/gi;
+  // 32.5-36.6; also 1:02-1:10, "to", and the dashes an editor may put for "-"
+  var OV_TIME_RE = /(?:^|\s)((?:\d+:)?\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*((?:\d+:)?\d+(?:\.\d+)?)(?=\s|$)/i;
+  var ovCache = new Map();
+  function ovSecs(s) {
+    var p = String(s).split(":");
+    return p.length > 1 ? parseInt(p[0], 10) * 60 + parseFloat(p[1]) : parseFloat(p[0]);
+  }
+  // ftext → [{ uid, cell, free, scale, t0, t1, sound, noloop, src }], [] when it
+  // holds no overlay line. src = the line as written. A bracket without a UID,
+  // a cell of the 5×5 grid and a from-to in seconds is not an overlay line, so
+  // "(filmed 2019)" in a description is left alone.
+  function ovParse(ftext) {
+    var src = typeof ftext === "string" ? ftext : "";
+    if (src.indexOf("(") < 0) return [];
+    var hit = ovCache.get(src);
+    if (hit) return hit;
+    var out = [], m, txt = plain(src);
+    OV_LINE_RE.lastIndex = 0;
+    while ((m = OV_LINE_RE.exec(txt))) {
+      var tm = OV_TIME_RE.exec(m[5]);
+      if (!tm || +m[2] > OV_N || m[3].toLowerCase().charCodeAt(0) - 96 > OV_N) continue;
+      var t0 = ovSecs(tm[1]), t1 = ovSecs(tm[2]);
+      if (!(t1 > t0)) continue;
+      var words = m[5].replace(tm[0], " ").toLowerCase().split(/\s+/);
+      var has = function (re) { return words.some(function (w) { return re.test(w); }); };
+      out.push({
+        uid: m[1], cell: m[2] + m[3].toLowerCase(), free: m[4] === "-", t0: t0, t1: t1,
+        sound: !has(/^(muted?|silent)$/), noloop: has(/^(noloop|once)$/),
+        scale: has(/^(double|2x)$/) ? 2 : (has(/^(triple|3x)$/) ? 3 : 1),
+        src: m[0].replace(/\s+/g, " ")
+      });
+    }
+    if (ovCache.size > 500) ovCache.clear();
+    ovCache.set(src, out);
+    return out;
+  }
+  function ovEvents(list) {
+    var by = {};
+    list.forEach(function (x) {
+      (by[x.cell] = by[x.cell] || []).push({ t0: x.t0, t1: x.t1, uid: x.uid, sound: x.sound,
+        noloop: x.noloop, free: x.free, scale: x.scale });
+    });
+    return noOverlap(by);
+  }
+  // For core.js _mlPublicRows: the overlay lines of an ftext, as written. They
+  // are the part of a video row's ftext the public file has to keep.
+  window._salOvLines = function (ftext) { return ovParse(ftext).map(function (x) { return x.src; }); };
+  // For a caption made of the same ftext (_salAnnotParts): the HTML without them.
+  window._salOvStrip = function (html) {
+    return String(html == null ? "" : html).replace(/\([^()<>]*\)/g, function (m) { return ovParse(m).length ? "" : m; });
+  };
+
+  var ov = null;
+  function ovClose() {
+    var S = ov;
+    if (!S) return;
+    ov = null;
+    cancelAnimationFrame(S.raf);
+    try { if (S.ro) S.ro.disconnect(); } catch (_) {}
+    S.off.forEach(function (f) { try { f(); } catch (_) {} });
+    emptyCells(S);
+    S.layer.remove();
+  }
+  window.salOvClose = ovClose;
+  window.salOvMount = function (host, vid, row) {
+    ovClose();
+    var list = (host && vid && row) ? ovParse(row.ftext) : [];
+    if (!list.length) return false;
+    css();
+    var layer = document.createElement("div");
+    layer.className = "sal-ov";
+    layer.style.gridTemplateColumns = "repeat(" + OV_N + ",1fr)";
+    layer.style.gridTemplateRows = "repeat(" + OV_N + ",1fr)";
+    var S = {
+      layer: layer, cells: mkCells(layer, OV_N, false), shown: {}, cur: {}, warm: {},
+      events: ovEvents(list), video: vid, raf: 0, ro: null, off: [],
+      muted: function () { return vid.muted; }   // the viewer's own mute silences the cells too
+    };
+    // Over the picture, not over the host: the video is shown whole inside the
+    // host, so it has bars at the sides or above and below when the shapes differ.
+    var place = function () {
+      var cw = host.clientWidth, ch = host.clientHeight;
+      if (!cw || !ch) return;
+      var bw = cw, bh = ch;
+      if (vid.videoWidth && vid.videoHeight) {
+        var k = Math.min(cw / vid.videoWidth, ch / vid.videoHeight);
+        bw = vid.videoWidth * k; bh = vid.videoHeight * k;
+      }
+      layer.style.left = ((cw - bw) / 2).toFixed(1) + "px";
+      layer.style.top = ((ch - bh) / 2).toFixed(1) + "px";
+      layer.style.width = bw.toFixed(1) + "px";
+      layer.style.height = bh.toFixed(1) + "px";
+    };
+    var on = function (type, fn) {
+      vid.addEventListener(type, fn);
+      S.off.push(function () { vid.removeEventListener(type, fn); });
+    };
+    on("loadedmetadata", place);
+    on("play", function () { insetsRun(S, "play", false); });
+    on("pause", function () { insetsRun(S, "pause", false); });   // YouTube cells play on
+    on("volumechange", function () {
+      Object.keys(S.cells).forEach(function (k) {
+        var rv = S.cells[k].querySelector("video");
+        if (rv && S.shown[k]) rv.muted = !S.shown[k].sound || vid.muted;
+      });
+    });
+    host.appendChild(layer);
+    place();
+    if (typeof ResizeObserver !== "undefined") {
+      try { S.ro = new ResizeObserver(place); S.ro.observe(host); } catch (_) {}
+    }
+    ov = S;
+    var tick = function () {
+      if (ov !== S) return;
+      if (!layer.isConnected || !vid.isConnected) { ovClose(); return; }   // the viewer has moved on
+      syncCells(S, vid.currentTime, !vid.paused);
+      S.raf = requestAnimationFrame(tick);
+    };
+    tick();
     return true;
   };
 
