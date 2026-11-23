@@ -5779,7 +5779,7 @@ function gridWriteToT() {
   var INLINE_RE = /\(\s*((?:\d[\w-]*|clear|close|black|calypso|crab|interviewer|room|tank|wide)\b[^()]*)\)/gi;
   var WAIT_RE = /^(?:wait\s+)?(\d+(?:\.\d+)?)(?:\s*(?:seconds?|secs?|s))?$/i;
   var SPK_RE = /^\s*([A-Za-z][A-Za-z .'-]{0,24}?)\s*:\s+([\s\S]*)$/;
-  var CELL_RE = /^\d[a-z]$/;
+  var CELL_RE = /^\d[a-z]-?$/;   // (dev1216) "2d-" = the cell is only the anchor: the whole picture is shown
   var NUM_RE = /^\d+(\.\d+)?$/;
   var st = null;
 
@@ -5797,7 +5797,8 @@ function gridWriteToT() {
   // "for 15", "with sound", "muted", "loop" / "keep" / "stay".
   function parseCmds(inner) {
     // (dev1214) quoted words are for the voice, not command words
-    var tok = String(inner).replace(/["“][^"”]*["”]/, " ").replace(/,/g, " ").trim().split(/\s+/);
+    var tok = String(inner).replace(/["“][^"”]*["”]/, " ").replace(/,/g, " ").trim().split(/\s+/)
+      .map(function (w) { return w.replace(/^[.;:!]+|[.;:!]+$/g, ""); }).filter(Boolean);   // (dev1216) "end." = "end"
     if (!tok[0]) return [];
     var first = tok[0].toLowerCase();
     if (first === "i") first = "interviewer"; else if (first === "c") first = "calypso";   // (dev1214) (I) (C)
@@ -5809,7 +5810,7 @@ function gridWriteToT() {
     if (first === "clear" || first === "close") {
       return tok.slice(1).map(function (w) { return w.toLowerCase(); })
         .filter(function (w) { return CELL_RE.test(w) || w === "main" || w === "all"; })
-        .map(function (w) { return mk({ cell: w, clear: true }); });
+        .map(function (w) { return mk({ cell: w.replace(/-$/, ""), clear: true }); });
     }
     var c;
     if (SHOTS[first]) c = mk({ uid: first });
@@ -5818,7 +5819,7 @@ function gridWriteToT() {
     for (var i = 1; i < tok.length; i++) {
       var w = tok[i].toLowerCase();
       var nxt = (i + 1 < tok.length) ? tok[i + 1].toLowerCase() : "";
-      if (w === "main" || CELL_RE.test(w)) c.cell = w;
+      if (w === "main" || CELL_RE.test(w)) { c.cell = w.replace(/-$/, ""); c.free = /-$/.test(w); }
       else if (w === "at" && NUM_RE.test(nxt)) { c.at = Math.max(0, Math.min(100, parseFloat(nxt))); i++; }
       else if (w === "for" && NUM_RE.test(nxt)) { c.secs = parseFloat(nxt); i++; }
       else if (NUM_RE.test(w) && /^(seconds?|secs?|s)$/.test(nxt)) { c.secs = parseFloat(w); i++; }
@@ -5854,7 +5855,8 @@ function gridWriteToT() {
       var wm = WHOLE_RE.exec(t);
       if (wm) {
         var inner = wm[1].trim();
-        if (inner === "" || WAIT_RE.test(inner)) {
+        // (dev1216) "(2875)" alone = a row, not a 2875-second wait
+        if (inner === "" || (WAIT_RE.test(inner) && !/^\d{4,}$/.test(inner))) {
           out.beats.push({ kind: "gap", text: "", cmds: pending });
           pending = [];
           return;
@@ -5867,7 +5869,7 @@ function gridWriteToT() {
         return;
       }
       var sm = SPK_RE.exec(t);
-      var body = sm ? sm[2] : t;
+      var body = (sm ? sm[2] : t).replace(/\s*\[[^\]]*\]\s*/g, " ").trim();   // (dev1216) [a cue] is not part of the line
       var cmds = [], clean = "", last = 0, m;
       INLINE_RE.lastIndex = 0;
       while ((m = INLINE_RE.exec(body))) {
@@ -5931,7 +5933,7 @@ function gridWriteToT() {
       }
       var t1 = c.clear ? Infinity : (c.secs > 0 ? a.t0 + c.secs : (c.line ? a.lineEnd : Infinity));
       (c.cell === "all" ? rimNames(script.n) : [c.cell]).forEach(function (cell) {
-        add(cell, { t0: a.t0, t1: t1, uid: c.clear ? "" : c.uid, sound: c.sound, noloop: c.noloop });
+        add(cell, { t0: a.t0, t1: t1, uid: c.clear ? "" : c.uid, sound: c.sound, noloop: c.noloop, free: !!c.free });
         if (!c.clear) where[c.uid] = cell;
       });
     });
@@ -5959,6 +5961,9 @@ function gridWriteToT() {
       + "#salShow .ss-main video{object-fit:contain;background:#000;}"
       + "#salShow .ss-rim{z-index:1;pointer-events:none;background:transparent;}"
       + "#salShow .ss-rim.ss-on{background:#0b0f14;box-shadow:0 0 0 1px rgba(0,0,0,0.85);}"
+      + "#salShow .ss-rim.ss-free{overflow:visible;z-index:2;background:transparent;box-shadow:none;}"
+      + "#salShow .ss-free video,#salShow .ss-free img{inset:0 auto auto 0;object-fit:fill;}"
+      + "#salShow .ss-free .ss-tag{display:none;}"
       + "#salShow .ss-tag{position:absolute;left:4px;top:3px;z-index:2;font:10px monospace;color:rgba(255,255,255,0.4);pointer-events:none;}"
       + "#salShow .ss-rim:not(.ss-on) .ss-tag{display:none;}"
       + "#salShow .ss-note{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"
@@ -6066,6 +6071,7 @@ function gridWriteToT() {
     // (dev1210) an empty rim cell is see-through; (dev1211) so is a YouTube
     // cell until it is playing clean — ytTick shows it then.
     el.classList.toggle("ss-on", !!(ev && ev.uid) && !rowYt(ev.uid));
+    el.classList.toggle("ss-free", !!(ev && ev.uid && ev.free));   // (dev1216)
     if (!ev || !ev.uid) return;
     if (w && w.ev === ev) {               // warmed up in advance: its moment has come
       st.cur[cell] = w.y; st.warm[cell] = null;
@@ -6091,6 +6097,21 @@ function gridWriteToT() {
       node = document.createElement("div");
       node.className = "ss-note";
       node.textContent = row ? ("UID " + ev.uid + " cannot play in a small cell yet") : ("UID " + ev.uid + " is not in T");
+    }
+    // (dev1216) "2d-": the cell is only the anchor. The picture keeps its own
+    // shape, its top-left corner on the cell's, just big enough to cover the
+    // cell, and whatever is wider or taller than the cell runs on past it.
+    if (ev.free && (node.tagName === "IMG" || node.tagName === "VIDEO")) {
+      var fit = function () {
+        var w = node.naturalWidth || node.videoWidth, h = node.naturalHeight || node.videoHeight;
+        var cw = el.clientWidth, ch = el.clientHeight;
+        if (!w || !h || !cw || !ch) return;
+        var k = Math.max(cw / w, ch / h);
+        node.style.width = (100 * w * k / cw).toFixed(2) + "%";
+        node.style.height = (100 * h * k / ch).toFixed(2) + "%";
+      };
+      node.addEventListener("load", fit);
+      node.addEventListener("loadedmetadata", fit);
     }
     el.appendChild(node);
   }
