@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1795449661539,
+    "_salPushTime": 1795450975763,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -59,6 +59,7 @@
       "DictSize",
       "ftextSize",
       "ftext",
+      "ttxt",
       "tags",
       "comment",
       "VidTitle",
@@ -76,7 +77,6 @@
       "segLength",
       "attribution",
       "FtextJunk",
-      "ttxt",
       "steps",
       "resolution",
       "L1",
@@ -618,7 +618,7 @@
       }
     },
     "_salActiveView": "lastmodtop2",
-    "_salSavedAt": 1795449661539
+    "_salSavedAt": 1795450975763
   },
   {
     "UID": "1",
@@ -61327,6 +61327,7 @@
     "vidLength": "3:29",
     "Mode": "L",
     "DictSize": "0",
-    "ftext": "<p>(2842 1d 32.6-36.7 muted noloop)</p><p>(2870 1e 33.1-36.7)</p><p>(2873 1d- double 53.9-60.4)</p>"
+    "ftext": "<p>(2842 1d 32.6-36.7 muted noloop)</p><p>(2870 1e 33.1-36.7)</p><p>(2873 1d- double 53.9-60.4)</p>",
+    "ttxt": "Calypso"
   }
 ]
