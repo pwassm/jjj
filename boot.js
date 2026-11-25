@@ -4933,7 +4933,8 @@ function _salDeepHint(msg, ms) {
   t.textContent = msg;
   t.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:2147483646;'
     + 'background:rgba(20,20,20,0.85);color:#fff;padding:10px 20px;border-radius:8px;'
-    + 'font:16px Arial,sans-serif;pointer-events:none;transition:opacity .25s;';
+    + 'font:16px Arial,sans-serif;pointer-events:none;transition:opacity .25s;'
+    + 'white-space:pre-line;text-align:center;line-height:1.5;';   // (dev1226) a line break in msg = a new line
   document.body.appendChild(t);
   if (ms) {
     setTimeout(() => { t.style.opacity = '0'; }, ms);
@@ -5022,7 +5023,7 @@ function _openItemByUid(uid, byName) {
     // hint for 1 s. Unclaimed after 15 s, the flag lapses.
     if (byName) {
       const vidRow = /\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v)(\?|#|$)/i.test(String(row.link || ''));
-      _salDeepHint('Spacebar to pause and play', vidRow ? 0 : 1000);
+      _salDeepHint('Press spacebar to play and pause\nPress m to mute and unmute\nArrow down or up to adjust volume', vidRow ? 0 : 1000);   // (dev1226) three lines
       window._salDeepPlay = 1;
       setTimeout(() => { if (window._salDeepPlay) { window._salDeepPlay = 0; window._salDeepHintOff(); } }, 15000);
     }
