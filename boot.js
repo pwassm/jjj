@@ -4926,16 +4926,26 @@ function _salTtxtNames(ttxt) {
 // (dev1219) byName = `uid` is not a number but the NAME a row is shared under
 // (?t=NAME): what its ttxt says. See _salTtxtNames.
 // (dev1221) A short hint at the top middle of the screen, over everything.
+// (dev1224) ms = 0: it stays until _salDeepHintOff().
 function _salDeepHint(msg, ms) {
   const t = document.createElement('div');
+  t.id = 'salDeepHint';
   t.textContent = msg;
   t.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:2147483646;'
     + 'background:rgba(20,20,20,0.85);color:#fff;padding:10px 20px;border-radius:8px;'
     + 'font:16px Arial,sans-serif;pointer-events:none;transition:opacity .25s;';
   document.body.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; }, ms);
-  setTimeout(() => { t.remove(); }, ms + 300);
+  if (ms) {
+    setTimeout(() => { t.style.opacity = '0'; }, ms);
+    setTimeout(() => { t.remove(); }, ms + 300);
+  }
 }
+window._salDeepHintOff = function () {
+  const t = document.getElementById('salDeepHint');
+  if (!t) return;
+  t.style.opacity = '0';
+  setTimeout(() => { t.remove(); }, 300);
+};
 
 function _openItemByUid(uid, byName) {
   const want = String(uid).trim();
@@ -5006,13 +5016,15 @@ function _openItemByUid(uid, byName) {
       return;
     }
     _lastGridRow = row;
-    // (dev1221) A ?t= item: a 1 s hint at the top middle, and a video FILE
-    // starts by itself once the hint is gone (vp.js vpMountDirectVideo reads
-    // _salDeepPlay = when the hint ends). Unclaimed after 15 s, it lapses.
+    // (dev1221, dev1224) A ?t= item: a hint at the top middle. A video FILE
+    // waits for Space and then plays with sound (vp.js vpMountDirectVideo
+    // claims _salDeepPlay and takes the hint down); anything else gets the
+    // hint for 1 s. Unclaimed after 15 s, the flag lapses.
     if (byName) {
-      _salDeepHint('Spacebar to pause and play', 1000);
-      window._salDeepPlay = Date.now() + 1000;
-      setTimeout(() => { window._salDeepPlay = 0; }, 15000);
+      const vidRow = /\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v)(\?|#|$)/i.test(String(row.link || ''));
+      _salDeepHint('Spacebar to pause and play', vidRow ? 0 : 1000);
+      window._salDeepPlay = 1;
+      setTimeout(() => { if (window._salDeepPlay) { window._salDeepPlay = 0; window._salDeepHintOff(); } }, 15000);
     }
     // Tick for any in-flight paint before stacking V on top.
     setTimeout(() => {

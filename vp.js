@@ -3316,7 +3316,11 @@ function vpKeyHandler(e) {
       if (_vpState.slideshowNoLoop && typeof window._slideshowMarkCurrent === 'function') {
         e.preventDefault(); e.stopPropagation();
         window._slideshowMarkCurrent(e.key === 'ArrowUp');
+        return;
       }
+      // (dev1224) ↑ / ↓ = volume, 10% a press; ↑ also lifts a mute
+      e.preventDefault(); e.stopPropagation();
+      _vpNudgeVolume(e.key === 'ArrowUp' ? 0.1 : -0.1);
       return; // video — image-row nav doesn't apply
     }
     e.preventDefault(); e.stopPropagation();
@@ -4115,6 +4119,21 @@ function _vpPlayStepsInV(row) {
   })();
 }
 window._vpPlayStepsInV = _vpPlayStepsInV;
+
+// (dev1224) ↑ / ↓ in V: the player's volume in steps of 10%, shown in a toast.
+function _vpNudgeVolume(d) {
+  if (!_vpState || !_vpState.player) return;
+  const p = _vpState.player;
+  let v = (typeof _vpState.volume === 'number') ? _vpState.volume : 1;
+  v = Math.round(Math.max(0, Math.min(1, v + d)) * 10) / 10;
+  _vpState.volume = v;
+  try {
+    if (_vpState.isYT) p.setVolume(Math.round(v * 100));
+    else if (p.setVolume) p.setVolume(v);
+  } catch (_) {}
+  if (d > 0 && _vpState.muted && v > 0) vpToggleMute();
+  if (typeof toast === 'function') toast('Volume ' + Math.round(v * 100) + '%', 800);
+}
 
 function vpToggleMute() {
   if (!_vpState || !_vpState.player) return;
@@ -13990,44 +14009,34 @@ function vpMountDirectVideo(host, link, seg, muted) {
   // player. See salLockDownVideo: it removes the offer, not the ability.
   if (window.salLockDownVideo) window.salLockDownVideo(vid);
   if (seg && seg.start) vid.currentTime = seg.start;
-  // (dev1221) Opened from a ?t= link (boot.js _openItemByUid): wait for the
-  // 1 s hint to go, then play. A browser may refuse to start a video WITH
-  // sound before the visitor has clicked or pressed a key; then it starts
-  // muted and the sound comes on at the first click/tap.
-  const deepAt = window._salDeepPlay;
-  if (deepAt) {
+  // (dev1224) Opened from a ?t= link (boot.js _openItemByUid): the video
+  // waits, with sound on, until the visitor presses Space (on a phone: taps
+  // the picture, V's own tap = play). That key press or tap is what lets the
+  // browser play WITH sound. The hint at the top stays up until then.
+  if (window._salDeepPlay) {
     window._salDeepPlay = 0;
     vid.autoplay = false;
-    const go = () => {
-      if (!vid.isConnected) return;
-      const p = vid.play();
-      if (p && p.catch) p.catch(() => {
-        if (!vid.isConnected || vid.muted) return;
-        vid.muted = true;
-        const q = vid.play(); if (q && q.catch) q.catch(() => {});
-        // (dev1223) the first click, tap or SPACE turns the sound on; that
-        // Space does not also pause (the hint has just told them to press it)
-        const un = (e) => {
-          document.removeEventListener('pointerdown', un, true);
-          document.removeEventListener('keydown', un, true);
-          if (!vid.isConnected) return;
-          if (e && e.type === 'keydown') {
-            if (e.key !== ' ') { document.addEventListener('keydown', un, true); document.addEventListener('pointerdown', un, true); return; }
-            e.preventDefault(); e.stopImmediatePropagation();
-          }
-          vid.muted = false;
-          if (_vpState) _vpState.muted = false;
-          const mb = document.getElementById('vp-mute');
-          if (mb) mb.innerHTML = window.muteIconHTML ? window.muteIconHTML(false) : '🔊';
-        };
-        document.addEventListener('pointerdown', un, true);
-        document.addEventListener('keydown', un, true);
-        if (_vpState) _vpState.muted = true;
-        const mb0 = document.getElementById('vp-mute');
-        if (mb0) mb0.innerHTML = window.muteIconHTML ? window.muteIconHTML(true) : '🔇';
-      });
+    vid.muted = false;
+    if (_vpState) _vpState.muted = false;
+    const off = () => {
+      document.removeEventListener('keydown', onKey, true);
+      if (typeof window._salDeepHintOff === 'function') window._salDeepHintOff();
     };
-    setTimeout(go, Math.max(0, deepAt - Date.now()));
+    const go = () => {
+      off();
+      if (!vid.isConnected) return;
+      const mb = document.getElementById('vp-mute');
+      if (mb) mb.innerHTML = window.muteIconHTML ? window.muteIconHTML(false) : '🔊';
+      const p = vid.play(); if (p && p.catch) p.catch(() => {});
+    };
+    const onKey = (e) => {
+      if (!vid.isConnected) { off(); return; }
+      if (e.key !== ' ') return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      go();
+    };
+    document.addEventListener('keydown', onKey, true);
+    vid.addEventListener('play', off, { once: true });   // started some other way (tap, ▶ button)
   }
   host.appendChild(vid);
   _vpMountDiskInfoOverlay(host, vid, window._vpCurrentRow);
