@@ -4127,11 +4127,17 @@ function _vpNudgeVolume(d) {
   let v = (typeof _vpState.volume === 'number') ? _vpState.volume : 1;
   v = Math.round(Math.max(0, Math.min(1, v + d)) * 10) / 10;
   _vpState.volume = v;
+  // (dev1225) 0% is volume 0, NOT a mute: the direct-video setVolume(0) also
+  // muted the element behind _vpState's back, so Up never brought sound back.
   try {
     if (_vpState.isYT) p.setVolume(Math.round(v * 100));
+    else if (p.el) p.el.volume = v;
     else if (p.setVolume) p.setVolume(v);
   } catch (_) {}
-  if (d > 0 && _vpState.muted && v > 0) vpToggleMute();
+  if (d > 0 && v > 0) {
+    if (_vpState.muted) vpToggleMute();
+    else if (p.el && p.el.muted) p.el.muted = false;
+  }
   if (typeof toast === 'function') toast('Volume ' + Math.round(v * 100) + '%', 800);
 }
 

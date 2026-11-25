@@ -310,6 +310,11 @@ window.addEventListener('keydown', function(e) {
   // capture handler receives it. Nothing is lost: the global `l` (clipboard
   // import) already no-ops while V is open, and in user mode it's blocked.
   if (k === 'l' && document.getElementById('gridFullscreen')?.style.display === 'flex') return;
+  // (dev1225) and bare `m` while V plays a video: m = mute there (vp.js).
+  // The dispatcher below took it for the menu, so m never muted.
+  if (k === 'm' && !e.ctrlKey && !e.altKey && !e.metaKey
+      && document.getElementById('gridFullscreen')?.style.display === 'flex'
+      && typeof _vpState !== 'undefined' && _vpState && _vpState.player) return;
   // (dev0970) …and `v` on a video, where it flips the slim strip and the full
   // toolbar. Same shape as `l`: without this bail the registry's V toggle would
   // close the player before vpKeyHandler ever saw the key. vp.js decides.
