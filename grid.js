@@ -6057,12 +6057,21 @@ function gridWriteToT() {
       frame.contentWindow.postMessage(JSON.stringify({ event: "command", func: func, args: args || [] }), "*");
     } catch (_) {}
   }
-  function ytMake(cellEl, row, sound) {
+  function ytMake(cellEl, row, sound, ev) {
     var host = document.createElement("div");
     host.id = "salShowYt" + (++ytSeq);
-    var k = Math.max(1, YT_MIN / Math.max(1, cellEl.clientWidth), YT_MIN / Math.max(1, cellEl.clientHeight));
+    var cw0 = Math.max(1, cellEl.clientWidth), ch0 = Math.max(1, cellEl.clientHeight);
+    if (ev && ev.free) {
+      // (dev1221) "1a-" / "1a- double" on YouTube: a 16:9 player, top-left on
+      // the cell's corner, just big enough to cover the cell (times "double").
+      var u = Math.max(cw0 / 16, ch0 / 9, YT_MIN / 9) * (ev.scale || 1);
+      host.style.cssText = "position:absolute;left:0;top:0;width:" + (100 * 16 * u / cw0).toFixed(2) + "%;height:"
+        + (100 * 9 * u / ch0).toFixed(2) + "%;opacity:0;pointer-events:none;background:#000;";
+    } else {
+    var k = Math.max(1, YT_MIN / cw0, YT_MIN / ch0);
     host.style.cssText = "position:absolute;left:50%;top:50%;width:" + (k * 100).toFixed(2) + "%;height:"
       + (k * 100).toFixed(2) + "%;transform:translate(-50%,-50%);opacity:0;pointer-events:none;background:#000;";
+    }
     cellEl.appendChild(host);
     var y = { host: host, sound: !!sound, due: 0, shown: false, front: null };
     try {
@@ -6158,7 +6167,7 @@ function gridWriteToT() {
       node = document.createElement("img");
       node.src = link; node.alt = "";
     } else if (ytId(link)) {
-      S.cur[cell] = ytMake(el, row, ev.sound);   // not warmed (a jump): it appears once playing clean
+      S.cur[cell] = ytMake(el, row, ev.sound, ev);   // not warmed (a jump): it appears once playing clean
       S.cur[cell].due = performance.now();
       return;
     } else {
@@ -6170,10 +6179,13 @@ function gridWriteToT() {
     // shape, its top-left corner on the cell's, just big enough to cover the
     // cell, and whatever is wider or taller than the cell runs on past it.
     if (ev.free && (node.tagName === "IMG" || node.tagName === "VIDEO")) {
+      var tries = 0;
       var fit = function () {
         var w = node.naturalWidth || node.videoWidth, h = node.naturalHeight || node.videoHeight;
         var cw = el.clientWidth, ch = el.clientHeight;
-        if (!w || !h || !cw || !ch) return;
+        // (dev1221) not ready yet (cell not laid out, picture not in): try again
+        // next frame rather than leaving it at cell size, which hid "double"
+        if (!w || !h || !cw || !ch) { if (++tries < 120 && node.isConnected) requestAnimationFrame(fit); return; }
         var k = Math.max(cw / w, ch / h) * (ev.scale || 1);   // (dev1217) "double size"
         node.style.width = (100 * w * k / cw).toFixed(2) + "%";
         node.style.height = (100 * h * k / ch).toFixed(2) + "%";
@@ -6195,7 +6207,7 @@ function gridWriteToT() {
       }
       var w = S.warm[cell];
       if (w && w.ev !== want && w.ev !== next) { ytKill(w.y); S.warm[cell] = null; w = null; }
-      if (next && !w && canWarm) S.warm[cell] = { ev: next, y: ytMake(S.cells[cell], rowByUid(next.uid), next.sound) };
+      if (next && !w && canWarm) S.warm[cell] = { ev: next, y: ytMake(S.cells[cell], rowByUid(next.uid), next.sound, next) };
       if (S.shown[cell] !== want) {
         S.shown[cell] = want;
         fillCell(S, cell, want);
@@ -6482,20 +6494,13 @@ function gridWriteToT() {
       events: ovEvents(list), video: vid, raf: 0, ro: null, off: [],
       muted: function () { return vid.muted; }   // the viewer's own mute silences the cells too
     };
-    // Over the picture, not over the host: the video is shown whole inside the
-    // host, so it has bars at the sides or above and below when the shapes differ.
+    // (dev1221) Over the whole visible screen (the host), not just the picture:
+    // Phil's cells are places on the screen, bars included.
     var place = function () {
-      var cw = host.clientWidth, ch = host.clientHeight;
-      if (!cw || !ch) return;
-      var bw = cw, bh = ch;
-      if (vid.videoWidth && vid.videoHeight) {
-        var k = Math.min(cw / vid.videoWidth, ch / vid.videoHeight);
-        bw = vid.videoWidth * k; bh = vid.videoHeight * k;
-      }
-      layer.style.left = ((cw - bw) / 2).toFixed(1) + "px";
-      layer.style.top = ((ch - bh) / 2).toFixed(1) + "px";
-      layer.style.width = bw.toFixed(1) + "px";
-      layer.style.height = bh.toFixed(1) + "px";
+      layer.style.left = "0px";
+      layer.style.top = "0px";
+      layer.style.width = "100%";
+      layer.style.height = "100%";
     };
     var on = function (type, fn) {
       vid.addEventListener(type, fn);

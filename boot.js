@@ -4925,6 +4925,18 @@ function _salTtxtNames(ttxt) {
 // user knows the link was bad.
 // (dev1219) byName = `uid` is not a number but the NAME a row is shared under
 // (?t=NAME): what its ttxt says. See _salTtxtNames.
+// (dev1221) A short hint at the top middle of the screen, over everything.
+function _salDeepHint(msg, ms) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:2147483646;'
+    + 'background:rgba(20,20,20,0.85);color:#fff;padding:10px 20px;border-radius:8px;'
+    + 'font:16px Arial,sans-serif;pointer-events:none;transition:opacity .25s;';
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; }, ms);
+  setTimeout(() => { t.remove(); }, ms + 300);
+}
+
 function _openItemByUid(uid, byName) {
   const want = String(uid).trim();
   if (!want) return;
@@ -4994,6 +5006,14 @@ function _openItemByUid(uid, byName) {
       return;
     }
     _lastGridRow = row;
+    // (dev1221) A ?t= item: a 1 s hint at the top middle, and a video FILE
+    // starts by itself once the hint is gone (vp.js vpMountDirectVideo reads
+    // _salDeepPlay = when the hint ends). Unclaimed after 15 s, it lapses.
+    if (byName) {
+      _salDeepHint('Spacebar to pause and play', 1000);
+      window._salDeepPlay = Date.now() + 1000;
+      setTimeout(() => { window._salDeepPlay = 0; }, 15000);
+    }
     // Tick for any in-flight paint before stacking V on top.
     setTimeout(() => {
       if (typeof gridOpenFullscreen === 'function') gridOpenFullscreen(row);

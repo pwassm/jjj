@@ -13990,6 +13990,30 @@ function vpMountDirectVideo(host, link, seg, muted) {
   // player. See salLockDownVideo: it removes the offer, not the ability.
   if (window.salLockDownVideo) window.salLockDownVideo(vid);
   if (seg && seg.start) vid.currentTime = seg.start;
+  // (dev1221) Opened from a ?t= link (boot.js _openItemByUid): wait for the
+  // 1 s hint to go, then play. A browser may refuse to start a video WITH
+  // sound before the visitor has clicked or pressed a key; then it starts
+  // muted and the sound comes on at the first click/tap.
+  const deepAt = window._salDeepPlay;
+  if (deepAt) {
+    window._salDeepPlay = 0;
+    vid.autoplay = false;
+    const go = () => {
+      if (!vid.isConnected) return;
+      const p = vid.play();
+      if (p && p.catch) p.catch(() => {
+        if (!vid.isConnected || vid.muted) return;
+        vid.muted = true;
+        const q = vid.play(); if (q && q.catch) q.catch(() => {});
+        const un = () => {
+          document.removeEventListener('pointerdown', un, true);
+          if (vid.isConnected) vid.muted = false;
+        };
+        document.addEventListener('pointerdown', un, true);
+      });
+    };
+    setTimeout(go, Math.max(0, deepAt - Date.now()));
+  }
   host.appendChild(vid);
   _vpMountDiskInfoOverlay(host, vid, window._vpCurrentRow);
   _vpMountCropOverlay(host, vid, window._vpCurrentRow);
