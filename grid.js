@@ -6203,7 +6203,7 @@ function gridWriteToT() {
       var list = S.events[cell] || [], want = null, next = null;
       for (var i = 0; i < list.length; i++) {
         if (list[i].t0 <= t && t < list[i].t1) want = list[i];
-        else if (!next && list[i].t0 > t && list[i].t0 - t <= YT_WARM && list[i].uid && rowYt(list[i].uid)) next = list[i];
+        else if (!next && list[i].t0 > t && list[i].t0 - t <= (S.ytWarm || YT_WARM) && list[i].uid && rowYt(list[i].uid)) next = list[i];
       }
       var w = S.warm[cell];
       if (w && w.ev !== want && w.ev !== next) { ytKill(w.y); S.warm[cell] = null; w = null; }
@@ -6492,8 +6492,15 @@ function gridWriteToT() {
     var S = {
       layer: layer, cells: mkCells(layer, OV_N, false), shown: {}, cur: {}, warm: {},
       events: ovEvents(list), video: vid, raf: 0, ro: null, off: [],
-      muted: function () { return vid.muted; }   // the viewer's own mute silences the cells too
+      muted: function () { return vid.muted; },   // the viewer's own mute silences the cells too
+      // (dev1222) a YouTube inset starts warming 15 s before its moment (the
+      // show's 7 s was too short on a fresh page: the zoea came late or never
+      // within its 4 s), and the YouTube player code is fetched right away
+      ytWarm: 15
     };
+    if (list.some(function (x) { return rowYt(x.uid); }) && window.loadYouTubeApiOnce) {
+      try { var pa = window.loadYouTubeApiOnce(); if (pa && pa.catch) pa.catch(function () {}); } catch (_) {}
+    }
     // (dev1221) Over the whole visible screen (the host), not just the picture:
     // Phil's cells are places on the screen, bars included.
     var place = function () {
