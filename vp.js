@@ -14005,11 +14005,26 @@ function vpMountDirectVideo(host, link, seg, muted) {
         if (!vid.isConnected || vid.muted) return;
         vid.muted = true;
         const q = vid.play(); if (q && q.catch) q.catch(() => {});
-        const un = () => {
+        // (dev1223) the first click, tap or SPACE turns the sound on; that
+        // Space does not also pause (the hint has just told them to press it)
+        const un = (e) => {
           document.removeEventListener('pointerdown', un, true);
-          if (vid.isConnected) vid.muted = false;
+          document.removeEventListener('keydown', un, true);
+          if (!vid.isConnected) return;
+          if (e && e.type === 'keydown') {
+            if (e.key !== ' ') { document.addEventListener('keydown', un, true); document.addEventListener('pointerdown', un, true); return; }
+            e.preventDefault(); e.stopImmediatePropagation();
+          }
+          vid.muted = false;
+          if (_vpState) _vpState.muted = false;
+          const mb = document.getElementById('vp-mute');
+          if (mb) mb.innerHTML = window.muteIconHTML ? window.muteIconHTML(false) : '🔊';
         };
         document.addEventListener('pointerdown', un, true);
+        document.addEventListener('keydown', un, true);
+        if (_vpState) _vpState.muted = true;
+        const mb0 = document.getElementById('vp-mute');
+        if (mb0) mb0.innerHTML = window.muteIconHTML ? window.muteIconHTML(true) : '🔇';
       });
     };
     setTimeout(go, Math.max(0, deepAt - Date.now()));

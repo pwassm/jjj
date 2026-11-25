@@ -6020,7 +6020,7 @@ function gridWriteToT() {
       + W + " .ss-rim{z-index:1;pointer-events:none;background:transparent;}"
       + W + " .ss-rim.ss-on{background:#0b0f14;box-shadow:0 0 0 1px rgba(0,0,0,0.85);}"
       + W + " .ss-rim.ss-free{overflow:visible;z-index:2;background:transparent;box-shadow:none;}"
-      + W + " .ss-free video," + W + " .ss-free img{inset:0 auto auto 0;object-fit:fill;}"
+      + W + " .ss-free video," + W + " .ss-free img," + W + " .ss-free iframe{inset:0 auto auto 0;object-fit:fill;}"
       + W + " .ss-free .ss-tag{display:none;}"
       + W + " .ss-tag{position:absolute;left:4px;top:3px;z-index:2;font:10px monospace;color:rgba(255,255,255,0.4);pointer-events:none;}"
       + W + " .ss-rim:not(.ss-on) .ss-tag{display:none;}"
@@ -6166,6 +6166,36 @@ function gridWriteToT() {
     } else if (/\.(jpe?g|png|gif|webp|avif|bmp)([?#]|$)/i.test(link)) {
       node = document.createElement("img");
       node.src = link; node.alt = "";
+    } else if (ytId(link) && S.simpleYt) {
+      // (dev1223) Overlay lines in V: no warm-up, no two-copy player. One plain
+      // YouTube player is put in at the line's moment, in its place, starting
+      // at the right frame: the clip's VidRange start (else 0) plus however far
+      // into the line the main video already is. YouTube may show its own
+      // start-up furniture for a moment; that is the price of simple.
+      var segs0 = (window.parseVideoAsset && window.parseVideoAsset(row.VidRange)) || null;
+      var from = (segs0 && segs0[0] && +segs0[0].start) || 0;
+      if (S.video) from += Math.max(0, S.video.currentTime - ev.t0);
+      var id = ytId(link);
+      node = document.createElement("iframe");
+      node.src = "https://www.youtube.com/embed/" + id + "?autoplay=1&controls=0&disablekb=1&fs=0&rel=0"
+        + "&modestbranding=1&playsinline=1&iv_load_policy=3&start=" + Math.floor(from)
+        + "&mute=" + ((!ev.sound || (S.muted && S.muted())) ? 1 : 0)
+        + (ev.noloop ? "" : "&loop=1&playlist=" + id);
+      node.setAttribute("allow", "autoplay; encrypted-media");
+      node.style.pointerEvents = "none";
+      var cw = Math.max(1, el.clientWidth), ch = Math.max(1, el.clientHeight);
+      if (ev.free) {
+        // top-left on the cell's corner, 16:9, just covering the cell, times double/triple
+        var u = Math.max(cw / 16, ch / 9) * (ev.scale || 1);
+        node.style.width = (100 * 16 * u / cw).toFixed(2) + "%";
+        node.style.height = (100 * 9 * u / ch).toFixed(2) + "%";
+      } else {
+        // YouTube will not play under 200 px: oversize, centred, edges cut off
+        var k = Math.max(1, YT_MIN / cw, YT_MIN / ch);
+        node.style.cssText += "left:50%;top:50%;transform:translate(-50%,-50%);width:"
+          + (k * 100).toFixed(2) + "%;height:" + (k * 100).toFixed(2) + "%;";
+      }
+      if (!ev.free) el.classList.add("ss-on");
     } else if (ytId(link)) {
       S.cur[cell] = ytMake(el, row, ev.sound, ev);   // not warmed (a jump): it appears once playing clean
       S.cur[cell].due = performance.now();
@@ -6493,14 +6523,10 @@ function gridWriteToT() {
       layer: layer, cells: mkCells(layer, OV_N, false), shown: {}, cur: {}, warm: {},
       events: ovEvents(list), video: vid, raf: 0, ro: null, off: [],
       muted: function () { return vid.muted; },   // the viewer's own mute silences the cells too
-      // (dev1222) a YouTube inset starts warming 15 s before its moment (the
-      // show's 7 s was too short on a fresh page: the zoea came late or never
-      // within its 4 s), and the YouTube player code is fetched right away
-      ytWarm: 15
+      // (dev1223) YouTube insets: one plain player at the moment, no warm-up
+      // (Phil: simple first, to debug place and timing); see fillCell
+      simpleYt: true, ytWarm: -1
     };
-    if (list.some(function (x) { return rowYt(x.uid); }) && window.loadYouTubeApiOnce) {
-      try { var pa = window.loadYouTubeApiOnce(); if (pa && pa.catch) pa.catch(function () {}); } catch (_) {}
-    }
     // (dev1221) Over the whole visible screen (the host), not just the picture:
     // Phil's cells are places on the screen, bars included.
     var place = function () {
