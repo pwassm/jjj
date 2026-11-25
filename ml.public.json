@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1795450975763,
+    "_salPushTime": 1795631640538,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -618,7 +618,7 @@
       }
     },
     "_salActiveView": "lastmodtop2",
-    "_salSavedAt": 1795450975763
+    "_salSavedAt": 1795631640538
   },
   {
     "UID": "1",
@@ -61328,6 +61328,428 @@
     "Mode": "L",
     "DictSize": "0",
     "ftext": "<p>(2842 1d 32.6-36.7 muted noloop)</p><p>(2870 1e 33.1-36.7)</p><p>(2873 1d- double 53.9-60.4)</p>",
-    "ttxt": "Calypso"
+    "ttxt": ""
+  },
+  {
+    "UID": "2909",
+    "link": "https://media.sealifeandmore.com/NoWatermark/CalypsoInterview.mp4",
+    "show": "1",
+    "DateAdded": "2026-11-25 18:31:58",
+    "DateModified": "2026-11-25 18:34:00",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "149",
+    "FtextJunk": "0",
+    "MPix": "V",
+    "vidLength": "3:29",
+    "Mode": "L",
+    "DictSize": "0",
+    "ftext": "<p>(2842 1a- double 32.6-36.7 muted noloop)</p><p>(2870 1c- double 33.1-36.7)</p><p>(2873 1a- double 53.9-60.4)</p><p>(2873 1d- double 53.9-60.4)</p>",
+    "ttxt": "Calypso",
+    "cell": ""
+  },
+  {
+    "UID": "2883",
+    "link": "https://www.uwphotographyguide.com/wp-content/uploads/2010/04/big_purple_jellyfish.jpg",
+    "show": "1",
+    "DateAdded": "2026-11-24 16:11:48",
+    "DateModified": "2026-11-24 16:12:12",
+    "tags": [
+      "chrysaora-colorata"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "417",
+    "MPix": "0.4",
+    "Mode": "L",
+    "linkpage": "https://www.uwphotographyguide.com/purple-jellyfish-underwater/"
+  },
+  {
+    "UID": "2884",
+    "link": "https://www.uwphotographyguide.com/purple-jellyfish-underwater/",
+    "show": "1",
+    "DateAdded": "2026-11-24 16:13:22",
+    "DateModified": "2026-11-24 16:16:32",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "6811",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
+  },
+  {
+    "UID": "2885",
+    "link": "https://vimeo.com/1114899625",
+    "show": "1",
+    "DateAdded": "2026-11-25 03:25:40",
+    "DateModified": "2026-11-25 03:25:40",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "0"
+  },
+  {
+    "UID": "2886",
+    "link": "https://vimeo.com/1114599216",
+    "show": "1",
+    "DateAdded": "2026-11-25 03:26:54",
+    "DateModified": "2026-11-25 03:26:54",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "0"
+  },
+  {
+    "UID": "2887",
+    "link": "https://vimeo.com/1114597660",
+    "show": "1",
+    "DateAdded": "2026-11-25 03:28:09",
+    "DateModified": "2026-11-25 03:28:09",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "0"
+  },
+  {
+    "UID": "2888",
+    "link": "https://marinephoto.co.uk/behaviour-observations/crab-moulting/",
+    "show": "1",
+    "DateAdded": "2026-11-25 03:44:25",
+    "DateModified": "2026-11-25 03:51:42",
+    "tags": [
+      "carcinus-maenas"
+    ],
+    "ltype": "w",
+    "ftextSize": "4100",
+    "FtextJunk": "0",
+    "DictSize": "623",
+    "ftext": ""
+  },
+  {
+    "UID": "2889",
+    "link": "https://marinephoto.co.uk/wp-content/uploads/2022/08/Portrait-of-44-RJ2.jpg",
+    "show": "1",
+    "DateAdded": "2026-11-25 03:49:04",
+    "DateModified": "2026-11-25 03:49:34",
+    "tags": [
+      "parablennius-gattorugine"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "2716",
+    "MPix": "1.3",
+    "Mode": "L",
+    "BQ": "7"
+  },
+  {
+    "UID": "2890",
+    "link": "https://marinephoto.co.uk/behaviour-observations/sea-slug-defences/",
+    "show": "1",
+    "DateAdded": "2026-11-25 03:53:58",
+    "DateModified": "2026-11-25 03:54:23",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "4233",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
+  },
+  {
+    "UID": "2891",
+    "link": "https://www.instagram.com/p/ChX_vh5sH8H/",
+    "show": "1",
+    "DateAdded": "2026-11-25 03:57:38",
+    "DateModified": "2026-11-25 04:02:17",
+    "tags": [
+      "squatina-squatina"
+    ],
+    "ltype": "i",
+    "ftextSize": "954",
+    "FtextJunk": "8",
+    "DictSize": "1712",
+    "ftext": "",
+    "VidAuthor": "@montereybayaquarium",
+    "VidTitle": "Wait for it",
+    "Mode": "L"
+  },
+  {
+    "UID": "2892",
+    "link": "https://upload.wikimedia.org/wikipedia/commons/3/30/Squatina_squatina_120867948.jpg",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:01:50",
+    "DateModified": "2026-11-25 04:02:06",
+    "tags": [
+      "squatina-squatina"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "1712",
+    "MPix": "2.8",
+    "Mode": "L"
+  },
+  {
+    "UID": "2893",
+    "link": "https://www.instagram.com/p/DLFenWLu7ZC/",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:03:13",
+    "DateModified": "2026-11-25 04:03:50",
+    "tags": [
+      "squatina-squatina"
+    ],
+    "ltype": "i",
+    "ftextSize": "1076",
+    "FtextJunk": "7",
+    "DictSize": "1712",
+    "ftext": "",
+    "VidAuthor": "@andy_mann",
+    "VidTitle": "Maybe the most fun I've ever had filming in knee-deep water. Watch where you walki in the shallows at night",
+    "Mode": "P"
+  },
+  {
+    "UID": "2894",
+    "link": "https://www.instagram.com/p/DRfDp_tDFt_/",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:04:26",
+    "DateModified": "2026-11-25 04:04:30",
+    "tags": [],
+    "ltype": "i",
+    "ftextSize": "900",
+    "FtextJunk": "8",
+    "DictSize": "0",
+    "ftext": "",
+    "VidAuthor": "@motheroceanblue",
+    "VidTitle": "ANGEL DELIGHT",
+    "Mode": "P"
+  },
+  {
+    "UID": "2895",
+    "link": "https://www.instagram.com/p/DePc8Pko9X1/",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:05:41",
+    "DateModified": "2026-11-25 04:05:44",
+    "tags": [],
+    "ltype": "i",
+    "ftextSize": "1520",
+    "FtextJunk": "5",
+    "DictSize": "0",
+    "ftext": "",
+    "VidAuthor": "@motheroceanblue",
+    "VidTitle": "ONE SPECIES, TWO DISGUISES",
+    "Mode": "P"
+  },
+  {
+    "UID": "2896",
+    "link": "https://www.instagram.com/p/DOV3u8GDNO7/",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:24:31",
+    "DateModified": "2026-11-25 04:38:16",
+    "tags": [
+      "cotylorhiza-tuberculata"
+    ],
+    "ltype": "i",
+    "ftextSize": "460",
+    "FtextJunk": "0",
+    "DictSize": "340",
+    "ftext": "",
+    "VidAuthor": "@jmalcuadradoo",
+    "VidTitle": "Medusa huevo frito la prota del verano mediterraneo",
+    "Mode": "P"
+  },
+  {
+    "UID": "2897",
+    "link": "https://upload.wikimedia.org/wikipedia/commons/0/0a/Spiegeleikwal_voor_de_westkust_van_Sardini%C3%AB.jpg",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:26:23",
+    "DateModified": "2026-11-25 04:38:17",
+    "tags": [
+      "cotylorhiza-tuberculata"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "340",
+    "MPix": "12.0",
+    "Mode": "L"
+  },
+  {
+    "UID": "2898",
+    "link": "https://upload.wikimedia.org/wikipedia/commons/f/f0/Cassiopea_Jellyfish_%28Cotylorhiza_tuberculata%29_-_Mar_Jonio%2C_Italy.jpg",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:26:59",
+    "DateModified": "2026-11-25 04:38:18",
+    "tags": [
+      "cotylorhiza-tuberculata"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "340",
+    "MPix": "0.6",
+    "Mode": "S"
+  },
+  {
+    "UID": "2899",
+    "link": "https://inhabitat.com/wp-content/blogs.dir/1/files/2015/01/Fried-Egg-Jellyfish-Cotylorhiza-tuberculata-1.jpg",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:28:24",
+    "DateModified": "2026-11-25 04:29:58",
+    "tags": [
+      "notworking"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "0"
+  },
+  {
+    "UID": "2900",
+    "link": "https://inaturalist-open-data.s3.amazonaws.com/photos/91809472/original.jpeg",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:31:38",
+    "DateModified": "2026-11-25 04:38:19",
+    "tags": [
+      "cotylorhiza-tuberculata"
+    ],
+    "VidRange": "i",
+    "linkpage": "https://www.inaturalist.org/photos/91809472",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "340",
+    "MPix": "3.1",
+    "Mode": "L"
+  },
+  {
+    "UID": "2901",
+    "link": "https://inaturalist-open-data.s3.amazonaws.com/photos/245602105/original.jpeg",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:32:14",
+    "DateModified": "2026-11-25 04:38:20",
+    "tags": [
+      "cotylorhiza-tuberculata"
+    ],
+    "VidRange": "i",
+    "linkpage": "https://www.inaturalist.org/photos/245602105",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "340",
+    "MPix": "2.8",
+    "Mode": "L"
+  },
+  {
+    "UID": "2902",
+    "link": "https://inaturalist-open-data.s3.amazonaws.com/photos/327904616/original.jpg",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:32:40",
+    "DateModified": "2026-11-25 04:38:21",
+    "tags": [
+      "cotylorhiza-tuberculata"
+    ],
+    "VidRange": "i",
+    "linkpage": "https://www.inaturalist.org/photos/327904616",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "340",
+    "MPix": "2.9",
+    "Mode": "L"
+  },
+  {
+    "UID": "2903",
+    "link": "https://www.biolib.cz/IMG/GAL/45003.jpg",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:33:59",
+    "DateModified": "2026-11-25 04:38:22",
+    "tags": [
+      "cotylorhiza-tuberculata"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "340",
+    "MPix": "0.5",
+    "Mode": "L"
+  },
+  {
+    "UID": "2904",
+    "link": "https://lamarinaalta.com/wp-content/uploads/2023/08/cotylorhiza-tuberculata-huevo-frito-medusapp.jpg",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:35:00",
+    "DateModified": "2026-11-25 04:38:22",
+    "tags": [
+      "cotylorhiza-tuberculata"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "340",
+    "MPix": "3.0",
+    "Mode": "L"
+  },
+  {
+    "UID": "2905",
+    "link": "https://media-assets.wired.it/photos/66a25e3f8910fd949fc22ef4/16:9/w_1920,c_limit/GettyImages-1338752882.jpg",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:35:43",
+    "DateModified": "2026-11-25 04:37:15",
+    "tags": [
+      "cotylorhiza-tuberculata"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "340",
+    "MPix": "0.3",
+    "Mode": "L",
+    "comment": "Medusa “uovo fritto” (Cotylorhiza tuberculata).A. Martin UW Photography / Getty Images"
+  },
+  {
+    "UID": "2906",
+    "link": "https://youtu.be/H2i987gRkTI",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:39:13",
+    "DateModified": "2026-11-25 04:39:17",
+    "tags": [
+      "cotylorhiza-tuberculata"
+    ],
+    "Mute": "0",
+    "ftextSize": "241",
+    "FtextJunk": "32",
+    "DictSize": "340",
+    "VidTitle": "Fried Egg Jellyfish - Cotylorhiza tuberculata",
+    "VidAuthor": "@SailMatilda",
+    "Mode": "L",
+    "ftext": "",
+    "vidLength": "2:14"
+  },
+  {
+    "UID": "2907",
+    "link": "https://marinemadnessdotblog.wordpress.com/2019/12/12/sunny-side-up-the-fried-egg-jellyfish/",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:40:32",
+    "DateModified": "2026-11-25 04:40:37",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "6037",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
+  },
+  {
+    "UID": "2908",
+    "link": "https://marinemadnessdotblog.wordpress.com/2021/07/29/culture-club-time-to-let-the-cetaceans-in/",
+    "show": "1",
+    "DateAdded": "2026-11-25 04:42:30",
+    "DateModified": "2026-11-25 04:42:34",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "11067",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
   }
 ]

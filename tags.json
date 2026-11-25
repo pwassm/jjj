@@ -8638,5 +8638,265 @@
     "kind": "topic",
     "parents": [],
     "aliases": []
+  },
+  {
+    "id": "chrysaora-colorata",
+    "label": "Chrysaora colorata",
+    "kind": "taxon",
+    "parents": [
+      "chrysaora"
+    ],
+    "aliases": [],
+    "rank": "species",
+    "authority": "(Russell, 1964)",
+    "NameOrigin": "First described as Pelagia colorata.\nThe origin of the genus name Chrysaora lies in Greek mythology with Chrysaor, brother of Pegasus and son of Poseidon and Medusa.\ncolorata: Latin “coloured” (a form of coloratus).",
+    "NameOriginSrc": [
+      {
+        "name": "WoRMS",
+        "url": "https://www.marinespecies.org/aphia.php?p=taxdetails&id=287204"
+      },
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Chrysaora"
+      },
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/coloratus"
+      }
+    ],
+    "NameSay": "KRY-say-aw-ruh colorata",
+    "common": "purple-striped jellyfish"
+  },
+  {
+    "id": "pelagiidae",
+    "label": "Pelagiidae",
+    "kind": "taxon",
+    "parents": [
+      "semaeostomeae"
+    ],
+    "aliases": [],
+    "rank": "family"
+  },
+  {
+    "id": "chrysaora",
+    "label": "Chrysaora",
+    "kind": "taxon",
+    "parents": [
+      "pelagiidae"
+    ],
+    "aliases": [],
+    "rank": "genus"
+  },
+  {
+    "id": "blenniiformes",
+    "label": "Blenniiformes",
+    "kind": "taxon",
+    "parents": [
+      "teleostei"
+    ],
+    "aliases": [],
+    "rank": "order"
+  },
+  {
+    "id": "blenniidae",
+    "label": "Blenniidae",
+    "kind": "taxon",
+    "parents": [
+      "blenniiformes"
+    ],
+    "aliases": [],
+    "rank": "family"
+  },
+  {
+    "id": "parablennius",
+    "label": "Parablennius",
+    "kind": "taxon",
+    "parents": [
+      "blenniidae"
+    ],
+    "aliases": [],
+    "rank": "genus"
+  },
+  {
+    "id": "parablennius-gattorugine",
+    "label": "Parablennius gattorugine",
+    "kind": "taxon",
+    "parents": [
+      "parablennius"
+    ],
+    "aliases": [],
+    "rank": "species",
+    "authority": "(Linnaeus, 1758)",
+    "common": "tompot blenny",
+    "NameOrigin": "First described as Blennius gattorugine.\nThe specific name was first used by Francis Willughby in 1688 after he had observed these blennies in Venice and heard them called gatto ruggine which he translated as \"rusty cat\" or \"rust colour\", although he was afraid that he did not fully understand the name. However the actual name is gatto rusola or gotto rosula which is a local name for blennies in general along the Adriatic coast of Italy and which is a diminutive of gotto roso meaning \"thick throat\".",
+    "NameOriginSrc": [
+      {
+        "name": "WoRMS",
+        "url": "https://www.marinespecies.org/aphia.php?p=taxdetails&id=126770"
+      },
+      {
+        "name": "Wikidata",
+        "url": "https://www.wikidata.org/wiki/Q1419990"
+      },
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Tompot_blenny"
+      }
+    ]
+  },
+  {
+    "id": "carcinus-maenas",
+    "label": "Carcinus maenas",
+    "kind": "taxon",
+    "parents": [
+      "carcinus"
+    ],
+    "aliases": [],
+    "rank": "species",
+    "authority": "(Linnaeus, 1758)",
+    "NameOrigin": "First described as Cancer maenas.\nCarcinus: New Latin, from Ancient Greek karkinos (“crab”).",
+    "NameOriginSrc": [
+      {
+        "name": "WoRMS",
+        "url": "https://www.marinespecies.org/aphia.php?p=taxdetails&id=107381"
+      },
+      {
+        "name": "Wikidata",
+        "url": "https://www.wikidata.org/wiki/Q27779"
+      },
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/Carcinus"
+      }
+    ],
+    "common": "common shore crab"
+  },
+  {
+    "id": "carcinidae",
+    "label": "Carcinidae",
+    "kind": "taxon",
+    "parents": [
+      "decapoda"
+    ],
+    "aliases": [],
+    "rank": "family"
+  },
+  {
+    "id": "carcinus",
+    "label": "Carcinus",
+    "kind": "taxon",
+    "parents": [
+      "carcinidae"
+    ],
+    "aliases": [],
+    "rank": "genus"
+  },
+  {
+    "id": "squatiniformes",
+    "label": "Squatiniformes",
+    "kind": "taxon",
+    "parents": [
+      "elasmobranchii"
+    ],
+    "aliases": [],
+    "rank": "order"
+  },
+  {
+    "id": "squatinidae",
+    "label": "Squatinidae",
+    "kind": "taxon",
+    "parents": [
+      "squatiniformes"
+    ],
+    "aliases": [],
+    "rank": "family"
+  },
+  {
+    "id": "squatina",
+    "label": "Squatina",
+    "kind": "taxon",
+    "parents": [
+      "squatinidae"
+    ],
+    "aliases": [],
+    "rank": "genus",
+    "authority": "Duméril, 1805",
+    "common": "angel shark"
+  },
+  {
+    "id": "squatina-squatina",
+    "label": "Squatina squatina",
+    "kind": "taxon",
+    "parents": [
+      "squatina"
+    ],
+    "aliases": [],
+    "rank": "species",
+    "authority": "(Linnaeus, 1758)",
+    "common": "angelshark",
+    "NameOrigin": "First described as Squalus squatina.\nSquatina squatina: the genus and the epithet are the same word.\nThe word squatina is the name for skate in Latin; it was made the genus name for all angel sharks by the French zoologist André Duméril in 1806.",
+    "NameOriginSrc": [
+      {
+        "name": "WoRMS",
+        "url": "https://www.marinespecies.org/aphia.php?p=taxdetails&id=105928"
+      },
+      {
+        "name": "Wikidata",
+        "url": "https://www.wikidata.org/wiki/Q578842"
+      },
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Squatina_squatina"
+      }
+    ]
+  },
+  {
+    "id": "cotylorhiza-tuberculata",
+    "label": "Cotylorhiza tuberculata",
+    "kind": "taxon",
+    "parents": [
+      "cotylorhiza"
+    ],
+    "aliases": [],
+    "rank": "species",
+    "authority": "(Macri, 1778)",
+    "common": "fried egg jellyfish",
+    "NameOrigin": "tuberculata: Latin “warty, tuberculate” (a form of tuberculatus).",
+    "NameOriginSrc": [
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/tuberculatus"
+      }
+    ]
+  },
+  {
+    "id": "rhizostomeae",
+    "label": "Rhizostomeae",
+    "kind": "taxon",
+    "parents": [
+      "scyphozoa"
+    ],
+    "aliases": [],
+    "rank": "order"
+  },
+  {
+    "id": "cepheidae",
+    "label": "Cepheidae",
+    "kind": "taxon",
+    "parents": [
+      "rhizostomeae"
+    ],
+    "aliases": [],
+    "rank": "family"
+  },
+  {
+    "id": "cotylorhiza",
+    "label": "Cotylorhiza",
+    "kind": "taxon",
+    "parents": [
+      "cepheidae"
+    ],
+    "aliases": [],
+    "rank": "genus"
   }
 ]
