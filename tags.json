@@ -5442,7 +5442,7 @@
     "label": "Haemulidae",
     "kind": "taxon",
     "parents": [
-      "perciformes"
+      "eupercaria-incertae-sedis1"
     ],
     "aliases": [],
     "rank": "family"
@@ -8895,6 +8895,45 @@
     "kind": "taxon",
     "parents": [
       "cepheidae"
+    ],
+    "aliases": [],
+    "rank": "genus"
+  },
+  {
+    "id": "plectorhinchus-chaetodonoides",
+    "label": "Plectorhinchus chaetodonoides",
+    "kind": "taxon",
+    "parents": [
+      "plectorhinchus"
+    ],
+    "aliases": [],
+    "rank": "species",
+    "authority": "Lacepède, 1801",
+    "NameOrigin": "The specific name chaetodonoides means having the form of Chaetodon which when Lacépède described this species referred to both butterflyfishes and marine angelfishes and is an allusion to the serrated operculum, similar to that of marine angelfish, and the then presumption of a close taxonomic relationship between this species and the genus Chaetodon.",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Plectorhinchus_chaetodonoides"
+      }
+    ],
+    "common": "harlequin sweetlips"
+  },
+  {
+    "id": "eupercaria-incertae-sedis1",
+    "label": "Eupercaria incertae sedis1",
+    "kind": "taxon",
+    "parents": [
+      "teleostei"
+    ],
+    "aliases": [],
+    "rank": "order"
+  },
+  {
+    "id": "plectorhinchus",
+    "label": "Plectorhinchus",
+    "kind": "taxon",
+    "parents": [
+      "haemulidae"
     ],
     "aliases": [],
     "rank": "genus"
