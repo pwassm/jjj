@@ -6135,6 +6135,34 @@ function gridWriteToT() {
       if (ch !== keep && !(ch.classList && ch.classList.contains("ss-tag"))) ch.remove();
     });
   }
+  // (dev1223, dev1227) One plain YouTube iframe for an overlay line, in its
+  // place in the cell, starting at second `from` of the clip. hidden = put
+  // in out of sight (opacity 0) to play through YouTube's start-up furniture.
+  var YT_LEAD = 6;
+  function ytPlain(S, el, row, ev, from, hidden) {
+    var id = ytId(row.link);
+    var node = document.createElement("iframe");
+    node.src = "https://www.youtube.com/embed/" + id + "?autoplay=1&controls=0&disablekb=1&fs=0&rel=0"
+      + "&modestbranding=1&playsinline=1&iv_load_policy=3&start=" + Math.floor(Math.max(0, from))
+      + "&mute=" + ((!ev.sound || (S.muted && S.muted())) ? 1 : 0)
+      + (ev.noloop ? "" : "&loop=1&playlist=" + id);
+    node.setAttribute("allow", "autoplay; encrypted-media");
+    node.style.pointerEvents = "none";
+    var cw = Math.max(1, el.clientWidth), ch = Math.max(1, el.clientHeight);
+    if (ev.free) {
+      // top-left on the cell's corner, 16:9, just covering the cell, times double/triple
+      var u = Math.max(cw / 16, ch / 9) * (ev.scale || 1);
+      node.style.width = (100 * 16 * u / cw).toFixed(2) + "%";
+      node.style.height = (100 * 9 * u / ch).toFixed(2) + "%";
+    } else {
+      // YouTube will not play under 200 px: oversize, centred, edges cut off
+      var k = Math.max(1, YT_MIN / cw, YT_MIN / ch);
+      node.style.cssText += "left:50%;top:50%;transform:translate(-50%,-50%);width:"
+        + (k * 100).toFixed(2) + "%;height:" + (k * 100).toFixed(2) + "%;";
+    }
+    if (hidden) node.style.opacity = "0";
+    return node;
+  }
   function fillCell(S, cell, ev) {
     var el = S.cells[cell];
     if (S.cur[cell]) { ytKill(S.cur[cell]); S.cur[cell] = null; }
@@ -6145,6 +6173,14 @@ function gridWriteToT() {
     el.classList.toggle("ss-on", !!(ev && ev.uid) && !rowYt(ev.uid));
     el.classList.toggle("ss-free", !!(ev && ev.uid && ev.free));   // (dev1216)
     if (!ev || !ev.uid) return;
+    if (w && w.ev === ev && w.y.simple) {
+      // (dev1227) a plain YouTube player that has been playing out of sight
+      // for YT_LEAD s: its start-up furniture is gone, show it now
+      S.warm[cell] = null;
+      w.y.host.style.opacity = "1";
+      if (!ev.free) el.classList.add("ss-on");
+      return;
+    }
     if (w && w.ev === ev) {               // warmed up in advance: its moment has come
       S.cur[cell] = w.y; S.warm[cell] = null;
       w.y.due = performance.now();
@@ -6172,29 +6208,13 @@ function gridWriteToT() {
       // at the right frame: the clip's VidRange start (else 0) plus however far
       // into the line the main video already is. YouTube may show its own
       // start-up furniture for a moment; that is the price of simple.
+      // (dev1227) …reached by a jump into the line: no time to warm up, so
+      // YouTube's furniture shows for a moment. From the start of the video
+      // it was warmed up YT_LEAD s ahead instead (syncCells).
       var segs0 = (window.parseVideoAsset && window.parseVideoAsset(row.VidRange)) || null;
       var from = (segs0 && segs0[0] && +segs0[0].start) || 0;
       if (S.video) from += Math.max(0, S.video.currentTime - ev.t0);
-      var id = ytId(link);
-      node = document.createElement("iframe");
-      node.src = "https://www.youtube.com/embed/" + id + "?autoplay=1&controls=0&disablekb=1&fs=0&rel=0"
-        + "&modestbranding=1&playsinline=1&iv_load_policy=3&start=" + Math.floor(from)
-        + "&mute=" + ((!ev.sound || (S.muted && S.muted())) ? 1 : 0)
-        + (ev.noloop ? "" : "&loop=1&playlist=" + id);
-      node.setAttribute("allow", "autoplay; encrypted-media");
-      node.style.pointerEvents = "none";
-      var cw = Math.max(1, el.clientWidth), ch = Math.max(1, el.clientHeight);
-      if (ev.free) {
-        // top-left on the cell's corner, 16:9, just covering the cell, times double/triple
-        var u = Math.max(cw / 16, ch / 9) * (ev.scale || 1);
-        node.style.width = (100 * 16 * u / cw).toFixed(2) + "%";
-        node.style.height = (100 * 9 * u / ch).toFixed(2) + "%";
-      } else {
-        // YouTube will not play under 200 px: oversize, centred, edges cut off
-        var k = Math.max(1, YT_MIN / cw, YT_MIN / ch);
-        node.style.cssText += "left:50%;top:50%;transform:translate(-50%,-50%);width:"
-          + (k * 100).toFixed(2) + "%;height:" + (k * 100).toFixed(2) + "%;";
-      }
+      node = ytPlain(S, el, row, ev, from);
       if (!ev.free) el.classList.add("ss-on");
     } else if (ytId(link)) {
       S.cur[cell] = ytMake(el, row, ev.sound, ev);   // not warmed (a jump): it appears once playing clean
@@ -6237,7 +6257,17 @@ function gridWriteToT() {
       }
       var w = S.warm[cell];
       if (w && w.ev !== want && w.ev !== next) { ytKill(w.y); S.warm[cell] = null; w = null; }
-      if (next && !w && canWarm) S.warm[cell] = { ev: next, y: ytMake(S.cells[cell], rowByUid(next.uid), next.sound, next) };
+      if (next && !w && canWarm) {
+        if (S.simpleYt) {
+          // (dev1227) the plain player goes in YT_LEAD s early, out of sight,
+          // from YT_LEAD s before the clip's start (0 at the earliest)
+          var nrow = rowByUid(next.uid), nsegs = (window.parseVideoAsset && window.parseVideoAsset(nrow.VidRange)) || null;
+          var nfrom = ((nsegs && nsegs[0] && +nsegs[0].start) || 0) - (next.t0 - t);
+          var fr = ytPlain(S, S.cells[cell], nrow, next, nfrom, true);
+          S.cells[cell].appendChild(fr);
+          S.warm[cell] = { ev: next, y: { host: fr, simple: true } };
+        } else S.warm[cell] = { ev: next, y: ytMake(S.cells[cell], rowByUid(next.uid), next.sound, next) };
+      }
       if (S.shown[cell] !== want) {
         S.shown[cell] = want;
         fillCell(S, cell, want);
@@ -6525,7 +6555,7 @@ function gridWriteToT() {
       muted: function () { return vid.muted; },   // the viewer's own mute silences the cells too
       // (dev1223) YouTube insets: one plain player at the moment, no warm-up
       // (Phil: simple first, to debug place and timing); see fillCell
-      simpleYt: true, ytWarm: -1
+      simpleYt: true, ytWarm: YT_LEAD   // (dev1227) warmed YT_LEAD s ahead, out of sight
     };
     // (dev1221) Over the whole visible screen (the host), not just the picture:
     // Phil's cells are places on the screen, bars included.
