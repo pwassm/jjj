@@ -5,6 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>SeaLifeAndMore</title>
 <script>
+// (dev1230) HOTLINK-BLOCKED IMAGES. Some sites (img.reefs.com, 2026-11-26)
+// answer 403 when an <img> request carries our page as its Referer, but serve
+// the same picture with no Referer. When any <img> on any screen fails, try it
+// ONCE more with referrerPolicy "no-referrer". The listener runs in the capture
+// phase, so the image's own onerror ("Image failed" etc.) is held back until
+// the retry has failed too. Images only: YouTube embeds need the Referer, so a
+// page-wide <meta name="referrer"> is not an option.
+document.addEventListener('error', function (e) {
+  var img = e.target;
+  if (!img || img.tagName !== 'IMG' || img._salNoRefTried) return;
+  var src = img.currentSrc || img.src;
+  if (!/^https?:/i.test(src) || img.referrerPolicy === 'no-referrer') return;
+  img._salNoRefTried = true;
+  e.stopImmediatePropagation();
+  img.referrerPolicy = 'no-referrer';
+  img.removeAttribute('srcset');
+  img.src = src;
+}, true);
 // (dev1193) VECT GETS ITS OWN CHROME PROCESS. A ?vect= tab opened on localhost
 // can land in the same renderer process as the main SLAM tab, and a process
 // runs one page at a time: a prompt()/confirm() left open in VECT ("Name this
@@ -1432,7 +1450,7 @@ window._salTurnGate = function (v, turnS, go) {
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev1229';
+  window.HELP_VERSION_STR = 'dev1230';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
