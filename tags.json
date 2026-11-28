@@ -2478,7 +2478,7 @@
     "label": "Balaenopteridae",
     "kind": "taxon",
     "parents": [
-      "cetacea"
+      "cetartiodactyla"
     ],
     "aliases": [],
     "rank": "family"
@@ -8982,7 +8982,9 @@
     "id": "lady-bug-amphipod",
     "label": "Lady bug amphipod",
     "kind": "topic",
-    "parents": [],
+    "parents": [
+      "cyproideidae"
+    ],
     "aliases": [],
     "common": ""
   },
@@ -8990,9 +8992,67 @@
     "id": "cyproideidae",
     "label": "Cyproideidae",
     "kind": "taxon",
-    "parents": [],
+    "parents": [
+      "amphipoda"
+    ],
     "aliases": [],
     "rank": "family",
-    "authority": "J.L. Barnard, 1974"
+    "authority": "J.L. Barnard, 1974",
+    "common": ""
+  },
+  {
+    "id": "coral-hopper-amaryllis",
+    "label": "Coral hopper amaryllis",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "common": ""
+  },
+  {
+    "id": "cetartiodactyla",
+    "label": "Cetartiodactyla",
+    "kind": "taxon",
+    "parents": [
+      "mammalia"
+    ],
+    "aliases": [],
+    "rank": "order"
+  },
+  {
+    "id": "balaenoptera-brydei",
+    "label": "Balaenoptera brydei",
+    "kind": "taxon",
+    "parents": [
+      "balaenoptera"
+    ],
+    "aliases": [],
+    "rank": "species",
+    "authority": "Olsen, 1913",
+    "common": "Bryde's whale",
+    "NameOrigin": "Balaenoptera: From Balaena (\"bowhead whale\", from Latin balaena (“whale”)) and Ancient Greek pteron (“wing”), a reference to the long wing-like side fins of certain whales.\nIn Japan, early whalers called it \"anchovy\" (, iwashi) or \"skipjack whale\" (, katsuo-kujira;). It preys on the anchovy and it was commonly associated with the skipjack. As modern whaling shifted to the Sanriku area, whalemen confused the sei whale with it; now iwashi-kujira (; \"anchovy whale\") only applies to the latter. Incidentally, anchovies are dominant prey for both species off Japan.\n†Balaenoptera taiwanica is named after Taiwan, where the fossil was found in the Pliocene-aged Cholan Formation.",
+    "NameOriginSrc": [
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Bryde's_whale"
+      },
+      {
+        "name": "Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Balaenoptera"
+      },
+      {
+        "name": "Wiktionary",
+        "url": "https://en.wiktionary.org/wiki/Balaenoptera"
+      }
+    ]
+  },
+  {
+    "id": "contest-winner",
+    "label": "Contest winner",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "rank": "species",
+    "NameSay": "kən-ˈtest ˈwi-nər\nkuhn-TEST WIH-ner",
+    "common": ""
   }
 ]

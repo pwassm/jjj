@@ -2917,7 +2917,7 @@ window.openVideoEditor = function(it) {
   // loopSeg=true → normal looped segment playback (start..start+dur then repeat)
   // loopSeg=false → seek to seekSec, play briefly then pause
   function _mountEditorPlayer(segStart, segDur, seekSec, loopSeg, onDurationReady) {
-    if (loopSeg && !(segDur > 0)) loopSeg = false;   // (dev1132) single frame: seek and hold
+    if (loopSeg === true && !(segDur > 0)) loopSeg = false;   // (dev1132) single frame: seek and hold. (dev1231) === true: the no-segment 'free' mount (segDur 0) was caught here and paused after 1.5 s
     window.stopCellVideoLoop('v2host');
     host.innerHTML = '';
 
