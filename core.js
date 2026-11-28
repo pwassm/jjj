@@ -10965,7 +10965,10 @@ async function _fetchWebTextForRows(rows) {
       if (html && _galleryImgToImageRow(row, html)) {
         save();
         if (typeof render === 'function') render();
-        toast(' Picture from gallery link', 1400);
+        toast('\u2713 Picture from gallery link', 1400);
+        // (dev1234) It was a 'w' row when the add ran, so the image size/Mode lookup
+        // skipped it. Run it now for MPix and Mode.
+        _fetchMetaForNewRows([row]);
         continue;
       }
       if (html) {
