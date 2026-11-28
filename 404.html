@@ -51,7 +51,10 @@
   }
 
   Promise.all([
-    fetch(base + 'ml.json').then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}),
+    // (dev1232) ml.json is not on the live site (gitignored), so this lookup
+    // never matched there: fall back to ml.public.json, which is.
+    fetch(base + 'ml.json').then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
+      .then(function(d){ return d || fetch(base + 'ml.public.json').then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}); }),
     fetch(base + 'c.json').then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
   ]).then(function(rs) {
     var ml = rs[0], cj = rs[1];
@@ -62,6 +65,14 @@
         var r = ml[i];
         if (r && !r._salMeta && matches(r.Direct) && r.UID != null) {
           go('?i=' + encodeURIComponent(r.UID) + suffix);
+          return;
+        }
+      }
+      // (dev1232) A row's ttxt name works as a path too: /calypso = ?t=calypso.
+      for (var t = 0; t < ml.length; t++) {
+        var rt = ml[t];
+        if (rt && !rt._salMeta && matches(rt.ttxt)) {
+          go('?t=' + encodeURIComponent(slug) + suffix);
           return;
         }
       }

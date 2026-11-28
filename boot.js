@@ -334,7 +334,7 @@ _markUserModeClass();
       if (_bufQ !== null) window._salBufParam = _bufQ;
     } catch (e) {}
     if (typeof _isUserMode === 'function' && !_isUserMode()) return;
-    if (!(window._deepUid || window._deepConfig || window._deepSs)) return;
+    if (!(window._deepUid || window._deepTtxt || window._deepConfig || window._deepSs)) return;   // (dev1232) ?t= too
     if (!(window.history && history.replaceState)) return;
     var pretty = null;
     try {
