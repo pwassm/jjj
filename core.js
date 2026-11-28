@@ -10929,11 +10929,45 @@ const _YTDLP_PROXY = 'http://127.0.0.1:8081';
 // that is not part of the published site and is not in this repo. Its W-import
 // call site is guarded on the function existing.
 
+// (dev1233) A gallery page link ending #img-N (the Guardian's per-picture link,
+// e.g. UID 2965) means "this picture", not the article. Pick picture N out of the
+// fetched page (alt "Image N:" first, else the Nth <img>) and make the row an image
+// row: link = the jpg, linkpage = the page, no ftext. Returns true if converted.
+function _galleryImgToImageRow(row, html) {
+  const m = /#img-(\d+)$/i.exec(row.link || '');
+  if (!m || !html) return false;
+  const n = +m[1];
+  const imgs = [...String(html).matchAll(/<img\b[^>]*>/gi)].map(t => ({
+    src: ((/\bsrc="([^"]+)"/i.exec(t[0]) || [])[1] || '').replace(/&amp;/g, '&'),
+    alt: (/\balt="([^"]*)"/i.exec(t[0]) || [])[1] || ''
+  })).filter(x => /^https?:/i.test(x.src));
+  const re = new RegExp('^Image ' + n + '(?!\\d)', 'i');
+  const hit = imgs.find(x => re.test(x.alt)) || imgs[n - 1];
+  if (!hit) return false;
+  let src = hit.src;
+  // i.guim.co.uk resizes on request; 375/480 px is only the page's thumbnail size.
+  if (/i\.guim\.co\.uk/i.test(src)) src = src.replace(/([?&]width=)\d+/i, (_, p) => p + '1900');
+  row.linkpage = row.link;
+  row.link = src;
+  delete row.ltype;
+  delete row.ftext;
+  row.VidRange = 'i';
+  row.DateModified = isoNow();
+  return true;
+}
+window._galleryImgToImageRow = _galleryImgToImageRow;
+
 async function _fetchWebTextForRows(rows) {
   for (const row of rows) {
     if (!row || row.ftext || !row.link) continue;
     try {
       const html = await _fetchAndExtractArticle(row.link);
+      if (html && _galleryImgToImageRow(row, html)) {
+        save();
+        if (typeof render === 'function') render();
+        toast(' Picture from gallery link', 1400);
+        continue;
+      }
       if (html) {
         row.ftext = (window.DownloadRules ? window.DownloadRules.apply(html, row.link) : html);
         row.DateModified = isoNow();
